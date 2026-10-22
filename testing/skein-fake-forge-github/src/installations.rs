@@ -338,6 +338,10 @@ impl Installations {
         }
         Err(Denied::Unknown)
     }
+    pub(crate) fn token_retained(&self, slot: u32, bearer: &[u8], now: Wall) -> bool {
+        let Some(Some(token)) = self.tokens.get(slot) else { return false };
+        token.secret.expose() == bearer && now < token.expires
+    }
     pub(crate) fn token_at(&self, slot: u32) -> Option<&Grant> {
         Some(&self.tokens.get(slot)?.as_ref()?.grant)
     }

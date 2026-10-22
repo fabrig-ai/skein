@@ -212,6 +212,34 @@ pub enum Outcome {
     /// Caller owns the continuation and routes the event's reply to finish.
     Call(Pending, fake::Event),
 }
+/// The service's routed and authenticated API head, retained until its body arrives.
+/// It carries no credential bytes. The caller keeps the same request head and
+/// completes it before serving another request, as for an admission.
+#[derive(Debug)]
+pub struct Prepared {
+    route: routes::Route,
+    credential: Credential,
+    user: Option<u64>,
+    at: Wall,
+}
+#[derive(Debug)]
+enum Credential {
+    Public,
+    App,
+    Token(Bearer),
+}
+impl Prepared {
+    /// The authenticated domain user; an App JWT acts as the configured bot.
+    #[must_use]
+    pub const fn user(&self) -> Option<u64> {
+        self.user
+    }
+    /// The shared tally route, where the two dialects have the same operation.
+    #[must_use]
+    pub fn route(&self) -> Option<skein_fake_forge_protocol::Route> {
+        self.route.tally()
+    }
+}
 /// One caller-owned continuation; it contains no credential or reply right.
 /// The supplied `ReplyTo` moves only into `Event::Call`. The caller bounds its
 /// in-flight calls and owns their pending values, as it owns the domain replies.
@@ -428,30 +456,35 @@ impl Service {
         if let Some(name) = skein_fake_forge_protocol::git::name(request.target) {
             return self.git_request(request, name, now, reply_to, None);
         }
-        let outcome = self.request_inner(request, now, reply_to);
+        let outcome = match self.prepare_inner(request, now) {
+            Ok(prepared) => self.dispatch_prepared(request, now, reply_to, prepared),
+            Err(response) => Outcome::Reply(response),
+        };
         self.local_links(outcome)
     }
-    fn request_inner(&mut self, request: &Request<'_>, now: Wall, reply_to: ReplyTo) -> Outcome {
+
+    /// Checks and retains an API head without decoding its body. Git requests use
+    /// `request`. Complete with `request_prepared` and the same head, or discard on a cut.
+    #[expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")]
+    pub fn prepare(&mut self, request: &Request<'_>, now: Wall) -> Result<Prepared, Response> {
+        self.prepare_inner(request, now)
+    }
+
+    #[expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")]
+    fn prepare_inner(&mut self, request: &Request<'_>, now: Wall) -> Result<Prepared, Response> {
         let limits = &self.limits;
         if !request.agent {
-            return Outcome::Reply(answers::refusal(403, b"User agent required", limits));
+            return Err(answers::refusal(403, b"User agent required", limits));
         }
         if request.version != Some(github::pin::API_VERSION.as_bytes()) {
-            return Outcome::Reply(answers::refusal(400, b"Invalid API version", limits));
+            return Err(answers::refusal(400, b"Invalid API version", limits));
         }
         let Some(route) = routes::decode(request.method, request.target, &limits.github) else {
-            return Outcome::Reply(answers::missing(limits));
+            return Err(answers::missing(limits));
         };
         match &route {
-            routes::Route::BotUser(slug) => {
-                return Outcome::Reply(if slug == &self.app.slug {
-                    answers::response(200, &Body::BotUser(self.bot, slug), limits)
-                } else {
-                    answers::missing(limits)
-                });
-            }
-            routes::Route::Conversion(code) => {
-                return Outcome::Reply(pages::convert(self, code.expose(), request.body, now));
+            routes::Route::BotUser(_) | routes::Route::Conversion(_) => {
+                return Ok(Prepared { route, credential: Credential::Public, user: None, at: now });
             }
             routes::Route::App(_) | routes::Route::Token(_) => {}
         }
@@ -460,28 +493,98 @@ impl Service {
             None => None,
         };
         let Some(bearer) = bearer else {
-            return Outcome::Reply(answers::unauthorized(limits));
+            return Err(answers::unauthorized(limits));
         };
-        match route {
-            routes::Route::Conversion(_) | routes::Route::BotUser(_) => Outcome::Reply(answers::failed()),
-            routes::Route::App(route) => {
-                if let Some(bearer) = self.resolve(bearer, now) {
-                    return Outcome::Admit(crate::rates::Admission::new(
-                        crate::rates::Route::App,
-                        bearer,
-                        request,
-                        now,
-                        self.limits.body,
-                    ));
-                }
+        if let Some(bearer) = self.resolve(bearer, now) {
+            let user = match bearer {
+                Bearer::Person { user, .. } => user,
+                Bearer::Installation { .. } => self.bot,
+            };
+            return Ok(Prepared { route, credential: Credential::Token(bearer), user: Some(user), at: now });
+        }
+        match &route {
+            routes::Route::App(_) => {
                 if self.key_revoked || self.verified.check(bearer, &self.app, now).is_err() {
-                    return Outcome::Reply(answers::unauthorized(limits));
+                    return Err(answers::unauthorized(limits));
                 }
-                Outcome::Reply(self.app_route(route, request, now))
+                Ok(Prepared { route, credential: Credential::App, user: Some(self.bot), at: now })
             }
+            routes::Route::Token(_) | routes::Route::Conversion(_) | routes::Route::BotUser(_) => {
+                Err(answers::unauthorized(limits))
+            }
+        }
+    }
+
+    /// Completes a prepared API head with its body, retaining every admission,
+    /// installation, reach and body check. The supplied head is the one prepared;
+    /// the caller completes all continuations before serving another request.
+    pub fn request_prepared(
+        &mut self,
+        request: &Request<'_>,
+        now: Wall,
+        reply_to: ReplyTo,
+        prepared: Result<Prepared, Response>,
+    ) -> Outcome {
+        let Ok(mut prepared) = prepared else {
+            // A refused JWT's not-before window can open while its body arrives.
+            return self.request(request, now, reply_to);
+        };
+        self.poll(now);
+        if now != prepared.at || self.key_revoked {
+            let bearer = match request.authorization {
+                Some(header) => header.strip_prefix(b"Bearer "),
+                None => None,
+            };
+            match prepared.credential {
+                Credential::Public => {}
+                Credential::App => {
+                    let Some(bearer) = bearer else { return Outcome::Reply(answers::unauthorized(&self.limits)) };
+                    if self.key_revoked || self.verified.check(bearer, &self.app, now).is_err() {
+                        return Outcome::Reply(answers::unauthorized(&self.limits));
+                    }
+                }
+                Credential::Token(resolved) => {
+                    let Some(bearer) = bearer else { return Outcome::Reply(answers::unauthorized(&self.limits)) };
+                    let Some(resolved) = self.resolve_retained(resolved, bearer, now) else {
+                        return Outcome::Reply(answers::unauthorized(&self.limits));
+                    };
+                    prepared.credential = Credential::Token(resolved);
+                }
+            }
+        }
+        let outcome = self.dispatch_prepared(request, now, reply_to, prepared);
+        self.local_links(outcome)
+    }
+
+    fn dispatch_prepared(
+        &mut self,
+        request: &Request<'_>,
+        now: Wall,
+        reply_to: ReplyTo,
+        prepared: Prepared,
+    ) -> Outcome {
+        let limits = &self.limits;
+        match prepared.route {
+            routes::Route::BotUser(slug) => Outcome::Reply(if slug == self.app.slug {
+                answers::response(200, &Body::BotUser(self.bot, &slug), limits)
+            } else {
+                answers::missing(limits)
+            }),
+            routes::Route::Conversion(code) => Outcome::Reply(pages::convert(self, code.expose(), request.body, now)),
+            routes::Route::App(route) => match prepared.credential {
+                Credential::Token(bearer) => Outcome::Admit(crate::rates::Admission::new(
+                    crate::rates::Route::App,
+                    bearer,
+                    request,
+                    now,
+                    self.limits.body,
+                )),
+                Credential::App => Outcome::Reply(self.app_route(route, request, now)),
+                Credential::Public => Outcome::Reply(answers::failed()),
+            },
             routes::Route::Token(route) => {
-                let Some(bearer) = self.resolve(bearer, now) else {
-                    return Outcome::Reply(answers::unauthorized(limits));
+                let Credential::Token(bearer) = prepared.credential else {
+                    return Outcome::Reply(answers::failed());
                 };
                 if let routes::Token::Read(reads::Read::Locate { .. } | reads::Read::Repository(_)) = &route
                     && let Some(validator) = request.validator

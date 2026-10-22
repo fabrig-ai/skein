@@ -314,3 +314,61 @@ fn github_fake_suspension_preserves_but_refuses_tokens() {
     assert_eq!(h.ask(Method::Get, REACHABLE, Some(token.expose()), b"").status, 200);
     assert_eq!(h.calls, 0);
 }
+
+#[test]
+fn github_prepared_heads_keep_credential_expiry_and_key_checks_at_body_dispatch() {
+    use crate::service::{Outcome, Request};
+    use skein_lib::{ReplyTo, Token};
+
+    for revoke in [false, true] {
+        let mut h = Harness::new();
+        let request = Request {
+            method: Method::Get,
+            target: b"/app",
+            authorization: Some(h.jwt.expose()),
+            version: Some(skein_forge::github::pin::API_VERSION.as_bytes()),
+            agent: true,
+            body: b"",
+            validator: None,
+        };
+        let prepared = h.service.prepare(&request, h.now);
+        assert_eq!(prepared.as_ref().expect("valid App head").user(), Some(f::BOT));
+        assert_eq!(prepared.as_ref().expect("valid App head").route(), None);
+        let now = if revoke {
+            h.service.revoke_key();
+            h.now
+        } else {
+            wall(1600)
+        };
+        let Outcome::Reply(response) = h.service.request_prepared(&request, now, ReplyTo::new(Token::new(1)), prepared)
+        else {
+            panic!("expired or revoked JWT refused before admission");
+        };
+        refusal(&h, &response, 401, b"Bad credentials");
+    }
+
+    let mut h = Harness::new();
+    let minted = h.mint(1, false);
+    let authorization = bearer(minted.token.expose());
+    let request = Request {
+        method: Method::Get,
+        target: b"/repos/acme/widgets",
+        authorization: Some(authorization.expose()),
+        version: Some(skein_forge::github::pin::API_VERSION.as_bytes()),
+        agent: true,
+        body: b"",
+        validator: None,
+    };
+    let prepared = h.service.prepare(&request, h.now);
+    assert_eq!(prepared.as_ref().expect("valid installation head").user(), Some(f::BOT));
+    assert_eq!(
+        prepared.as_ref().expect("valid installation head").route(),
+        Some(skein_fake_forge_protocol::Route::Repository)
+    );
+    let Outcome::Reply(response) =
+        h.service.request_prepared(&request, minted.expires, ReplyTo::new(Token::new(1)), prepared)
+    else {
+        panic!("expired installation token refused before admission");
+    };
+    refusal(&h, &response, 401, b"Bad credentials");
+}

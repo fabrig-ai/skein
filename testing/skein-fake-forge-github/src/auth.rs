@@ -63,6 +63,16 @@ impl Service {
         let (slot, grant) = self.installations.token_slot(bearer, now).ok()?;
         Some(Bearer::Installation { slot, installation: grant.installation })
     }
+    pub(crate) fn resolve_retained(&self, resolved: Bearer, bearer: &[u8], now: Wall) -> Option<Bearer> {
+        let retained = match resolved {
+            Bearer::Person { index, user } => match self.tokens.get(index) {
+                Some((secret, stored, _)) => *stored == user && secret.expose() == bearer,
+                None => false,
+            },
+            Bearer::Installation { slot, .. } => self.installations.token_retained(slot, bearer, now),
+        };
+        if retained { Some(resolved) } else { self.resolve(bearer, now) }
+    }
     #[expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")]
     pub(crate) fn access(&self, bearer: Bearer) -> Result<Access, Response> {
         match bearer {

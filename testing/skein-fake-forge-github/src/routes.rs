@@ -212,3 +212,67 @@ pub(crate) fn decode(method: Method, target: &[u8], limits: &Limits) -> Option<R
         | Request::PullGraphql { .. } => return None,
     })
 }
+
+// Tally names shared with the Forgejo face; App and GraphQL have no shared name.
+impl Route {
+    pub(crate) fn tally(&self) -> Option<skein_fake_forge_protocol::Route> {
+        use skein_fake_forge_protocol::Route as T;
+        Some(match self {
+            Self::BotUser(_) => T::UserOf,
+            Self::App(_) | Self::Conversion(_) => return None,
+            Self::Token(token) => match token {
+                Token::Reachable(_) => T::UserRepos,
+                Token::Identity => T::User,
+                Token::User(_) => T::UserOf,
+                Token::Mutation(_)
+                | Token::CommentEdit(_)
+                | Token::Revoke
+                | Token::EditReach { .. }
+                | Token::Graphql => return None,
+                Token::Read(read) => match read {
+                    reads::Read::Repository(_) => T::RepositoryById,
+                    reads::Read::Locate { .. } => T::Repository,
+                    reads::Read::Branch { .. } => T::Branch,
+                    reads::Read::Branches { .. } => T::Branches,
+                    reads::Read::Issues { .. } => T::Issues,
+                    reads::Read::Issue { .. } => T::Issue,
+                    reads::Read::Comments { .. } => T::Comments,
+                    reads::Read::Pull { .. } => T::Pull,
+                    reads::Read::PullsFor { .. } => T::PullFor,
+                    reads::Read::PullFiles { .. } => T::PullFiles,
+                    reads::Read::Compare { .. } => T::Compare,
+                    reads::Read::Raw { .. } => T::Raw,
+                    reads::Read::Checks { runs: false, .. } => T::CombinedStatus,
+                    reads::Read::Checks { runs: true, .. } => T::Runs,
+                    reads::Read::Job { .. } => T::Job,
+                    reads::Read::JobLog { .. } => T::JobLog,
+                    reads::Read::Reviews { .. } => T::Reviews,
+                    reads::Read::ReviewComments { .. } => T::ReviewComments,
+                    reads::Read::Collaborators { .. } => T::Collaborators,
+                    reads::Read::Permission { .. } => T::Permission,
+                    reads::Read::Protection { query, .. } => match query {
+                        reads::protection::Read::Ruleset(_) => T::Protections,
+                        reads::protection::Read::Rules { .. } | reads::protection::Read::Classic(_) => T::Protection,
+                    },
+                    reads::Read::Enqueue { .. } | reads::Read::PullGraphql { .. } => return None,
+                },
+                Token::Write(write) => match write {
+                    writes::Route::Merge { .. } => T::Merge,
+                    writes::Route::CreateBranch { .. } => T::CreateBranch,
+                    writes::Route::DeleteBranch { .. } => T::DeleteBranch,
+                    writes::Route::Status { .. } => T::PostStatus,
+                    writes::Route::OpenPull { .. } => T::OpenPull,
+                    writes::Route::Update { .. } => T::Update,
+                    writes::Route::Review { .. } => T::PostReview,
+                    writes::Route::Reviewers { add: false, .. } => T::RemoveReviewers,
+                    writes::Route::Reviewers { add: true, .. } => T::RequestReviewers,
+                    writes::Route::Reopen { .. } | writes::Route::Close { .. } | writes::Route::Edit { .. } => {
+                        T::EditIssue
+                    }
+                    writes::Route::Post { .. } => T::PostComment,
+                    writes::Route::CreateIssue { .. } => T::CreateIssue,
+                },
+            },
+        })
+    }
+}

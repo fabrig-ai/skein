@@ -2,8 +2,8 @@
 use super::{Joint, StartCounts};
 use crate::pipe::{Cut, Pipe, RequestCounts};
 use skein_fake_forge_domain as fake;
-use skein_fake_forge_github::service::{Outcome, Request, Service};
-use skein_fake_forge_protocol::{Route, Tally};
+use skein_fake_forge_github::service::{Outcome, Prepared, Request, Response, Service};
+use skein_fake_forge_protocol::Tally;
 use skein_forge::github::request::Method;
 use skein_http::server as http;
 use skein_lib::{
@@ -18,6 +18,7 @@ struct Peer {
     above: Queue<http::Event>,
     below: Queue<Down>,
     head: Option<http::Call>,
+    prepared: Option<Result<Prepared, Response>>,
     body: Vec<u8>,
     reply: Vec<u8>,
     offset: usize,
@@ -32,20 +33,12 @@ impl Peer {
 
 pub(super) struct Github {
     service: Service,
-    app: skein_fake_forge_github::app::App,
-    verified: skein_fake_forge_github::app::Verified,
     peers: BTreeMap<Token, Peer>,
     pub tally: Tally,
 }
 impl Github {
     pub fn new(seed: u64) -> Self {
-        Self {
-            service: crate::github::Fake::new(seed).into_service(),
-            app: crate::github::fixture_app(),
-            verified: skein_fake_forge_github::app::Verified::empty(),
-            peers: BTreeMap::new(),
-            tally: Tally::new(1),
-        }
+        Self { service: crate::github::Fake::new(seed).into_service(), peers: BTreeMap::new(), tally: Tally::new(1) }
     }
     pub fn busy(&self) -> bool {
         self.peers.values().any(|peer| peer.pipe.has_work() || !peer.above.is_empty() || !peer.below.is_empty())
@@ -82,15 +75,16 @@ impl Github {
                     if peer.heads.pop_front().expect("head follows first byte") {
                         world.starts.served += 1;
                     }
-                    let user = call
-                        .header(b"Authorization")
-                        .and_then(|header| header.strip_prefix(b"Bearer "))
-                        .and_then(|bearer| {
-                            (self.service.installations().token(bearer, env.wall).is_ok()
-                                || self.verified.check(bearer, &self.app, env.wall).is_ok())
-                            .then_some(9)
-                        });
-                    self.tally.count(if user.is_some() { route(&call) } else { None }, user);
+                    let prepared = self.service.prepare(&request(&call, &[]), env.wall);
+                    let (route, user) = match &prepared {
+                        Ok(prepared) => {
+                            let user = prepared.user();
+                            (if user.is_some() { prepared.route() } else { None }, user)
+                        }
+                        Err(_) => (None, None),
+                    };
+                    self.tally.count(route, user);
+                    peer.prepared = Some(prepared);
                     peer.head = Some(call);
                     peer.body.clear();
                     peer.action(
@@ -135,17 +129,12 @@ impl Github {
     }
     fn serve(&mut self, world: &mut Joint, peer: &mut Peer, env: &Env<http::Limits>) {
         let call = peer.head.take().expect("request head");
-        let method = method(call.method);
-        let request = Request {
-            method,
-            target: &call.target,
-            authorization: call.header(b"Authorization"),
-            version: call.header(b"X-GitHub-Api-Version"),
-            agent: call.header(b"User-Agent").is_some(),
-            body: &peer.body,
-            validator: call.header(b"If-None-Match"),
-        };
-        let mut outcome = self.service.request(&request, env.wall, ReplyTo::new(Token::new(77)));
+        let mut outcome = self.service.request_prepared(
+            &request(&call, &peer.body),
+            env.wall,
+            ReplyTo::new(Token::new(77)),
+            peer.prepared.take().expect("prepared head"),
+        );
         let response = loop {
             outcome = match outcome {
                 Outcome::Reply(response) => break response,
@@ -207,6 +196,7 @@ impl Github {
                     above: Queue::with_capacity(64),
                     below: Queue::with_capacity(64),
                     head: None,
+                    prepared: None,
                     body: Vec::new(),
                     reply: Vec::new(),
                     offset: 0,
@@ -307,69 +297,46 @@ fn method(method: skein_http::Method) -> Method {
     }
 }
 
-// Tally's shared route names cover both dialects' repository operations.
-// App, delivery-log and GraphQL entrances have no Forgejo route name.
-fn route(call: &http::Call) -> Option<Route> {
-    use skein_forge::github::request::Request as R;
-    let documents = crate::fixtures::fake_limits().documents;
-    let limits = skein_forge::github::limits::Limits {
-        json: documents.json,
-        writer: documents.writer,
-        string_bytes: documents.string_bytes,
-        body_bytes: documents.body_bytes,
-        inner: documents.inner,
-        target_bytes: documents.target_bytes,
-    };
-    Some(match skein_forge::github::server::route(method(call.method), &call.target, &limits)? {
-        R::Reachable { .. } => Route::UserRepos,
-        R::Viewer => Route::User,
-        R::Merge { .. } => Route::Merge,
-        R::BotUser { .. } | R::User { .. } => Route::UserOf,
-        R::Repository { .. } => Route::RepositoryById,
-        R::Locate { .. } => Route::Repository,
-        R::Issues { .. } => Route::Issues,
-        R::Issue { .. } => Route::Issue,
-        R::Comments { .. } => Route::Comments,
-        R::Pull { .. } => Route::Pull,
-        R::PullsFor { .. } => Route::PullFor,
-        R::Reviews { .. } => Route::Reviews,
-        R::ReviewComments { .. } => Route::ReviewComments,
-        R::CombinedStatus { .. } => Route::CombinedStatus,
-        R::CheckRuns { .. } => Route::Runs,
-        R::Job { .. } => Route::Job,
-        R::JobLog { .. } => Route::JobLog,
-        R::Branch { .. } => Route::Branch,
-        R::Branches { .. } => Route::Branches,
-        R::PullFiles { .. } => Route::PullFiles,
-        R::Compare { .. } => Route::Compare,
-        R::Raw { .. } => Route::Raw,
-        R::RulesForBranch { .. } | R::ClassicProtection { .. } => Route::Protection,
-        R::Ruleset { .. } => Route::Protections,
-        R::Collaborators { .. } => Route::Collaborators,
-        R::Permission { .. } => Route::Permission,
-        R::Reopen { .. } | R::Edit { .. } | R::Close { .. } => Route::EditIssue,
-        R::Status { .. } => Route::PostStatus,
-        R::CreateBranch { .. } => Route::CreateBranch,
-        R::Reviewers { add: false, .. } => Route::RemoveReviewers,
-        R::Reviewers { .. } => Route::RequestReviewers,
-        R::Update { .. } => Route::Update,
-        R::Review { .. } => Route::PostReview,
-        R::Post { .. } => Route::PostComment,
-        R::CreateIssue { .. } => Route::CreateIssue,
-        R::OpenPull { .. } => Route::OpenPull,
-        R::DeleteBranch { .. } => Route::DeleteBranch,
-        R::LogPage { .. }
-        | R::LogDelivery { .. }
-        | R::Installations { .. }
-        | R::Installation { .. }
-        | R::Mint { .. }
-        | R::Enqueue { .. }
-        | R::PullGraphql { .. }
-        | R::App
-        | R::HookConfig
-        | R::SetHook { .. }
-        | R::Uninstall { .. }
-        | R::Conversion { .. }
-        | R::Followed { .. } => return None,
-    })
+fn request<'a>(call: &'a http::Call, body: &'a [u8]) -> Request<'a> {
+    Request {
+        method: method(call.method),
+        target: &call.target,
+        authorization: call.header(b"Authorization"),
+        version: call.header(b"X-GitHub-Api-Version"),
+        agent: call.header(b"User-Agent").is_some(),
+        body,
+        validator: call.header(b"If-None-Match"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Joint;
+    use crate::{fixtures, joint};
+    use skein_forge_connection::Request;
+    use skein_lib::Duration;
+
+    #[test]
+    fn tally_counts_each_complete_head_even_when_the_pipe_is_cut() {
+        for seed in [3, 7, 19] {
+            let mut world = Joint::github(
+                seed,
+                300,
+                fixtures::limits(),
+                fixtures::github_settings(),
+                fixtures::shared(),
+                joint::checks(1000),
+            );
+            world.action(Request::Installations { forge: fixtures::FORGE, accepted: Box::from([1]) });
+            world.action(Request::Connect { forge: fixtures::FORGE, access: fixtures::github_access() });
+            world.run_for(Duration::from_secs(30));
+            world.call(1, joint::REPO, fixtures::branch());
+            world.run_for(Duration::from_secs(1));
+            let starts = world.start_counts();
+            let requests = world.request_counts();
+            assert_eq!(world.tally().total, starts.served + requests.written - requests.cut_in_head);
+            assert_eq!(world.tally().users.get(&9), Some(&world.tally().total));
+            assert_eq!(world.tally().unauthorized, 0);
+        }
+    }
 }
