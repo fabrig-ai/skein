@@ -535,7 +535,7 @@ pub enum Op {
 
 /// A process's command and descriptor table. Arguments exclude argv[0],
 /// which is the program. Environment entries are `NAME=value` bytes.
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash)]
 pub struct Spawn {
     pub program: Box<[u8]>,
     pub args: Box<[Box<[u8]>]>,
@@ -543,6 +543,33 @@ pub struct Spawn {
     pub root: Fd,
     pub dir: Box<[u8]>,
     pub pipes: Box<[Pipe]>,
+}
+
+impl core::fmt::Debug for Spawn {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Spawn")
+            .field("program", &self.program)
+            .field("args", &self.args)
+            .field("env", &EnvNames(&self.env))
+            .field("root", &self.root)
+            .field("dir", &self.dir)
+            .field("pipes", &self.pipes)
+            .finish()
+    }
+}
+
+struct EnvNames<'a>(&'a [Box<[u8]>]);
+
+impl core::fmt::Debug for EnvNames<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut list = f.debug_list();
+        for entry in self.0 {
+            let end = skein_lib::bytes::find(entry, b"=").unwrap_or(entry.len());
+            let name = entry.get(..end).expect("name ends within entry");
+            list.entry(&name);
+        }
+        list.finish()
+    }
 }
 
 /// A requested child pipe, sent by io and returned with its parent end (kernel.md, section 4).

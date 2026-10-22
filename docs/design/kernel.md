@@ -471,7 +471,7 @@ documentation, with each operation's errors; the decisions behind it:
   `pidfd_spawn`, with the group set in its attributes, and the cgroup if
   the spawn names one. `Spawn` carries io.md 6.3's fields, each io token
   its descriptor; one that asks for ids or containment starts the helper
-  (6.6).
+  (6.6). Its Debug prints each env entry's name, never its value.
 - **`Wait` observes an exit, or reaps it.** Both are the ring's `waitid`
   on the pidfd. A `Wait` that does not reap (`WEXITED | WNOWAIT`)
   completes with the child's exit and leaves it a zombie, which keeps its

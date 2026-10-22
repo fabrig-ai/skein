@@ -305,3 +305,17 @@ fn a_childs_output_is_read_as_it_arrives() {
     rig.next().nothing();
     assert_eq!(rig.complete(read, Ok(Done::Count(0))).events, [Event::Stream { owner: pipe, up: Up::End }]);
 }
+
+#[test]
+#[expect(clippy::disallowed_macros, reason = "verify Debug redacts environment values")]
+fn spawn_debug_prints_env_names_without_values() {
+    let mut spawn = command(&[]);
+    spawn.env = Box::new([Box::from(&b"NAME=secret-value"[..]), Box::from(&b"NO_EQUALS"[..])]);
+    for debug in [alloc::format!("{spawn:?}"), alloc::format!("{:?}", Request::Spawn { owner: owner(1), spawn })] {
+        assert!(debug.contains(&alloc::format!("{:?}", b"NAME".as_slice())));
+        assert!(debug.contains(&alloc::format!("{:?}", b"NO_EQUALS".as_slice())));
+        assert!(!debug.contains("secret-value"));
+        assert!(!debug.contains(&alloc::format!("{:?}", b"NAME=secret-value".as_slice())));
+        assert!(!debug.contains("115, 101, 99, 114, 101, 116"));
+    }
+}

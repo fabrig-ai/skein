@@ -53,7 +53,7 @@ pub struct Call {
 /// What the machine is asked, in its handles and with the bytes it needs.
 /// Each is answered with the [`Reply`] it names, or an error the
 /// operation may answer (`skein_io::kernel`'s table).
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq)]
 pub enum Ask {
     /// An exclusive lock through this handle, or Busy while another holds it.
     Lock { file: Handle },
@@ -100,6 +100,70 @@ pub enum Ask {
     Close { file: Handle },
 }
 
+impl core::fmt::Debug for Ask {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Lock { file } => f.debug_struct("Lock").field("file", file).finish(),
+            Self::Spawn { root, program, args, env, dir, pipes } => f
+                .debug_struct("Spawn")
+                .field("root", root)
+                .field("program", program)
+                .field("args", args)
+                .field("env", &EnvNames(env))
+                .field("dir", dir)
+                .field("pipes", pipes)
+                .finish(),
+            Self::Open { root, path, how } => {
+                f.debug_struct("Open").field("root", root).field("path", path).field("how", how).finish()
+            }
+            Self::Read { file, at, len } => {
+                f.debug_struct("Read").field("file", file).field("at", at).field("len", len).finish()
+            }
+            Self::Write { file, at, bytes } => {
+                f.debug_struct("Write").field("file", file).field("at", at).field("bytes", bytes).finish()
+            }
+            Self::Append { file, bytes } => f.debug_struct("Append").field("file", file).field("bytes", bytes).finish(),
+            Self::Truncate { file, length } => {
+                f.debug_struct("Truncate").field("file", file).field("length", length).finish()
+            }
+            Self::Sync { file } => f.debug_struct("Sync").field("file", file).finish(),
+            Self::Stat { file } => f.debug_struct("Stat").field("file", file).finish(),
+            Self::Rename { from_dir, from, to_dir, to, no_replace } => f
+                .debug_struct("Rename")
+                .field("from_dir", from_dir)
+                .field("from", from)
+                .field("to_dir", to_dir)
+                .field("to", to)
+                .field("no_replace", no_replace)
+                .finish(),
+            Self::Remove { dir, name, directory } => {
+                f.debug_struct("Remove").field("dir", dir).field("name", name).field("directory", directory).finish()
+            }
+            Self::MakeDirectory { dir, name, mode } => {
+                f.debug_struct("MakeDirectory").field("dir", dir).field("name", name).field("mode", mode).finish()
+            }
+            Self::List { dir, most, room } => {
+                f.debug_struct("List").field("dir", dir).field("most", most).field("room", room).finish()
+            }
+            Self::Close { file } => f.debug_struct("Close").field("file", file).finish(),
+        }
+    }
+}
+
+struct EnvNames<'a>(&'a [Box<[u8]>]);
+
+impl core::fmt::Debug for EnvNames<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut list = f.debug_list();
+        for entry in self.0 {
+            let end = skein_lib::bytes::find(entry, b"=").unwrap_or(entry.len());
+            let name = entry.get(..end).expect("name ends within entry");
+            list.entry(&name);
+        }
+        list.finish()
+    }
+}
+
 /// The machine's answer to the call its ticket names.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Answer {
@@ -132,4 +196,29 @@ pub enum Program {
     Fork { exit_leader: bool },
     /// Run a service hosted by the world in a process bound to these pipes.
     Service,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_call_debug_prints_env_names_without_values() {
+        let call = Call {
+            ticket: Ticket(1),
+            ask: Ask::Spawn {
+                root: Handle::new(1),
+                program: Box::from(&b"git"[..]),
+                args: Box::new([]),
+                env: Box::new([Box::from(&b"NAME=secret-value"[..]), Box::from(&b"NO_EQUALS"[..])]),
+                dir: Box::from(&b"."[..]),
+                pipes: Box::new([]),
+            },
+        };
+        let debug = alloc::format!("{call:?}");
+        assert!(debug.contains(&alloc::format!("{:?}", b"NAME".as_slice())));
+        assert!(debug.contains(&alloc::format!("{:?}", b"NO_EQUALS".as_slice())));
+        assert!(!debug.contains("secret-value"));
+        assert!(!debug.contains("115, 101, 99, 114, 101, 116"));
+    }
 }
