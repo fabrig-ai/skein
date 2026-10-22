@@ -68,7 +68,7 @@ impl Service {
         }
         let at = colon.checked_add(1).ok_or(403_u16)?;
         let token = decoded.get(at..).ok_or(403_u16)?;
-        let Ok(bearer) = self.resolve(token, now) else {
+        let Some(bearer) = self.resolve(token, now) else {
             return Err(403);
         };
         match self.access(bearer) {

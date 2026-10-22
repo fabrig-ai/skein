@@ -54,17 +54,14 @@ impl Service {
         let Some(installation) = self.installations.get(grant.installation) else { return false };
         row.owner_id == installation.account && self.installations.reaches(grant, repository)
     }
-    #[expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")]
-    pub(crate) fn resolve(&self, bearer: &[u8], now: Wall) -> Result<Bearer, Response> {
+    pub(crate) fn resolve(&self, bearer: &[u8], now: Wall) -> Option<Bearer> {
         for (index, (secret, user, _)) in self.tokens.iter().enumerate() {
             if secret.expose() == bearer {
-                return Ok(Bearer::Person { index: u32::try_from(index).expect("bounded token table"), user: *user });
+                return Some(Bearer::Person { index: u32::try_from(index).expect("bounded token table"), user: *user });
             }
         }
-        let Ok((slot, grant)) = self.installations.token_slot(bearer, now) else {
-            return Err(answers::unauthorized(&self.limits));
-        };
-        Ok(Bearer::Installation { slot, installation: grant.installation })
+        let (slot, grant) = self.installations.token_slot(bearer, now).ok()?;
+        Some(Bearer::Installation { slot, installation: grant.installation })
     }
     #[expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")]
     pub(crate) fn access(&self, bearer: Bearer) -> Result<Access, Response> {

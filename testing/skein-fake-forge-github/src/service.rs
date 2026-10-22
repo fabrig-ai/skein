@@ -465,7 +465,7 @@ impl Service {
         match route {
             routes::Route::Conversion(_) | routes::Route::BotUser(_) => Outcome::Reply(answers::failed()),
             routes::Route::App(route) => {
-                if let Ok(bearer) = self.resolve(bearer, now) {
+                if let Some(bearer) = self.resolve(bearer, now) {
                     return Outcome::Admit(crate::rates::Admission::new(
                         crate::rates::Route::App,
                         bearer,
@@ -480,9 +480,8 @@ impl Service {
                 Outcome::Reply(self.app_route(route, request, now))
             }
             routes::Route::Token(route) => {
-                let bearer = match self.resolve(bearer, now) {
-                    Ok(bearer) => bearer,
-                    Err(response) => return Outcome::Reply(response),
+                let Some(bearer) = self.resolve(bearer, now) else {
+                    return Outcome::Reply(answers::unauthorized(limits));
                 };
                 if let routes::Token::Read(reads::Read::Locate { .. } | reads::Read::Repository(_)) = &route
                     && let Some(validator) = request.validator
