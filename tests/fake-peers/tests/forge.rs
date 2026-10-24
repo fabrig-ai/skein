@@ -426,3 +426,138 @@ fn a_forge_peer_answers_on_its_adopted_listener() {
     world.close(fd);
     world.settle();
 }
+
+#[test]
+fn a_tls_peer_serves_forgejo_over_the_fixed_test_chain() {
+    use rustls::{
+        ClientConfig, ClientConnection, RootCertStore,
+        pki_types::{CertificateDer, ServerName},
+    };
+    use skein_lib::Duration;
+    use skein_shell::{Clock, Kernel};
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+        sync::Arc,
+    };
+
+    let mut peer =
+        forge::Peer::new(address(), limits(), config(), protocol_limits(), fixtures::shared(), SEED).unwrap();
+    peer.tls().unwrap();
+    let kernel = Kernel::open(skein_shell::Config { operations: peer.operations() }).expect("kernel ring");
+    let mut world = git::Loop { peer, kernel, clock: Clock::new() };
+    let deadline = world.clock.now().now.saturating_add(Duration::from_secs(6));
+    while world.peer.address().is_none() {
+        world.pass();
+        assert!(world.clock.now().now < deadline, "TLS listener binds");
+    }
+    let bound = world.peer.address().unwrap();
+    let mut roots = RootCertStore::empty();
+    roots.add(CertificateDer::from(skein_fake_peers::transport::ROOT)).unwrap();
+    let config = ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let mut tls = ClientConnection::new(Arc::new(config), ServerName::try_from("127.0.0.1").unwrap()).unwrap();
+    let mut stream = TcpStream::connect(bound).unwrap();
+    stream.set_nonblocking(true).unwrap();
+    tls.writer().write_all(&request(b"/api/v1/repos/org/repo")).unwrap();
+    let mut response = Vec::new();
+    loop {
+        world.pass();
+        match tls.complete_io(&mut stream) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => panic!("TLS exchange: {error}"),
+        }
+        let mut buffer = [0; 4096];
+        match tls.reader().read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => response.extend_from_slice(&buffer[..count]),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            // HTTP's length delimits this response even when the peer closes the socket.
+            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(error) => panic!("TLS response: {error}"),
+        }
+        assert!(world.clock.now().now < deadline, "TLS exchange settles");
+    }
+    assert!(response.starts_with(b"HTTP/1.1 200 "), "{}", String::from_utf8_lossy(&response));
+    let split = skein_lib::bytes::find(&response, b"\r\n\r\n").expect("HTTP head");
+    let head = std::str::from_utf8(&response[..split]).unwrap();
+    let length: usize = head
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse().unwrap())
+        })
+        .expect("HTTP response length");
+    assert_eq!(response.len() - split - 4, length, "complete HTTP body over TLS");
+    let html = format!("\"html_url\":\"https://{bound}/org/repo\"");
+    assert!(skein_lib::bytes::find(&response, html.as_bytes()).is_some(), "{}", String::from_utf8_lossy(&response));
+    drop(stream);
+    world.peer.shutdown();
+    while !world.peer.is_empty() {
+        world.pass();
+        assert!(world.clock.now().now < deadline, "TLS peer settles");
+    }
+}
+
+#[test]
+fn tls_refuses_a_github_peer_and_limits_below_one_record() {
+    // TLS needs room for one 16 KiB plaintext record (transport::validate).
+    const BELOW_RECORD: u32 = 16_383;
+    let github = forge::Peer::github(
+        address(),
+        address(),
+        Limits { io: skein_io::Limits { sockets: 6, ..limits().io }, ..limits() },
+        github::config(),
+        github::limits(),
+        fixtures::shared(),
+        SEED,
+    )
+    .unwrap();
+    let forgejo = forge::Peer::new(
+        address(),
+        Limits { plaintext: BELOW_RECORD, ..limits() },
+        config(),
+        protocol_limits(),
+        fixtures::shared(),
+        SEED,
+    )
+    .unwrap();
+    for mut peer in [github, forgejo] {
+        let bound = peer.worst_case();
+        assert_eq!(peer.tls(), Err(Error::Limits));
+        assert_eq!(peer.worst_case(), bound);
+        assert_eq!(peer.address(), None);
+        assert!(peer.observations().is_empty());
+    }
+}
+
+#[test]
+fn a_tls_peer_s_worst_case_counts_its_tls_buffers() {
+    let mut world = World::new();
+    let plaintext = world.peer.worst_case();
+    world.peer.tls().unwrap();
+    assert!(world.peer.worst_case() > plaintext);
+    world.pass();
+    assert!(world.peer.worst_case() > plaintext);
+    world.settle();
+}
+
+#[test]
+fn tls_admission_reserves_the_longest_https_origin() {
+    const HTTPS_ORIGIN: &[u8] = b"https://127.0.0.1:65535";
+    let cap = u32::try_from(HTTPS_ORIGIN.len()).unwrap();
+    for (target_bytes, expected) in [(cap, Ok(())), (cap - 1, Err(Error::Limits))] {
+        let mut protocol = protocol_limits();
+        protocol.documents.target_bytes = target_bytes;
+        let mut peer = forge::Peer::new(address(), limits(), config(), protocol, fixtures::shared(), SEED).unwrap();
+        let before = peer.worst_case();
+        assert_eq!(peer.tls(), expected);
+        if expected.is_err() {
+            assert_eq!(peer.worst_case(), before);
+        }
+    }
+}

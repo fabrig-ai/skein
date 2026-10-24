@@ -197,7 +197,10 @@ fn check_base(base: &[u8], limits: &Limits) -> Result<(), Error> {
     if base.len() > usize::try_from(limits.documents.target_bytes).expect("u32 fits") {
         return Err(Error::Limits);
     }
-    let authority = base.strip_prefix(b"http://").ok_or(Error::Limits)?;
+    let authority = match base.strip_prefix(b"http://") {
+        Some(authority) => authority,
+        None => base.strip_prefix(b"https://").ok_or(Error::Limits)?,
+    };
     if authority.is_empty() {
         return Err(Error::Limits);
     }

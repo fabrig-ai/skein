@@ -18,6 +18,10 @@ fn set_base_admits_the_constructors_origins_and_preserves_refusals() {
     let settings = a::Settings { default: boxed(b"main"), merge: true, rebase: true, squash: true };
     for (name, base, expected, html) in [
         ("bound ip:port at cap", BOUND, Ok(()), b"http://127.0.0.1:65535/org/repo".as_slice()),
+        ("TLS at cap", b"https://127.0.0.1:6553", Ok(()), b"https://127.0.0.1:6553/org/repo"),
+        ("TLS one past cap", b"https://127.0.0.1:65535", Err(crate::Error::Limits), b"http://127.0.0.1:3000/org/repo"),
+        ("TLS empty authority", b"https://", Err(crate::Error::Limits), b"http://127.0.0.1:3000/org/repo"),
+        ("TLS slash", b"https://127.0.0.1/", Err(crate::Error::Limits), b"http://127.0.0.1:3000/org/repo"),
         ("no scheme", b"127.0.0.1:65535", Err(crate::Error::Limits), b"http://127.0.0.1:3000/org/repo"),
         ("empty authority", b"http://", Err(crate::Error::Limits), b"http://127.0.0.1:3000/org/repo"),
         ("slash", b"http://127.0.0.1/", Err(crate::Error::Limits), b"http://127.0.0.1:3000/org/repo"),

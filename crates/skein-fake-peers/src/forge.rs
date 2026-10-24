@@ -10,7 +10,7 @@ use skein_lib::{Env, Queue, ReplyTo, Time, Token, Wall};
 use skein_shell::Host;
 
 use crate::face::{Face, LISTENER};
-use crate::transport::Wire;
+use crate::transport::{self, Wire};
 use crate::{Error, Limits, Transport};
 
 const BLOB_LISTENER: Token = Token::new(u64::MAX - 1);
@@ -107,6 +107,9 @@ struct Call {
 /// Hosted admission, HTTP routing and settlement over the owner's shared forge.
 pub struct Peer {
     face: Face,
+    transport: Transport,
+    listen_address: SocketAddr,
+    fresh: bool,
     blob_listener: Option<Token>,
     blob_address: Option<SocketAddr>,
     forge: Rc<RefCell<Forge>>,
@@ -189,7 +192,8 @@ impl Peer {
         protocol_bound: u64,
         forge: Rc<RefCell<Forge>>,
     ) -> Result<Self, Error> {
-        let bound = shared::bound(&limits, &protocol, protocol_bound, &forge.borrow()).ok_or(Error::Limits)?;
+        let bound = shared::bound(&limits, &protocol, protocol_bound, &forge.borrow(), Transport::Plaintext)
+            .ok_or(Error::Limits)?;
         let call_capacity = call_capacity(&protocol, &forge.borrow(), limits.connections).ok_or(Error::Limits)?;
         let (forgejo_capacity, github_capacity) = match protocol {
             protocol::Limits::Forgejo(_) => (limits.connections, 0),
@@ -197,6 +201,9 @@ impl Peer {
         };
         Ok(Self {
             face: Face::new(address, limits)?,
+            transport: Transport::Plaintext,
+            listen_address: address,
+            fresh: true,
             blob_listener: None,
             blob_address: None,
             forge,
@@ -215,6 +222,26 @@ impl Peer {
             kept: Kept::EVERY,
             bound,
         })
+    }
+    /// Serves Forgejo over TLS on Skein's fixed test chain (`ROOT`, for `skein.test`
+    /// and `127.0.0.1`); called on a fresh peer before its first pass. Hook
+    /// deliveries stay plaintext to loopback.
+    pub fn tls(&mut self) -> Result<(), Error> {
+        assert!(self.fresh, "TLS is selected before the peer's first pass");
+        let protocol::Limits::Forgejo(protocol) = &self.protocol else {
+            return Err(Error::Limits);
+        };
+        transport::validate(&self.face.limits, Transport::Tls)?;
+        let origin = format!("https://{}", SocketAddr::new(self.listen_address.ip(), u16::MAX));
+        if origin.len() > usize::try_from(protocol.documents.target_bytes).map_err(|_| Error::Limits)? {
+            return Err(Error::Limits);
+        }
+        let bound =
+            shared::bound(&self.face.limits, &self.protocol, self.protocol_bound, &self.forge.borrow(), Transport::Tls)
+                .ok_or(Error::Limits)?;
+        self.transport = Transport::Tls;
+        self.bound = bound;
+        Ok(())
     }
     /// Keeps only the named kinds of outside records. Call on a fresh peer before its first pass.
     #[must_use]
@@ -315,7 +342,10 @@ impl Peer {
                 self.face.listener = Some(listener);
                 self.face.address = Some(addr.socket().expect("loopback socket address"));
                 // The listening event supplies the origin, including a kernel-selected port.
-                let base = format!("http://{}", self.face.address.expect("bound address"));
+                let base = match self.transport {
+                    Transport::Plaintext => format!("http://{}", self.face.address.expect("bound address")),
+                    Transport::Tls => format!("https://{}", self.face.address.expect("bound address")),
+                };
                 match (&mut self.service, &self.protocol) {
                     (protocol::Service::Forgejo(service), protocol::Limits::Forgejo(limits)) => {
                         service.set_base(base.into_bytes().into_boxed_slice(), limits).expect("bounded local origin");
@@ -343,7 +373,7 @@ impl Peer {
                 let limits = self.face.limits;
                 let mut connection = Connection {
                     owner,
-                    wire: Wire::new(socket, Transport::Plaintext, limits),
+                    wire: Wire::new(socket, self.transport, limits),
                     server: if blob {
                         protocol::Server::blob(owner, &self.protocol)
                     } else {
@@ -573,8 +603,10 @@ impl Peer {
 
 impl Host for Peer {
     fn iterate(&mut self, now: Time, wall: Wall) {
-        let bound = shared::bound(&self.face.limits, &self.protocol, self.protocol_bound, &self.forge.borrow())
-            .expect("owner updates preserve usable bounds");
+        self.fresh = false;
+        let bound =
+            shared::bound(&self.face.limits, &self.protocol, self.protocol_bound, &self.forge.borrow(), self.transport)
+                .expect("owner updates preserve usable bounds");
         // An owner reducing a limit does not release already allocated capacities.
         self.bound = self.bound.max(bound);
         self.forge.borrow_mut().now = now;
@@ -647,5 +679,11 @@ fn call_capacity(protocol: &protocol::Limits, forge: &Forge, connections: u32) -
 /// Checked envelope for machines, pending payloads, connections, snapshots and frozen records.
 #[must_use]
 pub fn worst_case(limits: &Limits, protocol: &forgejo::Limits, config: &forgejo::Config, forge: &Forge) -> Option<u64> {
-    shared::bound(limits, &protocol::Limits::Forgejo(*protocol), forgejo::worst_case(protocol, config)?, forge)
+    shared::bound(
+        limits,
+        &protocol::Limits::Forgejo(*protocol),
+        forgejo::worst_case(protocol, config)?,
+        forge,
+        Transport::Plaintext,
+    )
 }

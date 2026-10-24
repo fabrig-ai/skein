@@ -496,6 +496,9 @@ peers host theirs. The real loop hosts the same one.
   kept and fail by name past it. A world whose referee reads only
   deliveries keeps those and the connections, so its records grow with
   the story's events, not with its clients' polls over wall time.
+- **A Forgejo peer may serve TLS.** `tls()`, called on a fresh peer before
+  its first pass, serves the fixed test chain (`ROOT`, for `skein.test` and
+  `127.0.0.1`) with `https://` origins. Hook deliveries stay plaintext to loopback.
 - **The owner may seed the setup's accounts.** `setup_mut()` lends the
   protocol layer's setup store (section 4), as `Service::setup_mut`
   does, so that an owner makes, before the peer serves, the site
@@ -504,7 +507,7 @@ peers host theirs. The real loop hosts the same one.
   account's number is the user number its tokens act as in the domain,
   so an owner that seeds both keeps the scenario's `users` apart from
   them.
-- **Plaintext only.** Its `base` is `http://`; its face is the shared one
+- **Plaintext by default.** Its `base` is `http://`; its face is the shared one
   with `Transport::Plaintext` and a `queue` of at least 64. The peer supplies
   its bound origin to either dialect's service before it accepts requests.
 - **It hosts the layer over a forge it is handed.** The owner builds the
