@@ -463,13 +463,13 @@ pub(super) fn page_size(op: &api::Op, cap: u32, l: &Limits, s: &Shared) -> u32 {
             api::Read::Branches => Listing::Branches,
             api::Read::Collaborators { .. } => Listing::Collaborators,
             api::Read::PullFiles { .. } => Listing::PullFiles,
+            api::Read::Compare { .. } => Listing::Compare,
             api::Read::Locate { .. }
             | api::Read::Item { .. }
             | api::Read::Pull { .. }
             | api::Read::Branch { .. }
             | api::Read::Protection { .. }
             | api::Read::Permission { .. }
-            | api::Read::Compare { .. }
             | api::Read::File { .. }
             | api::Read::Job { .. }
             | api::Read::Settings => return 1,

@@ -979,6 +979,7 @@ pub const ROW_REMARKS: u32 = 1234;
 pub const ROW_BRANCHES: u32 = 144;
 pub const ROW_COLLABORATORS: u32 = 16;
 pub const ROW_PULLFILES: u32 = 2276;
+pub const ROW_COMPARE: u32 = 32;
 pub const MAX_ROW: u32 = ROW_ITEMS;
 pub const OTHER_FORGE: u16 = 2;
 pub const OTHER_REPO: api::Repository = api::Repository { forge: OTHER_FORGE, repository: 1 };
