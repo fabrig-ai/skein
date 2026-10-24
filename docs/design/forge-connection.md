@@ -715,7 +715,9 @@ watches), and io's caps. A plan is handed only what it reads: a
 listing's page size, `body_bytes`, `rows` and `answer_bytes`. A page
 size is the least of `rows`, the forge's page cap, and `answer_bytes`
 over the listing's largest row, measured from `string_bytes`,
-`body_bytes` and `inner`.
+`body_bytes` and `inner`. Compare pages commit ids, each 32 bytes,
+by the same rule. Its commits and files each fit `rows`; together their
+bytes fit `answer_bytes` (forge-github.md, 4.1).
 
 ### 7.4 Checked at start
 

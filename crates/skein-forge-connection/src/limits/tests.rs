@@ -16,6 +16,7 @@ fn each_listing_uses_its_largest_answer_row() {
         (Listing::Branches, fixtures::ROW_BRANCHES),
         (Listing::Collaborators, fixtures::ROW_COLLABORATORS),
         (Listing::PullFiles, fixtures::ROW_PULLFILES),
+        (Listing::Compare, fixtures::ROW_COMPARE),
     ] {
         assert_eq!(
             skein_forge::measure::answer(&maximal_answer(listing)),
@@ -113,6 +114,13 @@ fn maximal_answer(listing: Listing) -> api::Answer {
         Listing::Collaborators => api::Answer::Collaborators {
             collaborators: Box::new([api::Collaborator { user: fixtures::WRITER, permission: api::Permission::Write }]),
             more: false,
+        },
+        Listing::Compare => api::Answer::Compare {
+            before: [0; 32],
+            after: fixtures::BRANCH_HEAD,
+            contains_before: true,
+            commits: Box::new([fixtures::BRANCH_HEAD]),
+            files: Box::new([]),
         },
         Listing::PullFiles => api::Answer::PullFiles {
             head: fixtures::BRANCH_HEAD,

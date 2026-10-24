@@ -248,3 +248,54 @@ fn the_joints_request_lines_are_the_same_after_many_polls() {
     assert!(world.stopped.is_empty());
     assert_eq!(world.connected, 1);
 }
+
+#[test]
+fn github_compare_reads_a_two_commit_change_through_the_fake() {
+    use skein_fake_forge_domain::{self as fake, api as raw};
+    let mut world = world(SEED, 0);
+    connect(&mut world, fixtures::github_access());
+    world.run_for(SECOND);
+    let raw::Answer::Commit(base) =
+        world.direct(raw::Op::Read(raw::Read::Branch { branch: Box::from(b"main".as_slice()) })).expect("base")
+    else {
+        panic!("base commit")
+    };
+    let mut head = base;
+    let mut commits = Vec::new();
+    for content in [b"first".as_slice(), b"repair"] {
+        head = fake::commit(
+            &mut world.domain,
+            &world.fake_env.limits,
+            head,
+            Box::from([raw::File { path: Box::from(b"file".as_slice()), content: Box::from(content) }]),
+            b"change",
+        )
+        .expect("commit")
+        .expect("changed");
+        commits.push(skein_fake_forge_protocol::routes::object(head).bytes);
+    }
+    world
+        .direct(raw::Op::Git(raw::Git::Push { branch: Box::from(b"feature".as_slice()), commit: head, expected: None }))
+        .expect("push");
+    let before = skein_fake_forge_protocol::routes::object(base).bytes;
+    let after = skein_fake_forge_protocol::routes::object(head).bytes;
+    world.call(CALL, REPO, Op::Read(Read::Compare { before, after }));
+    world.run_for(SECOND);
+    let answer = world.answered(CALL).expect("one terminal");
+    assert_eq!(
+        answer.result,
+        Ok(Answer::Compare {
+            before,
+            after,
+            contains_before: true,
+            commits: commits.into_boxed_slice(),
+            files: Box::from([api::File {
+                path: Box::from(b"file".as_slice()),
+                before: None,
+                after: Some(Box::from(b"repair".as_slice()))
+            }])
+        })
+    );
+    assert_eq!(answer.cost, 4, "resolve, compare and two file sides");
+    assert_eq!(world.tally().routes.get(&skein_fake_forge_protocol::Route::Compare), Some(&1));
+}

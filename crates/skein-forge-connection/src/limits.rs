@@ -113,6 +113,7 @@ pub enum Listing {
     Branches,
     Collaborators,
     PullFiles,
+    Compare,
 }
 
 /// A machine stacked on another, whose demand must fit the other's cap.
@@ -241,6 +242,7 @@ pub fn check(l: &Limits, s: &Shared, settings: &Settings) -> Result<(), Unusable
         Listing::Branches,
         Listing::Collaborators,
         Listing::PullFiles,
+        Listing::Compare,
     ] {
         if page_size(listing, u32::MAX, l, s) == 0 {
             return Err(Unusable::PageSize { listing });
@@ -521,6 +523,7 @@ fn largest_row(listing: Listing, l: &Limits) -> Option<u64> {
         Listing::Remarks => (measure::REMARK_BYTES, body.checked_add(string)?),
         Listing::Branches => (measure::STRING_BYTES, string),
         Listing::Collaborators => (measure::COLLABORATOR_BYTES, 0),
+        Listing::Compare => (measure::COMMIT_BYTES, 0),
         Listing::PullFiles => (measure::FILE_BYTES, string.checked_add(body.checked_mul(2)?)?),
     };
     u64::try_from(fixed).ok()?.checked_add(payload)

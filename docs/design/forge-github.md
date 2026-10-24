@@ -178,6 +178,16 @@ The dropped rows are names the client can't hold, such as queue branches
 past the bound; the client makes no name past `string_bytes`, so it never
 looks for a branch it dropped (`Read::Branches`, 5.3's row).
 
+- **Compare pages commits, not files.** Its page size is the least of
+  `rows`, `PAGE_CAP` (100), and `answer_bytes` / 32, the commit id's
+  measure. The first page carries the files for the whole comparison,
+  capped at 300; later commit pages carry no files. The plan asks for
+  one page and refuses fewer commits than `total_commits`, so it never
+  answers a partial comparison. The file sides and commit ids together
+  must fit the answer bound. `contains_before` comes from `behind_by == 0`,
+  including for a diverged comparison; a nonzero `ahead_by` alone does not
+  show containment. PullFiles asks for only the merge base and keeps
+  `per_page=1`.
 - **The raw read** is `GET R/contents/<path>?ref=<commit>` with `Accept:
   application/vnd.github.raw+json`, the path's slashes kept: a `200`
   that is not JSON is the file's bytes, a `404` an absent side.

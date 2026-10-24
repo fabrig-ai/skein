@@ -882,9 +882,12 @@ fn comparison_response(kind: Kind, target: &str) -> Vec<u8> {
         };
         return fixtures::response(200, body.as_bytes());
     }
-    assert!(target.contains("per_page=1"), "Compare admits one commit");
+    assert!(
+        target.contains("per_page=8") || target.contains("per_page=1"),
+        "Compare admits eight commits; PullFiles asks only for the merge base"
+    );
     let files = file_descriptors(true);
-    // Compare admits one commit and eight files.
+    // The response holds one commit and eight files.
     let body = format!(
         r#"{{"total_commits":1,"behind_by":0,"merge_base_commit":{{"sha":"{ZERO}"}},"commits":[{{"sha":"{ONE}"}}],"files":[{files}]}}"#
     );
