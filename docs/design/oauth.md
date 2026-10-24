@@ -1,6 +1,6 @@
 # OAuth client
 
-Provisional, 2026-10-09, revised 2026-10-19. `skein-oauth` is a bounded,
+Provisional, 2026-10-09, revised 2026-10-24. `skein-oauth` is a bounded,
 sans-IO OAuth client for one exchange at a time. It prepares
 authorization-code sign-in, refresh and revocation requests, accepts the
 resulting HTTP answers, and hands token records to its caller. It knows no
@@ -294,10 +294,20 @@ refresh token may already be spent.
 |---|---|---|
 | Idle | limits and registration | `SignIn` → AwaitRedirect, emit `Visit`, or, with OpenID, AwaitKeys, emit a keys `Http`; `Refresh` or `Revoke` → AwaitHttp, emit `Http` |
 | AwaitKeys | the sign-in's values, the metadata if fetched, sign-in deadline | metadata answer → AwaitKeys, emit the key set's `Http`; key set answer → AwaitRedirect, emit `Visit`; unreadable answer, deadline or cancellation → Done, `Failed`, no `Visit`; transient failure → Backoff, as AwaitHttp |
-| AwaitRedirect | state, redirect, optional verifier, sign-in deadline | matching `Redirected` → AwaitHttp, emit code-exchange `Http`; OAuth error → Done, `Failed`; wrong state, replay, cancellation, or deadline → Done, `Failed` |
+| AwaitRedirect | state, redirect, optional verifier, sign-in deadline | matching `Redirected` → AwaitHttp, emit code-exchange `Http`; OAuth error → Done, `Failed`; wrong state, replay, cancellation, or deadline → Done, `Failed`; `admits` → unchanged, answering whether a redirect would be taken |
 | AwaitHttp | exchange and HTTP deadline | successful `Http` → Done, emit `Tokens`, or, for a revocation, `Revoked`; invalid grant, malformed answer or a failed ID-token check → Done, `Failed`; transient answer or transport failure → Backoff or Done; deadline → Backoff or Done; a revocation that fails or runs out of attempts → Done, `Revoked`, unconfirmed |
 | Backoff | exchange, retry time, absolute deadline | `Tick` at retry time → AwaitHttp, emit `Http`; absolute deadline or retry budget exhausted → Done, `Failed` |
 | Done | terminal already emitted | late redirect, HTTP answer, or tick → ignored; explicit reset → Idle |
+
+`admits` is a question, not an event: it answers whether a redirect, at a
+time, would be taken by `Redirected`, by the checks `Redirected` makes before
+it ends the sign-in or sends the exchange, in their order: not waiting (any
+state but AwaitRedirect, or the deadline reached), another address (the URI
+not the one the sign-in bound; a code and an error both; neither; no issued
+client id beside a code, where one is issued), or another state (compared
+in constant time). A redirect it admits with an error is taken, and ends the
+sign-in as `Redirected` does. It changes nothing, so its caller can refuse a
+redirect without ending the sign-in (6.5).
 
 `Cancel` in any active state emits one cancellation failure and goes to Done.
 An event for a different exchange cannot complete the current one. The HTTP
@@ -493,7 +503,7 @@ never renames or reuses one on its own. An account has:
 | From the owner | What it does |
 |---|---|
 | sign in | starts an account's sign-in, optionally naming the subject it expects; the owner shows the visit |
-| redirected | a redirect the owner's web server received, for a confidential client |
+| redirected | a redirect handed in: the one the owner's web server received, for a confidential client; or the address a person pasted, for a public client's sign-in whose browser is on another machine (6.5); answered `taken`, or refused with the sign-in still waiting |
 | return | where a public client's listener sends the browser on once it has taken the redirect: an account's return location, for its sign-in under way (6.5) |
 | hand in | an access-only record, for a handed-in account |
 | grant | asks for an account's access token, held until released |
@@ -512,6 +522,7 @@ never renames or reuses one on its own. An account has:
 | To the owner | What it says |
 |---|---|
 | visit | the authorization URL to show or open, once per sign-in |
+| taken | the sign-in took the redirect the owner handed in: `redirected`'s terminal; the sign-in's own follows (6.5) |
 | signed in | a sign-in that completed: its record kept (6.4), its grant ready to ask for, its subject, and the required scopes not granted, if any; the sign-in's success terminal |
 | granted | an account's access token, its generation and how long it is valid |
 | keep | a record to keep durably, for an account the owner keeps (6.4) |
@@ -704,9 +715,8 @@ sign-in at once. The load goes on for the account.
   it takes `303 See Other`, its `Location` the return, with
   `Cache-Control: no-store` and `Referrer-Policy: no-referrer`; with none,
   the small fixed page above. It answers every redirect it takes so,
-  whatever the redirect says: the provider's error, or a state the client
-  then refuses, ends the sign-in, which the page gone back to reads from its
-  owner, as it reads a success. The listener's answer never says how the
+  whatever the redirect says: the provider's error ends the sign-in, which
+  the page gone back to reads from its owner, as it reads a success. The listener's answer never says how the
   sign-in ended. A return is the owner's alone: the listener sends the
   browser only where its owner said, never to an address of the request's
   (its Host, its query), and a request it refuses gets no return.
@@ -728,6 +738,54 @@ sign-in at once. The load goes on for the account.
   before any `visit`. Two sign-ins at once on such a redirect each have a
   port of their own. A redirect whose port does not vary binds only its
   port, and a sign-in that cannot bind it fails before its `visit`.
+- **A redirect is taken only when it is the sign-in's,** wherever it comes
+  from, the listener or the owner's `redirected`: its address within the
+  client's bounds (section 5), of visible ASCII, with no fragment and no
+  field the client reads given twice; then whatever the client's `admits`
+  refuses (section 3): its address the one the sign-in bound (the port the
+  listener bound among it, for a port that varies), a code or the
+  provider's error but not both, an issued client id (2.1) beside a code,
+  its state the sign-in's, and the sign-in still waiting, its deadline not
+  reached. The component judges each, and only then does the listener
+  answer: a listener holds no state, so it hands up the redirect it read
+  and answers as the component says.
+
+  Any other is refused, and the sign-in still waits: the listener answers
+  its refusal page, the same for every reason; `redirected` is answered
+  `refused`, as another address (`redirect`), another sign-in's state
+  (`state`), or not waiting. A redirect at or past the deadline ends the
+  sign-in first, as its tick would, and is refused as not waiting. The
+  state is the sign-in's alone, drawn fresh for each, at least 24 random
+  bytes, and never logged: a client state bound under 32, which would
+  draw fewer, makes the component unusable, as its limits (6.2). A refusal so tells its sender only
+  that its state is not this sign-in's. The owner's pastes are bounded as
+  well: after `STATE_REFUSALS`, 4, `redirected`s refused for their state,
+  a sign-in refuses every later one as full (`Full { bound: 4 }`), and
+  still waits for its listener and its deadline.
+- **One redirect per sign-in.** Taking one leaves waiting in the step that
+  takes it: the listener stops listening, a redirect it has read and not
+  yet answered is refused, and so is any after it; a later `redirected` is
+  refused as not waiting. A sign-in whose browser reaches the listener and
+  whose person pastes its address too makes one exchange, with whichever
+  the component judged first. Its deadline is its own from its start: no
+  redirect, taken or refused, starts a timer.
+- **A pasted redirect,** for a public client's sign-in whose browser is on
+  another machine than the listener: the provider sends that browser to the
+  redirect on its own loopback, where nothing answers. The person copies
+  that address, and the owner hands it in (`redirected`) while the sign-in
+  waits, once its `visit` is out. `taken` answers it in the step that
+  takes it, and the sign-in's terminal follows as for any redirect; a
+  confidential owner's `redirected` is answered `taken` the same way. The
+  component checks it as the listener's (above), never fetches it, and
+  never reads `localhost` for `127.0.0.1` or the reverse. The listener
+  stays up meanwhile, so a browser on the engine's machine, or one through
+  a tunnel to its port, still returns as before. Nothing of a paste is
+  kept: a sign-in a restart ended is started again.
+- **A fixed port, one listener at a time.** A sign-in on a redirect whose
+  port does not vary binds once any listener of the component's on that
+  port has settled, so that an owner that cancels a sign-in and starts
+  another at once, as for a person starting again, gets the port, rather
+  than a sign-in failed before its `visit`.
 - **A confidential client's redirect** reaches the owner's web server. The
   owner hands it in (`redirected`), and the component checks it the same way.
 - **The component never opens a browser:** the owner shows `visit`.
@@ -792,7 +850,20 @@ configuration, counted once.
   follows each visit to the listener, over streams cut at random. Sign-in of
   both clients, refresh while held, rotation, a rejected token, a keep that
   fails, an access-only record expiring and handed in again, a `localhost`
-  redirect, wrong redirects, a sign-in's return (a `303` to it; the fixed
+  redirect, wrong redirects, a public sign-in's pasted redirect (taken; a
+  paste and the listener's redirect in both orders, one exchange; a second
+  paste; another host, port or path, a fragment, a field twice, past its
+  bounds, a space or a control byte, a code and an error both, without a
+  code or an issued client id, each refused with the sign-in still
+  waiting; another sign-in's state refused, and after `STATE_REFUSALS`
+  every paste refused as full, the listener still taking its own; a paste
+  before the `visit`, at the deadline (the sign-in timed out), after the
+  cancel or the terminal, refused as not waiting; a paste judged between
+  the listener's read and its answer), the listener's redirect with
+  another state refused with the sign-in still waiting; a cancelled
+  sign-in on a fixed port and a new one started in the same step, which
+  binds once the first's listener settles; a state bound under 32,
+  unusable; a sign-in's return (a `303` to it; the fixed
   page without one; one given for no sign-in, or after its terminal,
   dropped; one past its bounds dropped), and the owner's close in every state, a
   sign-in waiting for a person among them, cancelled by the owner or
@@ -833,8 +904,7 @@ configuration, counted once.
   find nothing there; whether to bind `[::1]` beside it, for the same
   redirect.
 - **Device authorization,** for a person whose browser is on another
-  machine, and a pasted redirect: whether either joins the client, and in
-  which order.
+  machine, beside the pasted redirect (6.5): whether it joins the client.
 - **A credential helper,** a program that prints a token, as another source
   of access-only records beside handing them in.
 - **The fake issuer's signing in a simulated world.** ring's RSA signing
