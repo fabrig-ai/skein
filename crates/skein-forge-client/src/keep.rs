@@ -36,11 +36,20 @@ struct Live {
     writer: bool,
     presence: Presence,
     pushed_by: Option<(Commit, u64)>,
+    read: Sent,
     hinted: bool,
     state: State,
     interval: Duration,
     echo_capacity: u32,
     inbox: Inbox,
+}
+// Which side of this client's own push the branch read in flight was sent.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Sent {
+    Current,
+    // A read sent before a push this client reported answers from before
+    // that push, so it is read again.
+    BeforePush,
 }
 // Presence is live-only; a restart observes absence again.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -191,6 +200,7 @@ fn live(record: LiveRecord, l: &Limits, alarm: u64) -> Live {
         writer: false,
         presence: Presence::Unknown,
         pushed_by: None,
+        read: Sent::Current,
         hinted: false,
         state: State::Due(phase, Priority::Keep),
         interval: l.poll,

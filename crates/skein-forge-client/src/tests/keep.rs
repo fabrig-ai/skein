@@ -586,6 +586,43 @@ fn missing(h: &mut Harness, sent: super::Sent) {
 }
 
 #[test]
+fn a_branch_read_from_before_our_push_is_read_again() {
+    for writer in [false, true] {
+        let mut h = Harness::new();
+        h.keep(Box::new([watch(branch(), false)]));
+        h.clock();
+        let read = h.one();
+        if writer {
+            h.event(Event::Writer { resource: branch(), taken: true });
+        }
+        h.event(Event::Pushed { resource: branch(), commit: [1; 32] });
+        missing(&mut h, read);
+        assert_eq!(h.drift, 0, "an absence read before our push cannot judge it");
+        assert!(h.failures.is_empty());
+        assert_eq!(h.record(&branch()).cached.tip, Some([1; 32]));
+        let read = h.one();
+        assert_eq!(read.op, Op::Read(Read::Branch { branch: Box::from(&b"topic"[..]) }));
+        h.answer(read, Answer::Commit([1; 32]));
+        assert_eq!(h.drift, 0);
+        assert_eq!(h.record(&branch()).cached.tip, Some([1; 32]));
+    }
+}
+#[test]
+fn a_branch_still_missing_on_its_read_after_our_push_drifts() {
+    let mut h = Harness::new();
+    h.keep(Box::new([watch(branch(), false)]));
+    h.clock();
+    let read = h.one();
+    h.event(Event::Pushed { resource: branch(), commit: [1; 32] });
+    missing(&mut h, read);
+    assert_eq!(h.drift, 0);
+    let read = h.one();
+    missing(&mut h, read);
+    assert_eq!(h.drift, 1, "a branch deleted after our push still drifts");
+    assert_eq!(h.failures.as_slice(), &[Error::Missing]);
+    assert_eq!(h.record(&branch()).cached.tip, None);
+}
+#[test]
 fn missing_branch_rests_at_slow_and_reports_each_absence_once() {
     for cached in [false, true] {
         let mut h = Harness::new();

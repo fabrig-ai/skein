@@ -1,6 +1,6 @@
 use super::{
     Alarm, Answer, Box, Commit, Delivery, Domain, Echo, Env, Error, Fresh, Limits, List, Phase, Priority, Progress,
-    Queue, Repository, Request, Resource, Scan, State, Stored, Time, What, api,
+    Queue, Repository, Request, Resource, Scan, Sent, State, Stored, Time, What, api,
 };
 
 pub(crate) fn answered_repository(
@@ -138,7 +138,7 @@ pub(crate) fn answered_resource(
     result: Result<Answer, Error>,
     out: &mut Queue<Request>,
 ) {
-    let row = d.keep.live.get(key).expect("call owns resource");
+    let row = d.keep.live.get_mut(key).expect("call owns resource");
     if !row.active {
         d.keep.live.remove(key).expect("inactive resource exists");
         return;
@@ -147,6 +147,17 @@ pub(crate) fn answered_resource(
         State::Busy(phase, _) => phase,
         State::Idle | State::Due(_, _) | State::Waiting(_, _) => unreachable!("resource terminal while busy"),
     };
+    // A head or an absence read before this client's own push cannot judge
+    // that push; a fresh read does. Other failures keep their backoff.
+    let before_push = core::mem::replace(&mut row.read, Sent::Current) == Sent::BeforePush;
+    let stale = match &result {
+        Ok(_) => before_push,
+        Err(error) => before_push && *error == Error::Missing,
+    };
+    if stale {
+        row.state = State::Due(Phase::Branch, Priority::Fresh);
+        return;
+    }
     let answer = match result {
         Ok(answer) => answer,
         Err(error) => {

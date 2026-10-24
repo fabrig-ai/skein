@@ -1,6 +1,6 @@
 use super::{
     Alarm, Change, Commit, Domain, Env, Fact, Fresh, Limits, Live, Op, Owner, Phase, Priority, Progress, Queue, Read,
-    Repository, Request, Resource, Scan, State, Stored, What, api, calls,
+    Repository, Request, Resource, Scan, Sent, State, Stored, What, api, calls,
 };
 
 pub(crate) fn pump(d: &mut Domain, _env: &Env<Limits>, out: &mut Queue<Request>) -> bool {
@@ -148,6 +148,9 @@ pub(crate) fn pushed(d: &mut Domain, env: &Env<Limits>, key: &Resource, commit: 
             What::Repository | What::Pull(_) | What::Issue(_) => return,
         }
         row.presence = super::Presence::Present;
+        if let State::Busy(Phase::Branch, _) = row.state {
+            row.read = Sent::BeforePush;
+        }
         row.record.pushed = Some(commit);
         row.record.cached.tip = Some(commit);
         out.push(Request::Save { record: Stored::Live(row.record.clone()) });
