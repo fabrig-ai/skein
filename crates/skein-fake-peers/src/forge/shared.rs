@@ -22,7 +22,13 @@ impl Forge {
     }
 }
 
-pub(super) fn bound(limits: &Limits, protocol: &protocol::Limits, protocol_bound: u64, forge: &Forge) -> Option<u64> {
+pub(super) fn bound(
+    limits: &Limits,
+    protocol: &protocol::Limits,
+    protocol_bound: u64,
+    forge: &Forge,
+    transport: Transport,
+) -> Option<u64> {
     let config = &forge.config;
     let domain = &config.limits;
     let listeners = match protocol {
@@ -75,7 +81,7 @@ pub(super) fn bound(limits: &Limits, protocol: &protocol::Limits, protocol_bound
     // The domain envelope contains its largest possible answer and hook payload.
     // Protocol ownership also bounds rejected call inputs, before domain validation.
     let payload = domain_bound.checked_add(protocol_bound)?;
-    let connection = transport::worst_case(limits, Transport::Plaintext)?
+    let connection = transport::worst_case(limits, transport)?
         .checked_add(u64::try_from(size_of::<Connection>()).ok()?)?
         .checked_add(Queue::<protocol::Event>::worst_case(limits.queue)?)?
         .checked_add(Queue::<skein_lib::stream::Down>::worst_case(limits.queue)?)?

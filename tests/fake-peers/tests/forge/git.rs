@@ -18,13 +18,13 @@ use std::{
     rc::Rc,
 };
 
-struct Loop {
-    peer: Peer,
-    kernel: Kernel,
-    clock: Clock,
+pub(super) struct Loop {
+    pub(super) peer: Peer,
+    pub(super) kernel: Kernel,
+    pub(super) clock: Clock,
 }
 impl Loop {
-    fn pass(&mut self) {
+    pub(super) fn pass(&mut self) {
         self.kernel.reap(self.peer.completions());
         let now = self.clock.now();
         self.peer.iterate(now.now, now.wall);
