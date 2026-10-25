@@ -56,6 +56,7 @@ impl Browser {
             | Step::MouseMove
             | Step::MouseDown
             | Step::MouseUp
+            | Step::TypeNode { .. }
             | Step::Focus
             | Step::Insert
             | Step::KeyDown
