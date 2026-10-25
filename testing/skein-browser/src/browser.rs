@@ -149,6 +149,7 @@ enum Step {
     MouseMove,
     MouseDown,
     MouseUp,
+    TypeNode { node: u64 },
     Focus,
     Insert,
     KeyDown,
@@ -610,10 +611,15 @@ impl Browser {
                 self.issue_step(env, op, b"DOM.scrollIntoViewIfNeeded", &Params::Backend(node), Step::Scroll);
             }
             Request::Type { page, op, node, text } => {
+                let inspect = text.contains(&b'\r') || text.contains(&b'\n');
                 if !self.admit_op(env, page, op, OpKind::Type { text, entry: Entry::Insert }) {
                     return;
                 }
-                self.issue_step(env, op, b"DOM.focus", &Params::Backend(node), Step::Focus);
+                if inspect {
+                    self.issue_step(env, op, b"DOM.describeNode", &Params::Backend(node), Step::TypeNode { node });
+                } else {
+                    self.issue_step(env, op, b"DOM.focus", &Params::Backend(node), Step::Focus);
+                }
             }
             Request::Compose { page, op, node, text } => {
                 if !self.admit_op(env, page, op, OpKind::Type { text, entry: Entry::Compose }) {
@@ -2004,6 +2010,30 @@ impl Browser {
             Step::MouseMove => self.mouse(env, token, Step::MouseDown),
             Step::MouseDown => self.mouse(env, token, Step::MouseUp),
             Step::MouseUp | Step::Insert | Step::KeyUp => self.finish_done(token),
+            Step::TypeNode { node } => {
+                let name = match result.get(b"node") {
+                    Some(node) => field_text(node, b"nodeName"),
+                    None => None,
+                };
+                let Some(name) = name else {
+                    self.finish_refused(token, Refusal::Protocol);
+                    return;
+                };
+                if name.as_ref() == b"INPUT"
+                    && let Some(Operation { kind: OpKind::Type { text, .. }, .. }) = self.op_mut(token)
+                {
+                    // A person's paste strips CR/LF in single-line inputs. Chromium's
+                    // insertText would turn them into spaces before the value sanitizer.
+                    let mut pasted = Vec::with_capacity(text.len());
+                    for byte in text.iter() {
+                        if *byte != b'\r' && *byte != b'\n' {
+                            pasted.push(*byte);
+                        }
+                    }
+                    *text = pasted.into_boxed_slice();
+                }
+                self.issue_step(env, token, b"DOM.focus", &Params::Backend(node), Step::Focus);
+            }
             Step::Focus => {
                 let detail = self.type_detail(token);
                 match detail {
@@ -2153,6 +2183,7 @@ impl Browser {
             | Step::Metrics
             | Step::Hit
             | Step::Describe
+            | Step::TypeNode { .. }
             | Step::Focus
             | Step::Insert
             | Step::KeyDown
@@ -2172,3 +2203,7 @@ impl Browser {
 
 mod attribute;
 mod look;
+
+#[cfg(test)]
+#[path = "browser/type_tests.rs"]
+mod type_tests;
