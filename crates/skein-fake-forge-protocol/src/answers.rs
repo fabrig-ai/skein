@@ -486,8 +486,11 @@ fn collaborators(
     values: &[a::Collaborator],
 ) -> Result<Answer, a::Error> {
     let mut out = List::with_capacity(config.max_response_items);
-    let (page, limit) = match request {
-        Request::Collaborators { page, .. } => routes::page(config, *page),
+    let (at, page, limit) = match request {
+        Request::Collaborators { at, page } => {
+            let (page, limit) = routes::page(config, *page);
+            (at, page, limit)
+        }
         Request::User
         | Request::ApiSettings
         | Request::RepositoryById { .. }
@@ -554,10 +557,16 @@ fn collaborators(
         | Request::DeleteBranch { .. } => return Err(a::Error::Refused),
     };
     let skip = u64::from(page.saturating_sub(1)).saturating_mul(u64::from(limit));
-    for value in
-        values.iter().skip(usize::try_from(skip).unwrap_or(usize::MAX)).take(usize::try_from(limit).expect("u32 fits"))
-    {
-        out.push(setup.resolve_user(config, value.user)).expect("page cap");
+    let mut seen = 0_u64;
+    for value in values {
+        // Organization ownership and site administration grant access, not collaborator membership.
+        if !setup.lists_collaborator(config, at, value.user) {
+            continue;
+        }
+        if seen >= skip && out.len() < limit {
+            out.push(setup.resolve_user(config, value.user)).expect("page cap");
+        }
+        seen = seen.saturating_add(1);
     }
     Ok(Answer::Collaborators(out.into_boxed()))
 }
