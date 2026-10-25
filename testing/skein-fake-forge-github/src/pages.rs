@@ -99,10 +99,14 @@ fn full(limits: &ServiceLimits) -> Answer {
 }
 #[derive(Debug)]
 enum Route<'a> {
+    Favicon,
     Manifest(&'a [u8]),
     Install(&'a [u8]),
 }
 fn route(method: Method, path: &[u8]) -> Option<Route<'_>> {
+    if method == Method::Get && path == b"/favicon.ico" {
+        return Some(Route::Favicon);
+    }
     if method == Method::Post {
         if path == b"/settings/apps/new" {
             return Some(Route::Manifest(b""));
@@ -138,6 +142,9 @@ pub(crate) fn serve(service: &mut Service, page: &Page<'_>, now: Wall) -> Answer
     let Some(route) = route(page.method, path) else {
         return from_response(answers::missing(&limits));
     };
+    if let Route::Favicon = route {
+        return Answer { status: 204, location: None, media: Media::None, body: Box::new([]) };
+    }
     if !fits(page.body, limits.body) {
         return from_response(answers::refusal(413, b"Payload Too Large", &limits));
     }
@@ -151,6 +158,7 @@ pub(crate) fn serve(service: &mut Service, page: &Page<'_>, now: Wall) -> Answer
         return invalid(&limits);
     }
     match route {
+        Route::Favicon => unreachable!("favicon was answered without state"),
         Route::Manifest(org) => post(service, org, state, page.body, now),
         Route::Install(slug) => install(service, slug, state, &query, now),
     }
