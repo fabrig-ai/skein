@@ -20,6 +20,7 @@ impl Config {
         let usage = if hand { HAND_USAGE } else { USAGE };
         let mut hand_values = BTreeMap::new();
         let mut mobile = false;
+        let mut peers = Vec::new();
         let mut values = BTreeMap::new();
         while let Some(key) = args.next() {
             if hand && key == "--mobile" {
@@ -27,6 +28,13 @@ impl Config {
                     return Err(HAND_USAGE);
                 }
                 mobile = true;
+                continue;
+            }
+            if hand && key == "--peer" {
+                if peers.len() == 4 {
+                    return Err(HAND_USAGE);
+                }
+                peers.push(args.next().ok_or(HAND_USAGE)?.into_string().map_err(|_| HAND_USAGE)?);
                 continue;
             }
             if hand && ["--origin", "--size", "--listen"].iter().any(|k| key == *k) {
@@ -49,7 +57,7 @@ impl Config {
             fonts: values.remove(&OsString::from("--fonts")).ok_or(usage)?,
             scratch: values.remove(&OsString::from("--scratch")).ok_or(usage)?,
             out: values.remove(&OsString::from("--out")).ok_or(usage)?,
-            hand: if hand { Some(Hand::parse(hand_values, mobile)?) } else { None },
+            hand: if hand { Some(Hand::parse(hand_values, mobile, peers)?) } else { None },
         })
     }
 }
@@ -64,28 +72,27 @@ fn escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
 }
 
-pub const HAND_USAGE: &str = "usage: skein-lab-browser hand --chromium PATH --fonts DIR --scratch DIR --out DIR --origin URL --size WIDTHxHEIGHT [--mobile] --listen ADDRESS";
+pub const HAND_USAGE: &str = "usage: skein-lab-browser hand --chromium PATH --fonts DIR --scratch DIR --out DIR --origin URL [--peer URL … (at most four)] --size WIDTHxHEIGHT [--mobile] --listen ADDRESS";
 #[derive(Debug)]
 pub struct Hand {
     pub origin: String,
     pub authority: String,
+    /// Loopback authorities the page may also reach, as the app's own fakes (8.5).
+    pub peers: Vec<String>,
     pub width: u32,
     pub height: u32,
     pub mobile: bool,
     pub listen: std::net::SocketAddr,
 }
 impl Hand {
-    fn parse(mut values: BTreeMap<OsString, String>, mobile: bool) -> Result<Self, &'static str> {
+    fn parse(mut values: BTreeMap<OsString, String>, mobile: bool, peers: Vec<String>) -> Result<Self, &'static str> {
         let origin = values.remove(&OsString::from("--origin")).ok_or(HAND_USAGE)?;
-        let origin = origin.strip_suffix('/').unwrap_or(&origin).to_owned();
-        let authority = origin.strip_prefix("http://").ok_or(HAND_USAGE)?.to_owned();
-        let address = authority.parse::<std::net::SocketAddr>().map_err(|_| HAND_USAGE)?;
-        if ![std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)]
-            .contains(&address.ip())
-            || address.port() == 0
-            || authority != address.to_string()
-        {
-            return Err(HAND_USAGE);
+        let authority = authority(&origin)?;
+        let origin = format!("http://{authority}");
+        let mut allowed = Vec::new();
+        for peer in peers {
+            let peer = authority_for_peer(&peer, &authority, &allowed)?;
+            allowed.push(peer);
         }
         let size = values.remove(&OsString::from("--size")).ok_or(HAND_USAGE)?;
         let (width, height) = size.split_once('x').ok_or(HAND_USAGE)?;
@@ -105,8 +112,29 @@ impl Hand {
         if !listen.ip().is_loopback() || listen.port() != 0 {
             return Err(HAND_USAGE);
         }
-        Ok(Self { origin, authority, width, height, mobile, listen })
+        Ok(Self { origin, authority, peers: allowed, width, height, mobile, listen })
     }
+}
+
+fn authority(origin: &str) -> Result<String, &'static str> {
+    let origin = origin.strip_suffix('/').unwrap_or(origin);
+    let authority = origin.strip_prefix("http://").ok_or(HAND_USAGE)?;
+    let address = authority.parse::<std::net::SocketAddr>().map_err(|_| HAND_USAGE)?;
+    if ![std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)]
+        .contains(&address.ip())
+        || address.port() == 0
+        || authority != address.to_string()
+    {
+        return Err(HAND_USAGE);
+    }
+    Ok(authority.to_owned())
+}
+fn authority_for_peer(peer: &str, origin: &str, peers: &[String]) -> Result<String, &'static str> {
+    let peer = authority(peer)?;
+    if peer == origin || peers.contains(&peer) {
+        return Err(HAND_USAGE);
+    }
+    Ok(peer)
 }
 
 #[cfg(test)]
@@ -133,6 +161,49 @@ mod tests {
         .into_iter()
         .map(OsString::from)
         .collect()
+    }
+    #[test]
+    fn hand_accepts_one_or_four_distinct_peers() {
+        for (peers, wanted) in [
+            (vec!["http://127.0.0.1:42/"], vec!["127.0.0.1:42"]),
+            (
+                vec!["http://127.0.0.1:42/", "http://[::1]:42", "http://127.0.0.1:43", "http://[::1]:43/"],
+                vec!["127.0.0.1:42", "[::1]:42", "127.0.0.1:43", "[::1]:43"],
+            ),
+        ] {
+            let mut words = args();
+            for peer in &peers {
+                words.extend([OsString::from("--peer"), OsString::from(peer)]);
+            }
+            let hand = Config::parse(words.into_iter()).unwrap().hand.unwrap();
+            assert_eq!(hand.peers, wanted);
+        }
+    }
+    #[test]
+    fn hand_refuses_invalid_duplicate_and_excess_peers_with_usage() {
+        for peers in [
+            vec![
+                "http://127.0.0.1:42",
+                "http://127.0.0.1:43",
+                "http://127.0.0.1:44",
+                "http://127.0.0.1:45",
+                "http://127.0.0.1:46",
+            ],
+            vec!["http://127.0.0.1:42", "http://127.0.0.1:42/"],
+            vec!["http://127.0.0.1:41"],
+            vec!["http://192.0.2.1:42"],
+            vec!["http://127.0.0.1:0"],
+            vec!["http://localhost:42"],
+            vec!["https://127.0.0.1:42"],
+            vec!["http://127.0.0.1:42/path"],
+            vec!["http://127.0.0.2:42"],
+        ] {
+            let mut words = args();
+            for peer in &peers {
+                words.extend([OsString::from("--peer"), OsString::from(peer)]);
+            }
+            assert_eq!(Config::parse(words.into_iter()).unwrap_err(), HAND_USAGE, "{peers:?}");
+        }
     }
     #[test]
     fn hand_command_line_size_origin_listener_and_mobile() {

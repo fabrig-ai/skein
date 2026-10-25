@@ -26,6 +26,9 @@ struct Hand {
 }
 impl Hand {
     fn start(html: &str) -> Self {
+        Self::with_peers(html, &[])
+    }
+    fn with_peers(html: &str, peers: &[String]) -> Self {
         let scratch = Scratch::new("qa-hand");
         for dir in ["profile", "out", "www"] {
             fs::create_dir(scratch.path().join(dir)).expect("fixture directory");
@@ -59,6 +62,7 @@ impl Hand {
                 .arg(scratch.path().join("out"))
                 .arg("--origin")
                 .arg(&origin)
+                .args(peers.iter().flat_map(|peer| ["--peer", peer.as_str()]))
                 .args(["--size", "320x240", "--listen", "127.0.0.1:0"])
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
@@ -269,6 +273,59 @@ fn another_loopback_port_is_never_reached_by_fetch_frame_or_link() {
         "8.5: {trouble:?}"
     );
     assert_eq!(forbidden.accept().expect_err("8.5 another port never reached").kind(), std::io::ErrorKind::WouldBlock);
+    hand.stop("-TERM");
+}
+
+#[test]
+fn a_named_peer_is_reached_and_any_other_port_is_still_refused() {
+    let peer = TcpListener::bind("127.0.0.1:0").expect("peer listener");
+    peer.set_nonblocking(true).expect("nonblocking peer");
+    let peer_address = peer.local_addr().expect("peer address");
+    let forbidden = TcpListener::bind("127.0.0.1:0").expect("canary listener");
+    forbidden.set_nonblocking(true).expect("nonblocking canary");
+    let forbidden_address = forbidden.local_addr().expect("canary address");
+    let mut hand = Hand::with_peers(
+        &format!(
+            r#"<h1>Fixture</h1><a href="http://{peer_address}/link">Peer</a><script>fetch('http://{forbidden_address}/fetch').catch(()=>{{}})</script>"#
+        ),
+        &[format!("http://{peer_address}")],
+    );
+    hand.go();
+    let pressed = hand.call(r#"{"call":"press","in":[],"match":"exact","name":"Peer","role":"link"}"#);
+    let _ = field(&pressed, "pressed");
+    let deadline = hand.reader.now().saturating_add(skein_lib::Duration::from_secs(6));
+    let mut stream = loop {
+        match peer.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock),
+        }
+        assert!(hand.reader.now() < deadline, "8.5 named peer reached");
+        hand.reader.pause();
+    };
+    stream.set_read_timeout(Some(Duration::from_secs(6))).expect("peer read deadline");
+    let mut request = String::new();
+    BufReader::new(&stream).read_line(&mut request).expect("peer request");
+    assert_eq!(request, "GET /link HTTP/1.1\r\n");
+    let body = "<h1>Named peer</h1>";
+    write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+        .expect("peer response");
+    let met = hand.call(
+        r#"{"call":"wait","gone":false,"in":[],"match":"exact","name":"Named peer","role":"heading","seconds":6}"#,
+    );
+    let _ = field(&met, "met");
+    let trouble = hand.call(r#"{"call":"trouble"}"#);
+    let Value::Array(entries) = field(&trouble, "trouble") else { panic!("{trouble:?}") };
+    assert!(
+        entries.iter().any(|entry| text(field(entry, "kind")) == "network"
+            && text(field(entry, "text")).contains(&forbidden_address.port().to_string())),
+        "8.5: {trouble:?}"
+    );
+    assert!(
+        !entries.iter().any(|entry| text(field(entry, "kind")) == "network"
+            && text(field(entry, "text")).contains(&peer_address.port().to_string())),
+        "8.5: {trouble:?}"
+    );
+    assert_eq!(forbidden.accept().expect_err("8.5 unnamed port never reached").kind(), std::io::ErrorKind::WouldBlock);
     hand.stop("-TERM");
 }
 
