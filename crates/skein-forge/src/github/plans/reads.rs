@@ -12,6 +12,7 @@ use alloc::boxed::Box;
 use skein_lib::List;
 
 mod checks;
+mod ci_setup;
 mod done;
 mod files;
 mod issues;
@@ -28,6 +29,7 @@ enum Read {
     Protection { branch: Box<[u8]> },
     Locate { owner: Box<[u8]>, name: Box<[u8]> },
     Settings,
+    CiSetup,
     Branch { branch: Box<[u8]> },
     Branches { prefix: Box<[u8]> },
     Items { since: skein_lib::Time, page: u32, kind: Option<api::Kind> },
@@ -47,6 +49,8 @@ enum Read {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum Stage {
+    Actions,
+    Workflows,
     Rules,
     Ruleset,
     Classic,
@@ -82,6 +86,7 @@ enum Response {
 }
 #[derive(Debug)]
 pub struct Plan {
+    ci_setup: api::CiSetup,
     repository: api::Repository,
     read: Read,
     stage: Stage,
@@ -112,6 +117,7 @@ impl Plan {
         let read = match read {
             api::Read::Locate { owner, name } => Read::Locate { owner, name },
             api::Read::Settings => Read::Settings,
+            api::Read::CiSetup => Read::CiSetup,
             api::Read::Branch { branch } => Read::Branch { branch },
             api::Read::Branches { prefix } => Read::Branches { prefix },
             api::Read::Items { since, page, kind } => Read::Items { since, page, kind },
@@ -131,6 +137,7 @@ impl Plan {
             api::Read::Job { attempt, max_bytes } => Read::Job { attempt, max_bytes },
         };
         Self {
+            ci_setup: api::CiSetup { actions: None, workflows: None },
             repository,
             read,
             stage: Stage::New,
@@ -207,7 +214,7 @@ impl Plan {
                 }
             }
             Read::Protection { .. } => self.protection_admission(bounds)?,
-            Read::Branch { .. } | Read::Job { .. } => {}
+            Read::CiSetup | Read::Branch { .. } | Read::Job { .. } => {}
         }
         self.row = tables.repository(self.repository).cloned();
         if self.row.is_none() {
@@ -241,11 +248,15 @@ impl Plan {
             Read::Collaborators { .. } => return self.collaborators_initial(),
             Read::Pull { .. } | Read::PullFor { .. } | Read::Statuses { .. } => return self.pull_initial(),
             Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }
             | Read::Items { .. }
             | Read::Item { .. } => {}
+        }
+        if self.read == Read::CiSetup {
+            return self.ci_setup_initial();
         }
         let row = self.row.as_ref().ok_or(api::Error::InvalidAnswer)?;
         let owner = row.owner.clone();
@@ -266,6 +277,7 @@ impl Plan {
             | Read::Checks { .. }
             | Read::Statuses { .. }
             | Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Permission { .. }
             | Read::Collaborators { .. }
@@ -320,6 +332,9 @@ impl Plan {
         word: &[u8],
         tables: &mut Tables,
     ) -> Result<Option<Step>, api::Error> {
+        if self.stage == Stage::Actions || self.stage == Stage::Workflows {
+            return self.ci_setup_heard(heard, bounds, tables);
+        }
         match heard {
             Heard::Head { status, head } => {
                 if self.stage == Stage::JobLog && status == 302 {
@@ -348,6 +363,7 @@ impl Plan {
                         Read::Items { .. }
                         | Read::Item { .. }
                         | Read::Locate { .. }
+                        | Read::CiSetup
                         | Read::Settings
                         | Read::Branch { .. }
                         | Read::Branches { .. }
@@ -400,6 +416,8 @@ impl Plan {
                                 | document::Document::Pull(_)
                                 | document::Document::Job(_)
                                 | document::Document::Combined(_)
+                                | document::Document::ActionsPermissions(_)
+                                | document::Document::Workflows { .. }
                                 | document::Document::Rows
                                 | document::Document::Delivery(_)
                                 | document::Document::Installation(_)
@@ -489,6 +507,7 @@ impl Plan {
             Read::Items { .. } | Read::Item { .. } => return self.issue_row(row, bounds, word),
             Read::Pull { .. } | Read::PullFor { .. } | Read::Statuses { .. } => return self.pull_row(row, bounds),
             Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }

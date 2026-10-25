@@ -72,3 +72,5 @@ mod rates;
 mod mutations;
 
 mod comment_edit;
+
+mod ci_setup;

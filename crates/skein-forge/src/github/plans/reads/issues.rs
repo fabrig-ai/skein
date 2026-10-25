@@ -42,6 +42,7 @@ impl Plan {
                 self.issues.comments = List::with_capacity(capacity);
             }
             Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }
@@ -132,6 +133,7 @@ impl Plan {
                 Read::Items { .. }
                 | Read::Item { .. }
                 | Read::Locate { .. }
+                | Read::CiSetup
                 | Read::Settings
                 | Read::Branch { .. }
                 | Read::Branches { .. }
@@ -179,6 +181,7 @@ impl Plan {
             Read::Item { .. }
             | Read::Items { .. }
             | Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }
@@ -214,6 +217,7 @@ impl Plan {
             Read::Item { number, .. } => number,
             Read::Items { .. }
             | Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }
@@ -263,6 +267,7 @@ impl Plan {
             Read::Items { .. }
             | Read::Item { .. }
             | Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }

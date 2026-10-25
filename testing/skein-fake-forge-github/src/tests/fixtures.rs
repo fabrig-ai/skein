@@ -38,7 +38,15 @@ pub fn config() -> Config {
         [(4, b"tools".as_slice(), false, false), (2, b"widgets", true, true), (6, b"absent", true, false)]
     {
         repositories
-            .push(Row { id, owner: boxed(b"acme"), owner_id: 22, organization, name: boxed(name), private })
+            .push(Row {
+                ci_setup: service::CiSetup::DEFAULT,
+                id,
+                owner: boxed(b"acme"),
+                owner_id: 22,
+                organization,
+                name: boxed(name),
+                private,
+            })
             .expect("fixture rows");
     }
     let mut accounts = List::with_capacity(2);

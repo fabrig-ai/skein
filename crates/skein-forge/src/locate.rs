@@ -24,6 +24,7 @@ pub fn accepts(answer: &Answer) -> bool {
         | Answer::Job { .. }
         | Answer::File { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)

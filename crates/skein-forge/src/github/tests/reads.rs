@@ -1211,3 +1211,6 @@ fn github_empty_collaborator_role_is_none() {
         &[Row::Collaborator(collaborator(1, api::Permission::None))],
     );
 }
+
+#[path = "ci_setup.rs"]
+mod ci_setup;

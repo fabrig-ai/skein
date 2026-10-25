@@ -131,3 +131,17 @@ fn credential_debug_contains_no_secret() {
 mod calls;
 
 mod edges;
+
+#[test]
+fn ci_setup_unsupported_facts_need_no_forgejo_exchange() {
+    use super::plan::{Bounds, Plan, Step};
+    use crate::api::{Answer, CiSetup, Op, Read, Repository};
+    let mut plan = Plan::new(Repository { forge: 3, repository: 7 }, Op::Read(Read::CiSetup));
+    let bounds = Bounds { page_size: 1, rows: 1, answer_bytes: 0, body_bytes: 0 };
+    let mut tables = super::tables::Tables::new(0, 0);
+    assert_eq!(
+        plan.begin(bounds, b"app", &mut tables),
+        Ok(Step::Done(Ok(Answer::CiSetup(CiSetup { actions: None, workflows: None }))))
+    );
+    assert_eq!(plan.pending(), None);
+}

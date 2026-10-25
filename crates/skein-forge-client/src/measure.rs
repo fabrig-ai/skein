@@ -84,7 +84,7 @@ pub fn answer_rows(value: &Answer, rows: u32) -> bool {
         | Answer::Commit(_)
         | Answer::Job { .. }
         | Answer::File { .. }
-        | Answer::Settings(_)
+        | Answer::CiSetup(_) | Answer::Settings(_)
         | Answer::Permission(_)
         | Answer::Created(_)
         | Answer::Commented(_)

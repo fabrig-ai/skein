@@ -442,6 +442,8 @@ impl Plan {
                     | Document::Pull(_)
                     | Document::Job(_)
                     | Document::Combined(_)
+                    | Document::ActionsPermissions(_)
+                    | Document::Workflows { .. }
                     | Document::Rows,
                 )
                 | Body::Raw { .. }
@@ -544,6 +546,8 @@ impl Plan {
                 | Document::Pull(_)
                 | Document::Job(_)
                 | Document::Combined(_)
+                | Document::ActionsPermissions(_)
+                | Document::Workflows { .. }
                 | Document::Rows
                 | Document::Error(_),
             )

@@ -184,6 +184,7 @@ fn asked(op: &api::Op) -> Asked {
             | api::Read::File { .. }
             | api::Read::Job { .. }
             | api::Read::Protection { .. }
+            | api::Read::CiSetup
             | api::Read::Settings
             | api::Read::Collaborators { .. }
             | api::Read::Permission { .. } => panic!("memory scenario route"),

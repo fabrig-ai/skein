@@ -45,6 +45,8 @@ pub enum Request {
     Conversion { code: Box<[u8]> },
     BotUser { slug: Box<[u8]> },
     Repository { id: u64 },
+    ActionsPermissions { owner: Box<[u8]>, name: Box<[u8]> },
+    Workflows { owner: Box<[u8]>, name: Box<[u8]> },
     Locate { owner: Box<[u8]>, name: Box<[u8]> },
     Issues { owner: Box<[u8]>, name: Box<[u8]>, since: Wall, page: u32, per_page: u32 },
     Issue { owner: Box<[u8]>, name: Box<[u8]>, number: u64 },
@@ -139,6 +141,8 @@ pub fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refusal> {
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }
@@ -359,6 +363,14 @@ fn target(request: &Request, out: &mut Target) -> Result<(), Refusal> {
             out.put(b"/repositories/");
             out.number(*id);
         }
+        Request::ActionsPermissions { owner, name } => {
+            out.repo(owner, name)?;
+            out.put(b"/actions/permissions");
+        }
+        Request::Workflows { owner, name } => {
+            out.repo(owner, name)?;
+            out.put(b"/actions/workflows?per_page=1");
+        }
         Request::Locate { owner, name } => {
             out.repo(owner, name)?;
         }
@@ -522,6 +534,8 @@ fn items_target(request: &Request, out: &mut Target) -> Result<(), Refusal> {
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::CombinedStatus { .. }
         | Request::CheckRuns { .. }
@@ -610,6 +624,8 @@ fn selection(request: &Request) -> (Method, Auth) {
         | Request::PullGraphql { .. } => (Method::Post, Auth::Installation),
         Request::Reachable { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }
@@ -666,6 +682,8 @@ fn body(request: &Request, limits: &Limits) -> Result<Option<Box<[u8]>>, Refusal
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }
@@ -843,6 +861,8 @@ fn body_json(request: &Request, json: &mut skein_json::writer::Encoder) -> Resul
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }
@@ -927,6 +947,8 @@ fn app_target(request: &Request, out: &mut Target) -> Result<(), Refusal> {
             out.put(b"%5Bbot%5D");
         }
         Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }
@@ -1038,6 +1060,8 @@ fn bounded_fields(request: &Request, limits: &Limits) -> Result<(), Refusal> {
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }

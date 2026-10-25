@@ -175,6 +175,10 @@ impl State {
             | Node::LogDelivery
             | Node::LogRequest
             | Node::LogHeaders
+            | Node::ActionsPermissions
+            | Node::Workflows
+            | Node::WorkflowRows
+            | Node::Workflow
             | Node::ErrorEntry => unreachable!("App container dispatch"),
         }
         Ok(None)
@@ -234,6 +238,8 @@ impl State {
             | Kind::RuleRows
             | Kind::Ruleset
             | Kind::ClassicProtection
+            | Kind::ActionsPermissions
+            | Kind::Workflows
             | Kind::Error => unreachable!("App document dispatch"),
         })
     }
@@ -383,6 +389,10 @@ impl State {
                 | Node::IdResult
                 | Node::NumberResult
                 | Node::Done
+                | Node::ActionsPermissions
+                | Node::Workflows
+                | Node::WorkflowRows
+                | Node::Workflow
                 | Node::ErrorEntry
                 | Node::LogRows
                 | Node::LogRow

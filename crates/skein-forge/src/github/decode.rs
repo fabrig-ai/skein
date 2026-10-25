@@ -54,6 +54,9 @@ pub struct Decoder {
     error: Box<[u8]>,
     terminal: bool,
     result: u64,
+    actions: bool,
+    workflow_total: u64,
+    workflow_count: u32,
 }
 /// Starts a decoder; its first tokenizer demand is Next.
 /// Whole-delivery reads use `log_delivery_decoder` with their listed event.
@@ -93,6 +96,9 @@ pub fn decoder(kind: Kind, limits: &Limits) -> Decoder {
         error: Box::from([]),
         terminal: false,
         result: 0,
+        actions: false,
+        workflow_total: 0,
+        workflow_count: 0,
     }
 }
 /// Starts a whole-delivery read using its listed row's bounded event word.
@@ -115,6 +121,8 @@ pub fn merge_base_decoder(limits: &Limits) -> Decoder {
 #[must_use]
 pub fn kind(request: &Request) -> Option<Kind> {
     Some(match request {
+        Request::ActionsPermissions { .. } => Kind::ActionsPermissions,
+        Request::Workflows { .. } => Kind::Workflows,
         Request::LogPage { .. } => Kind::LogRows,
         Request::LogDelivery { .. } => Kind::LogDelivery,
         Request::Installations { .. } => Kind::InstallationRows,
@@ -213,6 +221,13 @@ impl Decoder {
     fn movement(&mut self, movement: Move) -> Result<(tokenizer::Request, Step), Malformed> {
         match movement {
             Move::PayloadStart(token) => return Ok((self.log.start(token)?, Step::Demand)),
+            Move::End(Node::Workflow) => {
+                self.workflow_count =
+                    self.workflow_count.checked_add(1).ok_or(Malformed::Bound { field: b"workflows" })?;
+                if self.workflow_count > 1 {
+                    return Err(Malformed::Bound { field: b"workflows" });
+                }
+            }
             Move::End(Node::JobStep) => self.checks.step_end(),
             Move::End(Node::LogRow) => return Ok((tokenizer::Request::Next, Step::Row(Row::Log(self.log.row())))),
             Move::End(Node::PullGraphql(node)) => self.pull_graphql.end(node)?,
@@ -336,7 +351,10 @@ impl Decoder {
                 }
             }
             Move::End(
-                Node::LogRows
+                Node::ActionsPermissions
+                | Node::Workflows
+                | Node::WorkflowRows
+                | Node::LogRows
                 | Node::LogDelivery
                 | Node::LogRequest
                 | Node::LogHeaders
@@ -364,6 +382,8 @@ impl Decoder {
             Move::Done => {
                 self.terminal = true;
                 let document = match self.kind {
+                    Kind::ActionsPermissions => Document::ActionsPermissions(self.actions),
+                    Kind::Workflows => Document::Workflows { total: self.workflow_total, count: self.workflow_count },
                     Kind::LogDelivery => Document::Delivery(self.log.document()?),
                     Kind::Installation
                     | Kind::InstallationRows
@@ -421,6 +441,21 @@ impl Decoder {
     #[expect(clippy::too_many_lines, reason = "the dispatcher exhaustively routes every document field")]
     fn scalar(&mut self, node: Node, key: &'static [u8], token: Token) -> Result<(), Malformed> {
         match (node, key, token) {
+            (Node::ActionsPermissions, b"enabled", token) => self.actions = token == Token::True,
+            (Node::Workflows, b"total_count", Token::Number(text)) => {
+                self.workflow_total = crate::forgejo::id::unsigned(&text).ok_or(Malformed::Range { field: key })?;
+            }
+            (Node::Workflow, b"id", Token::Number(text)) => {
+                if crate::forgejo::id::unsigned(&text).ok_or(Malformed::Range { field: key })? == 0 {
+                    return Err(Malformed::Value { field: key });
+                }
+            }
+            (Node::Workflow, b"name" | b"path" | b"state", Token::String(text)) => {
+                if text.is_empty() {
+                    return Err(Malformed::Value { field: key });
+                }
+            }
+
             (Node::Protection(node), key, token) => return self.protection.scalar(node, key, token),
             (
                 node @ (Node::LogRows | Node::LogRow | Node::LogDelivery | Node::LogRequest | Node::LogHeaders),
@@ -550,7 +585,11 @@ impl Decoder {
                 }
             }
             (
-                Node::Collaborator
+                Node::ActionsPermissions
+                | Node::Workflows
+                | Node::WorkflowRows
+                | Node::Workflow
+                | Node::Collaborator
                 | Node::CollaboratorRows
                 | Node::JobSteps
                 | Node::User

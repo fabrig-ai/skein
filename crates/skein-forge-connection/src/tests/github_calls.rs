@@ -842,3 +842,27 @@ fn bot_permission_after_repository_discovery_sends_no_collaborator_request() {
     answered(&mut h, 1, Ok(Answer::Permission(api::Permission::None)));
     assert_eq!(h.request_lines(FORGE).len(), 1);
 }
+
+#[test]
+fn ci_setup_uses_the_generic_plan_and_accounts_for_both_requests() {
+    const ACTIONS_PATH: &[u8] = b"GET /repos/acme/widgets/actions/permissions HTTP/1.1";
+    const WORKFLOWS_PATH: &[u8] = b"GET /repos/acme/widgets/actions/workflows?per_page=1 HTTP/1.1";
+    const COST: u32 = 2; // permissions and the bounded first workflow page
+    for (status, actions, expected, reconnect) in [
+        (200, br#"{"enabled":true}"#.as_slice(), Some(true), false),
+        (403, br#"{"message":"Resource not accessible by integration"}"#, None, false),
+        (200, b"{}", None, true),
+    ] {
+        let mut h = known();
+        begin(&mut h, Op::Read(Read::CiSetup));
+        assert_eq!(h.request_lines(FORGE).as_slice().last().unwrap().as_ref(), ACTIONS_PATH);
+        h.answer(FORGE, &f::response(status, actions));
+        h.run(Duration::ZERO);
+        if reconnect {
+            h.connected(FORGE);
+        }
+        assert_eq!(h.request_lines(FORGE).as_slice().last().unwrap().as_ref(), WORKFLOWS_PATH);
+        h.answer(FORGE, &f::ok(br#"{"total_count":0,"workflows":[]}"#));
+        answered(&mut h, COST, Ok(Answer::CiSetup(api::CiSetup { actions: expected, workflows: Some(false) })));
+    }
+}

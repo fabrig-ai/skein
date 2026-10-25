@@ -88,6 +88,12 @@ pub(crate) fn decode(method: Method, target: &[u8], limits: &Limits) -> Option<R
         Request::Mint { installation, .. } => Route::App(App::Mint(installation)),
         Request::Uninstall { id } => Route::App(App::Uninstall(id)),
         Request::Reachable { page, .. } if page > 0 => Route::Token(Token::Reachable(page)),
+        Request::ActionsPermissions { owner, name } => {
+            Route::Token(Token::Read(reads::Read::CiSetup { owner, name, actions: true }))
+        }
+        Request::Workflows { owner, name } => {
+            Route::Token(Token::Read(reads::Read::CiSetup { owner, name, actions: false }))
+        }
         Request::Repository { id } => Route::Token(Token::Read(reads::Read::Repository(id))),
         Request::Locate { owner, name } => Route::Token(Token::Read(reads::Read::Locate { owner, name })),
         Request::Branch { owner, name, branch } => {

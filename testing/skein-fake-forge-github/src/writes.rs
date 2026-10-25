@@ -299,6 +299,8 @@ fn operation(service: &Service, request: Request, access: &Access) -> Result<(St
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }

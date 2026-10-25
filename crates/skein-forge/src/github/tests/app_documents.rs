@@ -358,6 +358,8 @@ fn github_app_secrets_hidden() {
             | Document::BotUser(_)
             | Document::Repository(_)
             | Document::Branch(_)
+            | Document::ActionsPermissions(_)
+            | Document::Workflows { .. }
             | Document::Rows
             | Document::Pull(_)
             | Document::Job(_)
@@ -419,6 +421,8 @@ fn github_app_server_round_trip() {
                 | Request::Conversion { .. }
                 | Request::BotUser { .. }
                 | Request::Repository { .. }
+                | Request::ActionsPermissions { .. }
+                | Request::Workflows { .. }
                 | Request::Locate { .. }
                 | Request::Issues { .. }
                 | Request::Issue { .. }
@@ -541,6 +545,8 @@ fn write_answer(case: &DocumentCase, out: &mut Writer) -> Result<(), skein_lib::
         | Document::Issue(_)
         | Document::Ruleset(_)
         | Document::ClassicProtection(_)
+        | Document::ActionsPermissions(_)
+        | Document::Workflows { .. }
         | Document::Error(_) => {
             panic!("App document fixture")
         }

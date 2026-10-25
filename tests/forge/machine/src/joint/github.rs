@@ -358,7 +358,9 @@ fn route(call: &http::Call) -> Option<Route> {
         R::CreateIssue { .. } => Route::CreateIssue,
         R::OpenPull { .. } => Route::OpenPull,
         R::DeleteBranch { .. } => Route::DeleteBranch,
-        R::LogPage { .. }
+        R::ActionsPermissions { .. }
+        | R::Workflows { .. }
+        | R::LogPage { .. }
         | R::LogDelivery { .. }
         | R::Installations { .. }
         | R::Installation { .. }

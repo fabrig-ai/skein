@@ -16,32 +16,7 @@ impl Plan {
             document::Document::ClassicProtection(value) => self.classic_done(value, bounds),
             document::Document::PullGraphql(pull) => self.pull_graphql_done(pull, bounds),
             document::Document::Repository(repository) => self.repository_done(repository, bounds, tables),
-            document::Document::Branch(branch) => {
-                if self.stage != Stage::Read {
-                    return Err(api::Error::InvalidAnswer);
-                }
-                match self.read {
-                    Read::Branch { .. } => self.terminal(api::Answer::Commit(branch.commit), bounds),
-                    Read::Items { .. }
-                    | Read::Item { .. }
-                    | Read::Locate { .. }
-                    | Read::Settings
-                    | Read::Branches { .. }
-                    | Read::Pull { .. }
-                    | Read::PullFor { .. }
-                    | Read::Checks { .. }
-                    | Read::Statuses { .. }
-                    | Read::Permission { .. }
-                    | Read::Collaborators { .. }
-                    | Read::Remarks { .. }
-                    | Read::Reviews { .. }
-                    | Read::File { .. }
-                    | Read::Compare { .. }
-                    | Read::PullFiles { .. }
-                    | Read::Protection { .. }
-                    | Read::Job { .. } => Err(api::Error::InvalidAnswer),
-                }
-            }
+            document::Document::Branch(branch) => self.branch_done(branch, bounds),
             document::Document::Compare(comparison) => self.compare_done(comparison, bounds),
             document::Document::User(user) => self.user_done(user, tables),
             document::Document::Permission(value) => self.permission_done(value, bounds),
@@ -56,6 +31,7 @@ impl Plan {
             document::Document::Combined(combined) => match self.read {
                 Read::Checks { .. } => self.checks_combined_done(),
                 Read::Locate { .. }
+                | Read::CiSetup
                 | Read::Settings
                 | Read::Branch { .. }
                 | Read::Branches { .. }
@@ -85,6 +61,7 @@ impl Plan {
                 Read::Items { .. } | Read::Item { .. } => self.issue_rows_done(bounds),
                 Read::Pull { .. } | Read::PullFor { .. } | Read::Statuses { .. } => self.pull_rows_done(bounds),
                 Read::Locate { .. }
+                | Read::CiSetup
                 | Read::Settings
                 | Read::Branch { .. }
                 | Read::Branches { .. }
@@ -107,7 +84,36 @@ impl Plan {
             | document::Document::Done
             | document::Document::Merge(_)
             | document::Document::Enqueued(_)
+            | document::Document::ActionsPermissions(_)
+            | document::Document::Workflows { .. }
             | document::Document::BotUser(_) => Err(api::Error::InvalidAnswer),
+        }
+    }
+    fn branch_done(&mut self, branch: document::Branch, bounds: Bounds) -> Result<Option<Step>, api::Error> {
+        if self.stage != Stage::Read {
+            return Err(api::Error::InvalidAnswer);
+        }
+        match self.read {
+            Read::Branch { .. } => self.terminal(api::Answer::Commit(branch.commit), bounds),
+            Read::Items { .. }
+            | Read::Item { .. }
+            | Read::Locate { .. }
+            | Read::CiSetup
+            | Read::Settings
+            | Read::Branches { .. }
+            | Read::Pull { .. }
+            | Read::PullFor { .. }
+            | Read::Checks { .. }
+            | Read::Statuses { .. }
+            | Read::Permission { .. }
+            | Read::Collaborators { .. }
+            | Read::Remarks { .. }
+            | Read::Reviews { .. }
+            | Read::File { .. }
+            | Read::Compare { .. }
+            | Read::PullFiles { .. }
+            | Read::Protection { .. }
+            | Read::Job { .. } => Err(api::Error::InvalidAnswer),
         }
     }
     fn repository_done(
@@ -130,7 +136,8 @@ impl Plan {
                 squash: repository.squash,
                 rebase: repository.rebase,
             })),
-            Read::Items { .. }
+            Read::CiSetup
+            | Read::Items { .. }
             | Read::Item { .. }
             | Read::Branch { .. }
             | Read::Branches { .. }
@@ -151,7 +158,8 @@ impl Plan {
             {
                 None
             }
-            Read::Items { .. }
+            Read::CiSetup
+            | Read::Items { .. }
             | Read::Item { .. }
             | Read::Branch { .. }
             | Read::Branches { .. }

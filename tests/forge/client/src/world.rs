@@ -479,6 +479,20 @@ impl World {
             });
             return;
         }
+        if op == api::Op::Read(api::Read::CiSetup) {
+            self.stats.terminals = self.stats.terminals.saturating_add(1);
+            self.to_client.push(Delivery {
+                generation: self.generation,
+                event: Event::Answered {
+                    call,
+                    cost: 0,
+                    free: 0,
+                    rate: None,
+                    result: Ok(api::Answer::CiSetup(api::CiSetup { actions: None, workflows: None })),
+                },
+            });
+            return;
+        }
         self.sequence = self.sequence.checked_add(1).expect("world call limit");
         let token = Token::new(self.sequence);
         let raw = translate::op(&op, &self.env.limits);
@@ -817,6 +831,7 @@ fn inbox_count(answer: &api::Answer) -> u32 {
         | api::Answer::File { .. }
         | api::Answer::Job { .. }
         | api::Answer::Protection(_)
+        | api::Answer::CiSetup(_)
         | api::Answer::Settings(_)
         | api::Answer::Collaborators { .. }
         | api::Answer::Permission(_)

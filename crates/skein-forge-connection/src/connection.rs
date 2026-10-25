@@ -1100,6 +1100,8 @@ fn github_raw_request(request: &github::request::Request) -> bool {
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }

@@ -78,6 +78,7 @@ impl Plan {
                 Request::CombinedStatus { owner, name, commit: *commit, page: *page, per_page: self.limit }
             }
             Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }
@@ -165,6 +166,7 @@ impl Plan {
             }
             Read::Statuses { .. }
             | Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }
@@ -304,6 +306,7 @@ fn is_statuses(read: &Read) -> bool {
         Read::Pull { .. }
         | Read::PullFor { .. }
         | Read::Locate { .. }
+        | Read::CiSetup
         | Read::Settings
         | Read::Branch { .. }
         | Read::Branches { .. }

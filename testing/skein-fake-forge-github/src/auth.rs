@@ -29,6 +29,29 @@ pub(crate) enum Access {
     Installation { user: u64, grant: Grant },
 }
 impl Access {
+    pub(crate) fn person(self) -> bool {
+        match self {
+            Self::Person(_) => true,
+            Self::Installation { .. } => false,
+        }
+    }
+    pub(crate) fn ci_setup(self, service: &Service, actions: bool) -> bool {
+        match self {
+            Self::Person(_) => true,
+            Self::Installation { grant, .. } => {
+                if grant.scope == Scope::Contents {
+                    return false;
+                }
+                let wanted: &[u8] = if actions { b"administration" } else { b"actions" };
+                for permission in &service.app.permissions {
+                    if permission.name.as_ref() == wanted {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
     pub(crate) fn user(self) -> u64 {
         match self {
             Self::Person(user) | Self::Installation { user, .. } => user,

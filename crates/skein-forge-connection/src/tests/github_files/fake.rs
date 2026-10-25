@@ -314,6 +314,7 @@ fn github_service(page: u32) -> service::Service {
     let mut repositories = List::with_capacity(1);
     repositories
         .push(service::Row {
+            ci_setup: service::CiSetup::DEFAULT,
             id: 1,
             owner: Box::from(b"acme".as_slice()),
             owner_id: 22,

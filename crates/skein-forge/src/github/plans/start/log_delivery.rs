@@ -64,6 +64,8 @@ impl LogDelivery {
                 | document::Document::Job(_)
                 | document::Document::Combined(_)
                 | document::Document::Issue(_)
+                | document::Document::ActionsPermissions(_)
+                | document::Document::Workflows { .. }
                 | document::Document::Rows
                 | document::Document::Error(_) => Err(api::Error::InvalidAnswer),
             },

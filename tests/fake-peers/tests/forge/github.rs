@@ -77,6 +77,7 @@ pub(super) fn config() -> fake::Config {
     let mut repositories = List::with_capacity(1);
     repositories
         .push(Row {
+            ci_setup: skein_fake_forge_github::service::CiSetup::DEFAULT,
             id: 2,
             owner: f::boxed(b"org"),
             owner_id: OWNER,

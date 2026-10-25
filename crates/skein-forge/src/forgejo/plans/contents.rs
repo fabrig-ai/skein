@@ -61,6 +61,7 @@ impl Plan {
             | api::Read::Branch { .. }
             | api::Read::Branches { .. }
             | api::Read::Protection { .. }
+            | api::Read::CiSetup
             | api::Read::Settings
             | api::Read::Collaborators { .. }
             | api::Read::Permission { .. }

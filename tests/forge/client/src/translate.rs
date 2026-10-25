@@ -111,6 +111,7 @@ fn read_op(read: &client::Read, l: &Limits) -> forge::Read {
         client::Read::Checks { commit } => forge::Read::Checks { commit: number(*commit) },
         client::Read::Job { attempt, .. } => forge::Read::Job { job: attempt.job },
         client::Read::Protection { branch } => forge::Read::Protection { branch: branch.clone() },
+        client::Read::CiSetup => unreachable!("CI setup facts are answered by the typed protocol"),
         client::Read::Settings => forge::Read::Settings,
         client::Read::Collaborators { .. } => forge::Read::Collaborators,
         client::Read::Permission { user } => forge::Read::Permission { user: *user },
@@ -395,6 +396,7 @@ fn pull_answer(asked: &client::Op, pull: forge::Pull, l: &Limits) -> client::Ans
             | client::Read::Checks { .. }
             | client::Read::Job { .. }
             | client::Read::Protection { .. }
+            | client::Read::CiSetup
             | client::Read::Settings
             | client::Read::Collaborators { .. }
             | client::Read::File { .. }

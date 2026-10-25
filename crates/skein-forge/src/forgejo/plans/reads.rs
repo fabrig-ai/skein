@@ -103,6 +103,9 @@ impl Plan {
             api::Read::Locate { owner, name } => {
                 return Ok(self.send(Request::Repository { at: r::Repo { owner: owner.clone(), name: name.clone() } }));
             }
+            api::Read::CiSetup => {
+                return Ok(Step::Done(Ok(api::Answer::CiSetup(api::CiSetup { actions: None, workflows: None }))));
+            }
             api::Read::Settings => {
                 return Ok(self.send(Request::RepositoryById { id: u64::from(self.repository.repository) }));
             }
@@ -227,7 +230,7 @@ impl Plan {
                 self.actions = Some(plan);
                 return Ok(step);
             }
-            api::Read::Locate { .. } | api::Read::Settings => {
+            api::Read::Locate { .. } | api::Read::CiSetup | api::Read::Settings => {
                 return Err(api::Error::Unavailable);
             }
         };
@@ -454,6 +457,7 @@ impl Plan {
                 | api::Read::Branch { .. }
                 | api::Read::Branches { .. }
                 | api::Read::Protection { .. }
+                | api::Read::CiSetup
                 | api::Read::Settings
                 | api::Read::Collaborators { .. }
                 | api::Read::Permission { .. }
@@ -491,6 +495,7 @@ impl Plan {
             | api::Answer::Job { .. }
             | api::Answer::File { .. }
             | api::Answer::Protection(_)
+            | api::Answer::CiSetup(_)
             | api::Answer::Settings(_)
             | api::Answer::Collaborators { .. }
             | api::Answer::Permission(_)
@@ -632,6 +637,7 @@ impl Plan {
             | api::Answer::Job { .. }
             | api::Answer::File { .. }
             | api::Answer::Protection(_)
+            | api::Answer::CiSetup(_)
             | api::Answer::Settings(_)
             | api::Answer::Collaborators { .. }
             | api::Answer::Permission(_)

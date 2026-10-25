@@ -13,9 +13,21 @@ use skein_fake_forge_domain as fake;
 use skein_forge::github::{self, document as d, request, server};
 use skein_lib::{List, Map, Overflow, ReplyTo, Rng, Secret, Wall, Writer};
 
+/// Per-repository GitHub setup controls (fake-forge.md, 10.1).
+/// None refuses the fact; workflow false serves a successful empty inventory.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CiSetup {
+    pub actions: Option<bool>,
+    pub workflows: Option<bool>,
+}
+impl CiSetup {
+    /// The fake's configured CI is enabled and has a workflow by default.
+    pub const DEFAULT: Self = Self { actions: Some(true), workflows: Some(true) };
+}
 /// GitHub's repository metadata absent from the shared domain.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Row {
+    pub ci_setup: CiSetup,
     /// The domain's nonzero repository id.
     pub id: u32,
     /// Owner login.
@@ -346,6 +358,12 @@ impl Service {
             installations: Installations::with_life(&limits.installations, seed, config.token_life),
             limits: *limits,
         })
+    }
+    /// Change bounded scenario facts for an existing repository; false means no row.
+    pub fn set_ci_setup(&mut self, repository: u32, setup: CiSetup) -> bool {
+        let Some(row) = self.repositories.get_mut(&repository) else { return false };
+        row.ci_setup = setup;
+        true
     }
     /// Scenario access to the delivery engine. No endpoint records a failed 502.
     pub fn release(

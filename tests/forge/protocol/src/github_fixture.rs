@@ -33,6 +33,7 @@ pub(crate) fn service(seed: u64, key: &'static [u8]) -> Service {
     let mut repositories = List::with_capacity(1);
     repositories
         .push(Row {
+            ci_setup: skein_fake_forge_github::service::CiSetup::DEFAULT,
             id: 2,
             owner: Box::from(b"acme".as_slice()),
             owner_id: 22,

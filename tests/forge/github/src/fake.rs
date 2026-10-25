@@ -161,6 +161,7 @@ impl World {
         ] {
             repositories
                 .push(Row {
+                    ci_setup: skein_fake_forge_github::service::CiSetup::DEFAULT,
                     id,
                     owner: boxed(owner),
                     owner_id,

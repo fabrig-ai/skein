@@ -128,6 +128,8 @@ pub enum Read {
     Protection { branch: Box<[u8]> },
     /// Read settings.
     Settings,
+    /// Repository CI setup facts (forge.md, 3.3).
+    CiSetup,
     /// Read collaborators.
     Collaborators { page: u32 },
     /// Read permission.
@@ -199,6 +201,8 @@ pub enum Answer {
     Protection(Option<Protection>),
     /// Return settings.
     Settings(Settings),
+    /// Repository Actions enablement and bounded workflow presence.
+    CiSetup(CiSetup),
     /// Return collaborators.
     Collaborators { collaborators: Box<[Collaborator]>, more: bool },
     /// Return permission.
@@ -469,6 +473,12 @@ pub struct Settings {
     pub merge: bool,
     pub squash: bool,
     pub rebase: bool,
+}
+/// Repository CI setup facts; unavailable facts are unknown (forge.md, 3.3).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct CiSetup {
+    pub actions: Option<bool>,
+    pub workflows: Option<bool>,
 }
 /// A repository collaborator and permission.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]

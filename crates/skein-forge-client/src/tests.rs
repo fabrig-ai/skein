@@ -633,3 +633,18 @@ fn vocabulary_queued_is_accepted_for_merge() {
     let merge = Op::Write(Write::Merge { number: 1, head: [1; 32] });
     assert!(crate::api::accepts(&merge, &Answer::Queued));
 }
+
+#[test]
+fn ci_setup_accepts_only_its_matching_answer() {
+    let read = Op::Read(Read::CiSetup);
+    for actions in [None, Some(false), Some(true)] {
+        for workflows in [None, Some(false), Some(true)] {
+            let answer = Answer::CiSetup(api::CiSetup { actions, workflows });
+            assert!(crate::api::accepts(&read, &answer));
+            assert!(!crate::api::accepts(&Op::Read(Read::Settings), &answer));
+            assert_eq!(skein_forge::measure::answer(&answer), Some(0));
+        }
+    }
+    assert!(!crate::api::accepts(&read, &Answer::Done));
+    assert!(!crate::api::accepts(&read, &Answer::Permission(api::Permission::Admin)));
+}

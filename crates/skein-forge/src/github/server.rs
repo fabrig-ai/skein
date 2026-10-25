@@ -82,6 +82,12 @@ pub fn route(method: Method, target: &[u8], limits: &Limits) -> Option<Request> 
     Some(request)
 }
 fn repo_route(owner: Box<[u8]>, name: Box<[u8]>, tail: &[u8], query: &Query) -> Option<Request> {
+    if tail == b"actions/permissions" {
+        return Some(Request::ActionsPermissions { owner, name });
+    }
+    if tail == b"actions/workflows" {
+        return Some(Request::Workflows { owner, name });
+    }
     if tail.is_empty() {
         return Some(Request::Locate { owner, name });
     }
@@ -459,3 +465,16 @@ pub use reviews::{remarks, reviews};
 
 mod files;
 pub use files::{compare, file_rows};
+
+/// Bounded Actions enablement response (forge-github.md, 4.1).
+pub fn actions_permissions(enabled: bool, out: &mut Writer) -> Result<(), Overflow> {
+    out.put(if enabled { br#"{"enabled":true}"# } else { br#"{"enabled":false}"# })
+}
+/// The fake's bounded first workflow page (fake-forge.md, 10.1).
+pub fn workflows(present: bool, out: &mut Writer) -> Result<(), Overflow> {
+    out.put(if present {
+        br#"{"total_count":1,"workflows":[{"id":1,"name":"CI","path":".github/workflows/ci.yml","state":"active"}]}"#
+    } else {
+        br#"{"total_count":0,"workflows":[]}"#
+    })
+}

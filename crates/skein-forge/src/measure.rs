@@ -72,6 +72,7 @@ fn read(value: &Read) -> Option<u64> {
         | Read::Pull { .. }
         | Read::Compare { .. }
         | Read::Checks { .. }
+        | Read::CiSetup
         | Read::Settings
         | Read::Permission { .. } => Some(0),
     }
@@ -184,7 +185,8 @@ pub fn answer(value: &Answer) -> Option<u64> {
             }
             Some(held)
         }
-        Answer::Located { .. }
+        Answer::CiSetup(_)
+        | Answer::Located { .. }
         | Answer::Permission(_)
         | Answer::Commit(_)
         | Answer::Created(_)

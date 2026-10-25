@@ -11,6 +11,8 @@ pub const ENQUEUE: &[u8] = b"mutation($id: ID!, $head: GitObjectID!) { enqueuePu
 /// The document a decoder expects.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Kind {
+    ActionsPermissions,
+    Workflows,
     RuleRows,
     Ruleset,
     ClassicProtection,
@@ -120,6 +122,11 @@ pub struct Refusal {
 /// A whole document, or the end of a streamed listing.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Document {
+    ActionsPermissions(bool),
+    Workflows {
+        total: u64,
+        count: u32,
+    },
     Ruleset(api::Bypass),
     ClassicProtection(Option<Protection>),
     Delivery(super::log::Logged),

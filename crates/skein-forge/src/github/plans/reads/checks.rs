@@ -28,6 +28,7 @@ impl Plan {
         match self.read {
             Read::Checks { commit } => Ok(commit),
             Read::Locate { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Branch { .. }
             | Read::Branches { .. }

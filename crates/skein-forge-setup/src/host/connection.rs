@@ -600,6 +600,8 @@ fn github_row_bound(request: &dialect::request::Request) -> Option<u32> {
         | Request::Enqueue { .. }
         | Request::PullGraphql { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }
@@ -676,6 +678,8 @@ pub(crate) fn kind_of(request: &dialect::request::Request) -> Result<Option<dial
         Request::Uninstall { .. } => return Ok(None),
         Request::PullGraphql { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }

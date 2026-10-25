@@ -31,6 +31,7 @@ pub(crate) const REPOSITORY_ETAG_BYTES: usize = 66;
 
 #[derive(Debug)]
 pub(crate) enum Read {
+    CiSetup { owner: Box<[u8]>, name: Box<[u8]>, actions: bool },
     Checks { owner: Box<[u8]>, name: Box<[u8]>, commit: api::Commit, page: u32, per_page: u32, runs: bool },
     JobLog { owner: Box<[u8]>, name: Box<[u8]>, id: u64 },
     Job { owner: Box<[u8]>, name: Box<[u8]>, id: u64 },
@@ -56,6 +57,7 @@ pub(crate) enum Read {
 }
 #[derive(Debug)]
 pub(crate) enum Pending {
+    CiSetup { setup: service::CiSetup, actions: bool, admin: bool },
     Checks { repository: Box<[u8]>, commit: u64, page: u32, size: u32, target: Box<[u8]>, runs: bool },
     JobLog { repository: u32, now: Wall },
     Job { repository: Box<[u8]> },
@@ -81,7 +83,8 @@ pub(crate) enum Pending {
 fn row<'a>(service: &'a Service, read: &Read) -> Option<&'a Row> {
     match read {
         Read::Repository(id) => service.repositories.get(&u32::try_from(*id).ok()?),
-        Read::Checks { owner, name, .. }
+        Read::CiSetup { owner, name, .. }
+        | Read::Checks { owner, name, .. }
         | Read::Job { owner, name, .. }
         | Read::JobLog { owner, name, .. }
         | Read::Protection { owner, name, .. }
@@ -119,7 +122,8 @@ fn contents(read: &Read) -> bool {
         | Read::Branches { .. }
         | Read::Compare { .. }
         | Read::Raw { .. } => true,
-        Read::Enqueue { .. }
+        Read::CiSetup { .. }
+        | Read::Enqueue { .. }
         | Read::Checks { .. }
         | Read::Job { .. }
         | Read::JobLog { .. }
@@ -164,6 +168,15 @@ pub(crate) fn call(
         return Outcome::Reply(answers::failed());
     };
     let (kind, op) = match read {
+        Read::CiSetup { actions, .. } => {
+            if !grant.ci_setup(service, actions) {
+                return Outcome::Reply(answers::refusal(403, crate::texts::INTEGRATION, &service.limits));
+            }
+            (
+                Pending::CiSetup { setup: row.ci_setup, actions, admin: actions && grant.person() },
+                Op::Read(a::Read::Permission { user: grant.user() }),
+            )
+        }
         Read::Checks { commit, page, per_page, runs, .. } => {
             let Some(commit) = count(&commit) else {
                 return Outcome::Reply(answers::missing(&service.limits));
@@ -322,7 +335,8 @@ pub(crate) fn finish(
             }
             result => result,
         },
-        Pending::Checks { .. }
+        Pending::CiSetup { .. }
+        | Pending::Checks { .. }
         | Pending::Job { .. }
         | Pending::JobLog { .. }
         | Pending::Protection { .. }
@@ -347,6 +361,7 @@ pub(crate) fn finish(
         Err(error) => return refused(error, limits),
     };
     match pending {
+        Pending::CiSetup { setup, actions, admin } => ci_setup(answer, setup, actions, admin, limits),
         Pending::Checks { repository, commit, page, size, target, runs } => {
             checks::render(answer, &repository, commit, page, size, &target, runs, limits, domain)
         }
@@ -430,6 +445,22 @@ fn branches(answer: Answer, page: u32, size: u32, target: &[u8], limits: &Limits
         }
     }
     page.link(answers::response(200, &Body::Branches(names.as_slice()), limits), target, limits)
+}
+fn ci_setup(answer: Answer, setup: service::CiSetup, actions: bool, admin: bool, limits: &Limits) -> Response {
+    let Answer::Permission(permission) = answer else {
+        return answers::failed();
+    };
+    if permission == a::Permission::None || (admin && permission != a::Permission::Admin) {
+        return answers::refusal(403, crate::texts::INTEGRATION, limits);
+    }
+    match if actions { setup.actions } else { setup.workflows } {
+        None => answers::refusal(403, crate::texts::INTEGRATION, limits),
+        Some(value) => answers::response(
+            200,
+            &if actions { Body::ActionsPermissions(value) } else { Body::Workflows(value) },
+            limits,
+        ),
+    }
 }
 fn refused(error: Error, limits: &Limits) -> Response {
     match error {

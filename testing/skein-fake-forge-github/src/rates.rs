@@ -96,6 +96,7 @@ impl Service {
             | crate::reads::Read::Issue { .. }
             | crate::reads::Read::Comments { .. }
             | crate::reads::Read::Branch { .. }
+            | crate::reads::Read::CiSetup { .. }
             | crate::reads::Read::Branches { .. } => return Outcome::Admit(admission),
         };
         let outcome = crate::reads::call(

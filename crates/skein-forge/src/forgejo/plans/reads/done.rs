@@ -168,7 +168,8 @@ impl Plan {
         let answer = match &self.read {
             api::Read::Locate { .. } => api::Answer::Located { repository: id },
             api::Read::Settings => api::Answer::Settings(reading::settings(repository)),
-            api::Read::Items { .. }
+            api::Read::CiSetup
+            | api::Read::Items { .. }
             | api::Read::Item { .. }
             | api::Read::Pull { .. }
             | api::Read::PullFor { .. }
@@ -203,6 +204,7 @@ impl Plan {
             | api::Read::Branch { .. }
             | api::Read::Branches { .. }
             | api::Read::Protection { .. }
+            | api::Read::CiSetup
             | api::Read::Settings
             | api::Read::Collaborators { .. }
             | api::Read::Permission { .. }
@@ -245,6 +247,7 @@ impl Plan {
             | api::Read::Statuses { .. }
             | api::Read::Remarks { .. }
             | api::Read::Branches { .. }
+            | api::Read::CiSetup
             | api::Read::Settings
             | api::Read::Collaborators { .. }
             | api::Read::Permission { .. }
@@ -275,6 +278,7 @@ impl Plan {
                 | api::Read::Branch { .. }
                 | api::Read::Branches { .. }
                 | api::Read::Protection { .. }
+                | api::Read::CiSetup
                 | api::Read::Settings
                 | api::Read::Collaborators { .. }
                 | api::Read::PullFiles { .. }

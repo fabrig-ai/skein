@@ -486,6 +486,7 @@ fn adoption_reads_history_and_preserves_foreign_or_copied_marker_news() {
             | api::Answer::File { .. }
             | api::Answer::Job { .. }
             | api::Answer::Protection(_)
+            | api::Answer::CiSetup(_)
             | api::Answer::Settings(_)
             | api::Answer::Collaborators { .. }
             | api::Answer::Permission(_)
@@ -552,6 +553,7 @@ fn comment_ids(world: &World) -> skein_lib::List<u64> {
             | api::Answer::File { .. }
             | api::Answer::Job { .. }
             | api::Answer::Protection(_)
+            | api::Answer::CiSetup(_)
             | api::Answer::Settings(_)
             | api::Answer::Collaborators { .. }
             | api::Answer::Permission(_)
@@ -608,6 +610,7 @@ fn review_page_recovery_keeps_old_pending_submissions_without_duplicate_news() {
             | api::Answer::File { .. }
             | api::Answer::Job { .. }
             | api::Answer::Protection(_)
+            | api::Answer::CiSetup(_)
             | api::Answer::Settings(_)
             | api::Answer::Collaborators { .. }
             | api::Answer::Permission(_)
@@ -721,6 +724,7 @@ fn review_count(world: &World) -> u32 {
             | api::Answer::File { .. }
             | api::Answer::Job { .. }
             | api::Answer::Protection(_)
+            | api::Answer::CiSetup(_)
             | api::Answer::Settings(_)
             | api::Answer::Collaborators { .. }
             | api::Answer::Permission(_)

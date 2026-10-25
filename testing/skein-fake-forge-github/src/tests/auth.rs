@@ -22,10 +22,11 @@ fn harness() -> f::Harness {
     }
     config.accounts = accounts;
     config.accounts.push(Account { login: f::boxed(b"bob"), id: 32, organization: false }).expect("account room");
-    config.app.permissions = Box::new([github::document::Permission {
-        name: f::boxed(b"statuses"),
-        access: github::document::Access::Write,
-    }]);
+    config.app.permissions = Box::new([
+        github::document::Permission { name: f::boxed(b"statuses"), access: github::document::Access::Write },
+        github::document::Permission { name: f::boxed(b"administration"), access: github::document::Access::Read },
+        github::document::Permission { name: f::boxed(b"actions"), access: github::document::Access::Read },
+    ]);
     config.tokens = List::with_capacity(2);
     for (value, user) in [(b"invented-alice".as_slice(), 31), (b"invented-bob", 32)] {
         config.tokens.push((Secret::new(f::boxed(value)), user, None)).expect("person room");
@@ -219,6 +220,8 @@ fn routes() -> Box<[(Route, Class)]> {
         (Route::Collaborators { owner: owner(), name: name(), page: 1, per_page: 2 }, Full),
         (Route::Permission { owner: owner(), name: name(), login: f::boxed(b"alice") }, Full),
         (Route::User { id: 31 }, Full),
+        (Route::ActionsPermissions { owner: owner(), name: name() }, Full),
+        (Route::Workflows { owner: owner(), name: name() }, Full),
         (
             Route::Merge {
                 owner: owner(),
@@ -457,6 +460,8 @@ fn github_fake_serves_only_the_dialects_routes() {
         (Method::Get, b"/user/repos"),
         (Method::Get, b"/orgs/acme/members"),
         (Method::Get, b"/repos/acme/widgets/actions/workflows"),
+        (Method::Get, b"/repos/acme/widgets/actions/workflows?per_page=2"),
+        (Method::Get, b"/repos/acme/widgets/actions/unknown"),
         (Method::Post, b"/repos/acme/widgets/check-runs"),
         (Method::Put, b"/repos/acme/widgets/contents/file"),
         (Method::Post, b"/repos/acme/widgets/git/commits"),

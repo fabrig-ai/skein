@@ -95,6 +95,8 @@ impl Reachable {
                 | document::Document::Done
                 | document::Document::Ruleset(_)
                 | document::Document::ClassicProtection(_)
+                | document::Document::ActionsPermissions(_)
+                | document::Document::Workflows { .. }
                 | document::Document::BotUser(_)
                 | document::Document::Repository(_)
                 | document::Document::Branch(_)

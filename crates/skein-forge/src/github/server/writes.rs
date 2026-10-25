@@ -564,6 +564,8 @@ pub fn write_body(request: Request, body: &[u8], limits: &Limits) -> Option<Requ
         | Request::Conversion { .. }
         | Request::BotUser { .. }
         | Request::Repository { .. }
+        | Request::ActionsPermissions { .. }
+        | Request::Workflows { .. }
         | Request::Locate { .. }
         | Request::Issues { .. }
         | Request::Issue { .. }

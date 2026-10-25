@@ -106,7 +106,8 @@ pub fn answer(answer: &api::Answer, limit: u32) -> Result<u64, api::Error> {
         api::Answer::Collaborators { collaborators, .. } => {
             total = rows(collaborators.len(), crate::measure::COLLABORATOR_BYTES, limit)?;
         }
-        api::Answer::Located { .. } | api::Answer::Commit(_) | api::Answer::Permission(_) => {}
+        api::Answer::CiSetup(_) | api::Answer::Located { .. } | api::Answer::Commit(_) | api::Answer::Permission(_) => {
+        }
         api::Answer::File { path, bytes, .. } => {
             total = length(path).checked_add(length(bytes)).ok_or(api::Error::TooLarge)?;
         }

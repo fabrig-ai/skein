@@ -45,7 +45,15 @@ pub fn config() -> fake::Config {
     for id in 1..=4_u32 {
         let (owner, owner_id) = owner(id);
         repositories
-            .push(Row { id, owner: owner.into(), owner_id, organization: true, name: name(id), private: true })
+            .push(Row {
+                ci_setup: skein_fake_forge_github::service::CiSetup::DEFAULT,
+                id,
+                owner: owner.into(),
+                owner_id,
+                organization: true,
+                name: name(id),
+                private: true,
+            })
             .expect("bounded fixture");
         let user = if id % 2 == 0 { 32 } else { PERSON };
         tokens

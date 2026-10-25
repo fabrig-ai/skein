@@ -56,6 +56,7 @@ impl Referee {
             | api::Answer::File { .. }
             | api::Answer::Job { .. }
             | api::Answer::Protection(_)
+            | api::Answer::CiSetup(_)
             | api::Answer::Settings(_)
             | api::Answer::Collaborators { .. }
             | api::Answer::Permission(_)

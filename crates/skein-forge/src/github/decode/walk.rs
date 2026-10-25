@@ -15,6 +15,10 @@ use super::protection::Node as P;
 /// Container roles in the first GitHub documents.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Node {
+    ActionsPermissions,
+    Workflows,
+    WorkflowRows,
+    Workflow,
     Protection(P),
     LogRows,
     LogRow,
@@ -234,6 +238,25 @@ fn comment_fields() -> &'static [Field] {
 #[expect(clippy::too_many_lines, reason = "one exhaustive table lists the fields of every document node")]
 fn document_fields(node: Node) -> &'static [Field] {
     match node {
+        Node::ActionsPermissions => const { &[field(b"enabled", Read::Boolean)] },
+        Node::Workflows => {
+            const {
+                &[
+                    field(b"total_count", Read::Number),
+                    field(b"workflows", Read::Container(Role::Document(Node::WorkflowRows))),
+                ]
+            }
+        }
+        Node::Workflow => {
+            const {
+                &[
+                    field(b"id", Read::Number),
+                    field(b"name", Read::Text),
+                    field(b"path", Read::Text),
+                    field(b"state", Read::Text),
+                ]
+            }
+        }
         Node::Protection(node) => protection::fields(node),
         Node::LogRow => {
             const {
@@ -491,7 +514,8 @@ fn document_fields(node: Node) -> &'static [Field] {
             const { &[field(b"message", Read::Body), optional(b"errors", Read::Container(Role::Document(Node::Errors)))] }
         }
         Node::ErrorEntry => const { &[field(b"message", Read::Text)] },
-        Node::JobSteps
+        Node::WorkflowRows
+        | Node::JobSteps
         | Node::LogRows
         | Node::AppPermissions
         | Node::AppEvents
@@ -523,6 +547,7 @@ fn element(role: Role) -> Option<Role> {
         Role::Payload(_) => return None,
     };
     match node {
+        Node::WorkflowRows => Some(Role::Document(Node::Workflow)),
         Node::Protection(node) => protection::element(node),
         Node::JobSteps => Some(Role::Document(Node::JobStep)),
         Node::LogRows => Some(Role::Document(Node::LogRow)),
@@ -546,7 +571,10 @@ fn element(role: Role) -> Option<Role> {
         Node::GraphqlErrors => Some(Role::Document(Node::GraphqlError)),
         Node::BranchRows => Some(Role::Document(Node::BranchName)),
         Node::Errors => Some(Role::Document(Node::ErrorEntry)),
-        Node::PullGraphql(
+        Node::ActionsPermissions
+        | Node::Workflows
+        | Node::Workflow
+        | Node::PullGraphql(
             PullNode::EnqueueEnvelope
             | PullNode::EnqueueData
             | PullNode::Enqueue
@@ -661,6 +689,8 @@ pub(super) struct Walk {
 impl Walk {
     pub(super) fn new(kind: document::Kind, limits: &Limits) -> Self {
         let node = match kind {
+            document::Kind::ActionsPermissions => Node::ActionsPermissions,
+            document::Kind::Workflows => Node::Workflows,
             document::Kind::RuleRows => Node::Protection(P::Rows),
             document::Kind::Ruleset => Node::Protection(P::Ruleset),
             document::Kind::ClassicProtection => Node::Protection(P::Classic),

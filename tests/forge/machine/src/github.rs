@@ -333,6 +333,7 @@ fn fixture_repositories() -> List<Row> {
     {
         repositories
             .push(Row {
+                ci_setup: skein_fake_forge_github::service::CiSetup::DEFAULT,
                 id,
                 owner: Box::from(b"acme".as_slice()),
                 owner_id: 22,

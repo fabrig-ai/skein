@@ -614,6 +614,7 @@ fn admitted(op: &api::Op) -> bool {
             | api::Read::Compare { .. }
             | api::Read::PullFiles { .. }
             | api::Read::Locate { .. }
+            | api::Read::CiSetup
             | api::Read::Settings
             | api::Read::Branch { .. }
             | api::Read::Branches { .. }

@@ -86,7 +86,7 @@ pub(crate) fn answered_repository(
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
-        | Answer::Settings(_)
+        | Answer::CiSetup(_) | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
         | Answer::Created(_)
@@ -198,7 +198,7 @@ pub(crate) fn answered_resource(
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
-        | Answer::Settings(_)
+        | Answer::CiSetup(_) | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
         | Answer::Created(_)

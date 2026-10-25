@@ -237,6 +237,7 @@ fn github_pull_resolves_absent_repository() {
             | api::Read::Job { .. }
             | api::Read::File { .. }
             | api::Read::Protection { .. }
+            | api::Read::CiSetup
             | api::Read::Settings
             | api::Read::Collaborators { .. }
             | api::Read::Permission { .. } => unreachable!(),

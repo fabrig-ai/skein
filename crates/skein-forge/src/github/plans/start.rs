@@ -194,6 +194,8 @@ fn refusal(body: &Body) -> Option<&document::Refusal> {
             | Document::Job(_)
             | Document::Combined(_)
             | Document::Issue(_)
+            | Document::ActionsPermissions(_)
+            | Document::Workflows { .. }
             | Document::Rows,
         )
         | Body::Raw { .. }

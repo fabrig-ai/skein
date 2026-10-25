@@ -472,6 +472,7 @@ pub(super) fn page_size(op: &api::Op, cap: u32, l: &Limits, s: &Shared) -> u32 {
             | api::Read::Permission { .. }
             | api::Read::File { .. }
             | api::Read::Job { .. }
+            | api::Read::CiSetup
             | api::Read::Settings => return 1,
         },
         api::Op::Write(_) => return 1,

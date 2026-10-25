@@ -20,6 +20,7 @@ enum Shape {
     File,
     Protection,
     Settings,
+    CiSetup,
     Collaborators,
     Permission,
     Created,
@@ -48,6 +49,7 @@ fn shape(answer: &Answer) -> Shape {
         Answer::File { .. } => Shape::File,
         Answer::Protection(_) => Shape::Protection,
         Answer::Settings(_) => Shape::Settings,
+        Answer::CiSetup(_) => Shape::CiSetup,
         Answer::Collaborators { .. } => Shape::Collaborators,
         Answer::Permission(_) => Shape::Permission,
         Answer::Created(_) => Shape::Created,
@@ -78,6 +80,7 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
             Read::File { .. } => Shape::File,
             Read::Protection { .. } => Shape::Protection,
             Read::Settings => Shape::Settings,
+            Read::CiSetup => Shape::CiSetup,
             Read::Collaborators { .. } => Shape::Collaborators,
             Read::Permission { .. } => Shape::Permission,
         },
@@ -121,6 +124,7 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
                 | Answer::File { .. }
                 | Answer::Checks(_)
                 | Answer::Protection(_)
+                | Answer::CiSetup(_)
                 | Answer::Settings(_)
                 | Answer::Collaborators { .. }
                 | Answer::Permission(_)
@@ -151,6 +155,7 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
             | Read::Remarks { .. }
             | Read::Branch { .. }
             | Read::Protection { .. }
+            | Read::CiSetup
             | Read::Settings
             | Read::Collaborators { .. }
             | Read::Permission { .. } => true,
@@ -194,6 +199,7 @@ fn checks_at_head(answer: &Answer, head: Commit) -> bool {
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
@@ -243,6 +249,7 @@ fn items_ordered(answer: &Answer, kind: Option<Kind>) -> bool {
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
@@ -281,6 +288,7 @@ fn reviews_ordered(answer: &Answer) -> bool {
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
@@ -322,6 +330,7 @@ fn item_matches(answer: &Answer, number: u64, after: u64) -> bool {
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
@@ -351,6 +360,7 @@ fn pull_answer(answer: &Answer) -> Option<&Pull> {
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
@@ -380,6 +390,7 @@ fn observed_head(answer: &Answer) -> Option<Commit> {
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
@@ -411,6 +422,7 @@ fn compared(answer: &Answer, before: Commit, after: Commit) -> bool {
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)
@@ -445,6 +457,7 @@ fn file_matches(answer: &Answer, head: Commit, path: &[u8], max_bytes: u32) -> b
         | Answer::Checks(_)
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Permission(_)

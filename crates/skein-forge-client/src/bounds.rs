@@ -42,6 +42,7 @@ pub(crate) fn read(value: &Read) -> Option<u64> {
         | Read::Compare { .. }
         | Read::Checks { .. }
         | Read::Branches { .. }
+        | Read::CiSetup
         | Read::Settings
         | Read::Permission { .. } => true,
     };

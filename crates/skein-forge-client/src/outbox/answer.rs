@@ -55,6 +55,7 @@ pub(crate) fn answered(
         | Answer::File { .. }
         | Answer::Job { .. }
         | Answer::Protection(_)
+        | Answer::CiSetup(_)
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Located { .. }
