@@ -257,7 +257,12 @@ impl Runtime {
         if let Some(hand) = &config.hand {
             let mut args = command.args.into_boxed().into_vec();
             let initial = args.pop().expect("initial URL");
-            args.push(format!("--proxy-bypass-list=<-loopback>;{}", hand.authority).into_bytes().into());
+            let mut bypass = format!("--proxy-bypass-list=<-loopback>;{}", hand.authority);
+            for peer in &hand.peers {
+                bypass.push(';');
+                bypass.push_str(peer);
+            }
+            args.push(bypass.into_bytes().into());
             args.push(initial);
             command.args = List::with_capacity(u32::try_from(args.len()).expect("args fit"));
             for arg in args {
