@@ -347,6 +347,19 @@ impl Service {
             limits: *limits,
         })
     }
+    /// Configure the setup callback the owner registered for an existing App.
+    /// Manifest conversion replaces it with the new App's callback.
+    pub fn set_setup_url(&mut self, url: Option<Box<[u8]>>) -> Result<(), Problem> {
+        if let Some(url) = &url
+            && (url.len() > usize::try_from(self.limits.github.string_bytes).expect("URL bound fits")
+                || !crate::manifest::absolute(url))
+        {
+            return Err(Problem::Config);
+        }
+        self.pages.setup = url;
+        Ok(())
+    }
+
     /// Scenario access to the delivery engine. No endpoint records a failed 502.
     pub fn release(
         &mut self,

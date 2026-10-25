@@ -141,3 +141,21 @@ fn github_fake_install_follows_the_whole_setup() {
     );
     assert_eq!((h.calls, h.hooks), (0, 0), "setup makes no domain calls or hooks");
 }
+
+#[test]
+fn github_fake_seeded_apps_registered_setup_url_accepts_an_existing_installation() {
+    let mut h = f::pages();
+    h.service.set_setup_url(Some(f::boxed(b"http://temper.test/forges/2/github/setup"))).expect("registered callback");
+    let answer = h.page(Method::Get, b"/apps/test-app/installations/new?state=person&account=acme", b"");
+    assert_eq!(answer.status, 302);
+    assert_eq!(
+        answer.location.as_deref(),
+        Some(b"http://temper.test/forges/2/github/setup?installation_id=1&setup_action=update&state=person".as_slice())
+    );
+    assert_eq!(h.service.installations().iter().count(), 3, "existing installation reused");
+    assert_eq!(h.service.set_setup_url(Some(f::boxed(b"relative/callback"))), Err(service::Problem::Config));
+    assert_eq!(h.service.set_setup_url(Some(f::boxed(&[b'x'; 4097]))), Err(service::Problem::Config));
+    h.service.set_setup_url(None).expect("callback optional");
+    let answer = h.page(Method::Get, b"/apps/test-app/installations/new?state=person&account=acme", b"");
+    assert_eq!(answer.status, 422);
+}

@@ -203,7 +203,7 @@ fn skip(tokens: &List<Token>, at: &mut u32) -> Option<()> {
     None
 }
 // A nonempty authority and URI bytes are required; return addresses carry no query or fragment.
-fn absolute(url: &[u8]) -> bool {
+pub(crate) fn absolute(url: &[u8]) -> bool {
     let Some(rest) = url.strip_prefix(b"https://").or(url.strip_prefix(b"http://")) else {
         return false;
     };

@@ -69,7 +69,7 @@ pub(crate) struct Store {
     pub(crate) states: Map<Box<[u8]>, Record>,
     rng: Rng,
     key: u32,
-    setup: Option<Box<[u8]>>,
+    pub(crate) setup: Option<Box<[u8]>>,
 }
 impl Store {
     pub(crate) fn new(limits: Limits, seed: u64) -> Self {
