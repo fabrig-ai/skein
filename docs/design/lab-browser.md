@@ -840,12 +840,14 @@ a transcript reads as a story.
 
 ```
 skein-lab-browser hand --chromium PATH --fonts DIR --scratch DIR --out DIR
-    --origin URL --size WIDTHxHEIGHT [--mobile] --listen ADDRESS
+    --origin URL [--peer URL …] --size WIDTHxHEIGHT [--mobile] --listen ADDRESS
 ```
 
 - **`--origin`:** the product's origin, `http://` and a loopback
   address with its port, as the product's ready line gave it (lab.md,
-  4.4): the one origin the page goes to (8.5).
+  4.4): the origin for `go` and `sign-in` (8.5).
+- **`--peer`:** repeatable, at most four distinct loopback HTTP origins,
+  parsed and checked as `--origin`, distinct from it (8.5).
 - **`--size` and `--mobile`:** the page's viewport, as a scene's width
   (section 4), at scale 1, light scheme and reduced motion, as the
   capture's.
@@ -989,24 +991,27 @@ main
       text "running"
 ```
 
-### 8.5 One origin
+### 8.5 The origin and named peers
 
-- **The proxy takes all but the origin:** the hand starts Chromium
-  with 2.4's proxy, and with Chromium's implicit loopback bypass
-  removed and the origin alone bypassing it
-  (`--proxy-bypass-list=<-loopback>;HOST:PORT`). Chromium applies bypass
-  rules last-wins. So every request but
-  the origin's, another loopback port's among them, reaches the proxy,
-  which refuses and records it (2.4). In a cluster the hand has no
-  namespace of its own (lab.md, 4.3), and needs none.
-- **A link off the origin is not followed, and says so:** its load
-  reaches the proxy, whose refusal is what the page then shows (a `403`
-  whose text names the address and the reason), as a person whose
-  network refuses a host sees it; `trouble` names it `network`, and
-  `history` `back` returns.
-- **A call names no other origin:** `go`'s path is on the origin by its
-  form, and a `sign-in` link off it is refused `origin` before the
-  browser sees it.
+- **The lab names the app's own fakes:** an app's sign-in and forge
+  flows leave its origin for its own fakes. Up to four `--peer URL`
+  arguments name those origins; nothing else opens. Each is an
+  `http://IP:PORT` origin checked exactly as `--origin`, distinct from
+  it and every other peer.
+- **The proxy takes all but the origin and peers:** the hand starts
+  Chromium with 2.4's proxy, its implicit loopback bypass removed and
+  the origin and each peer bypassing it
+  (`--proxy-bypass-list=<-loopback>;ORIGIN;PEER…`, authorities only).
+  Chromium applies bypass rules last-wins. Every other destination,
+  including every unnamed loopback port, reaches the proxy, which
+  refuses and records it (2.4). In a cluster the hand has no namespace
+  of its own (lab.md, 4.3), and needs none.
+- **A link outside those origins is refused:** its load reaches the
+  proxy, whose `403` names the address and reason; `trouble` names it
+  `network`, and `history` `back` returns.
+- **A call names no other origin:** `go` stays relative to `--origin`,
+  and a `sign-in` link off it is refused `origin` before the browser
+  sees it. Only the page's own navigation reaches a peer.
 - **Chromium's own requests** are off, as 2.4 has them.
 
 ### 8.6 The sign-in link
