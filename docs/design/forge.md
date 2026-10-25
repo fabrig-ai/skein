@@ -193,7 +193,7 @@ and no policy. Every type is a plain value.
 
 ### 3.2 The calls
 
-19 reads and 13 writes, in families. Each call has one answer.
+20 reads and 13 writes, in families. Each call has one answer.
 
 | Family | Calls | Answer |
 |---|---|---|
@@ -204,7 +204,7 @@ and no policy. Every type is a plain value.
 | CI | `Statuses`, `Checks`, `Job` | `Statuses`; `Checks`; `Job` |
 | Branches | `Branch`, `Branches` | `Commit`; `Branches` |
 | Contents | `PullFiles`, `Compare`, `File` | `PullFiles`; `Compare`; `File` |
-| The repository | `Protection`, `Settings`, `Collaborators`, `Permission` | the same names |
+| The repository | `Protection`, `Settings`, `CiSetup`, `Collaborators`, `Permission` | the same names |
 | Creations | `CreateIssue` (keyed), `OpenPull` | `Created` |
 | Comments, keyed | `Post`, `Review` | `Commented`; `Reviewed` |
 | Edits | `Edit`, `SetReviewers`, `Close`, `Reopen` | `Done` |
@@ -234,9 +234,9 @@ and no policy. Every type is a plain value.
 
 ### 3.3 The answers
 
-25 answers: `Located`, `Items`, `Item`, `Pull`, `Reviews`, `Statuses`,
+26 answers: `Located`, `Items`, `Item`, `Pull`, `Reviews`, `Statuses`,
 `Remarks`, `Commit`, `Branches`, `PullFiles`, `Compare`, `Checks`,
-`Job`, `File`, `Protection`, `Settings`, `Collaborators`, `Permission`,
+`Job`, `File`, `Protection`, `Settings`, `CiSetup`, `Collaborators`, `Permission`,
 `Created`, `Commented`, `Reviewed`, `Merged`, `Queued`, `Branch`,
 `Done`.
 
@@ -244,6 +244,13 @@ and no policy. Every type is a plain value.
   `Item` (its comments), `Reviews`, `Statuses`, `Remarks`, `PullFiles`
   and `Collaborators`. `Branches` and `Checks` carry none. The answer to
   `Items` also carries `now`, the forge's clock when it answered.
+- **`CiSetup`** answers `Read::CiSetup` with `actions: Option<bool>`
+  and `workflows: Option<bool>`. For Actions, true is enabled; for
+  workflows, true is present and false is proven absent. None means the
+  fact is unknown or unavailable. A denied, incomplete or malformed
+  inventory never proves absence. These facts describe setup, not a
+  head's CI verdict. Required checks come from `Protection`. A dialect
+  that cannot establish a fact answers it unknown.
 - **`Created`, `Commented` and `Reviewed`** carry the new object's
   number or id. `Merged` carries the merge's commit. `Branch` carries
   `BranchCreation`: `Created`, or `Exists`.

@@ -716,6 +716,13 @@ below are tracked in STATUS.md.
 
 ### 10.1 What it serves
 
+- **CI setup discovery.** The GitHub layer serves the two read-only
+  routes for `CiSetup` (forge-github.md, 4.1). Scenario controls choose
+  Actions enabled or disabled, workflows present or absent, and either
+  inventory unavailable. Defaults preserve the existing fake's CI.
+  Unavailable inventory is a refusal, never a successful empty list.
+  The layer checks the existing permissions and keeps each response
+  bounded; no live backend or extra grant is involved.
 - **REST at the pin.** Every route of forge-github.md, sections 4, 8, 9
   and 11, at github.com's paths, with no prefix. A request without
   `X-GitHub-Api-Version: 2026-03-10`, or without `User-Agent`, is
