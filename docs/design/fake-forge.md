@@ -451,6 +451,9 @@ domain, and holds no clock of its own.
   commit; a path already there is `422`. Its git serves both commits,
   and its branch, raw and repository reads find them, as they find a
   seeded repository's.
+  Collaborator lists contain explicit grants only: site administration
+  and organization ownership grant access without adding membership.
+  Pagination counts the listed collaborators after excluding implicit access.
 - **A setup grant reaches the domain.** A collaborator grant made through
   the setup routes is kept in the setup store, and the domain grants the
   account's user number (section 5) the same permission on the
@@ -865,12 +868,18 @@ below are tracked in STATUS.md.
     `Config::app_facts` is `Complete`, `Omitted` (GET /app omits both fields
     while retaining the grants), or `Narrow` (conversion retains only the
     first permission at read access and the first event). The posted
-    manifest remains readable in each case.
+    manifest remains readable in each case. Conversion replaces the fake's
+    one App, clearing the previous App's installations, tokens and pending
+    installation events while keeping ids and random streams advancing.
   - `GET /apps/<slug>/installations/new?state=<s>` takes `account=<login>`
     (by default the App's owner), and `repositories=all` (the default)
     or `repository_ids=<id>,...`. It installs and answers `302` to
     `setup_url?installation_id=<i>&setup_action=install&state=<s>`; for
     an account already installed, `setup_action=update`.
+  - An existing seeded App can register its callback with
+    `Service::set_setup_url`; it takes an absolute HTTP(S) URL within the
+    configured string bound, without a query or fragment, or `None`.
+    Manifest conversion replaces that callback with the new App's.
   - A malformed manifest, or an unknown account, is `422` with a
     message.
 
