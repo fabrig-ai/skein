@@ -190,11 +190,7 @@ impl Harness {
             );
         }
         let mut service = Service::new(config, &limits, 5).expect("valid fixture config");
-        let store = service.installations_mut();
-        assert_eq!(store.install(22, b"acme", Kind::Organization, listed(&[2, 4]), wall(1000)), Ok(1));
-        assert_eq!(store.install(23, b"example", Kind::User, Reach::All, wall(1001)), Ok(2));
-        assert_eq!(store.install(24, b"other", Kind::User, Reach::All, wall(1002)), Ok(3));
-        assert!(store.suspend(3, true), "third installation exists");
+        seed_installations(&mut service);
         let jwt = authorization(app().key, 1000, 1600);
         Self {
             drain_timers: true,
@@ -480,12 +476,16 @@ pub fn conversion(h: &Harness, response: &Response) -> github::document::Convers
     };
     row
 }
-pub fn converted() -> Harness {
+pub fn converted_with_installations() -> Harness {
     let mut h = pages();
     let answer = create(&mut h, b"s1", NAME);
     let response = convert(&mut h, &code(&answer));
     assert_eq!(response.status, 201);
     h.jwt = authorization_for(8, crate::keys::KEYS.first().expect("first key"), 1000, 1600);
+    // These installation tests start after this App acquired the fixture's
+    // three installations, independently of the preceding App's records.
+    h.service.installations = installations::Installations::new(&h.limits.installations, 5);
+    seed_installations(&mut h.service);
     h
 }
 pub fn page_refusal(h: &Harness, answer: crate::pages::Answer, status: u16, message: &[u8]) {
@@ -557,4 +557,12 @@ pub fn domain_config() -> fake::Config {
         status_updates: false,
         edit_updates: false,
     }
+}
+
+fn seed_installations(service: &mut Service) {
+    let store = service.installations_mut();
+    assert_eq!(store.install(22, b"acme", Kind::Organization, listed(&[2, 4]), wall(1000)), Ok(1));
+    assert_eq!(store.install(23, b"example", Kind::User, Reach::All, wall(1001)), Ok(2));
+    assert_eq!(store.install(24, b"other", Kind::User, Reach::All, wall(1002)), Ok(3));
+    assert!(store.suspend(3, true), "third installation exists");
 }

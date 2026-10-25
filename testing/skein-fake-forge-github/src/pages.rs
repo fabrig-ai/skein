@@ -285,6 +285,7 @@ pub(crate) fn convert(service: &mut Service, code: &[u8], body: &[u8], now: Wall
     }
     let grants = app_grants(manifest, service.app_facts);
     service.verified.forget();
+    service.installations.replace_app();
     service.app =
         App { id, slug, owner: account.id, key, webhook, permissions: grants.permissions, events: grants.events };
     service.pages.key = match service.pages.key.checked_add(1) {

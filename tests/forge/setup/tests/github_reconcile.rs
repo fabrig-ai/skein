@@ -94,7 +94,7 @@ fn a_young_or_future_stray_stays_until_past_state_life() {
 fn an_install_state_accepts_before_reconcile_can_remove_the_stray() {
     // Signed: conversion proof, Accept, App, hook, three pages, two deletes (18 signings).
     let (mut world, _) = connected(7);
-    world.github_remove(3); // Leave room in the three-row fake for a fresh browser installation.
+    // Conversion starts a fresh App, so its installation store has room.
     let (state, url) = install(&mut world, 3);
     let reply = world.github_page(&request("GET", core::str::from_utf8(&url).expect("URL"), b""));
     let (head, _) = response(&reply, 302);

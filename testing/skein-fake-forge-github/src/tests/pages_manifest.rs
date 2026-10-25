@@ -231,7 +231,7 @@ fn github_fake_manifest_optional_fields_and_unknown_keys() {
     assert_eq!(h.service.hook.as_ref(), b"https://hook.test/start");
     let answer = h.page(Method::Get, &f::parts(&[f::INSTALL, b"s1"]), b"");
     f::page_refusal(&h, answer, 422, b"Validation Failed");
-    assert_eq!(h.service.installations().iter().count(), 3);
+    assert_eq!(h.service.installations().iter().count(), 0, "refused install leaves the new App uninstalled");
 }
 
 #[test]

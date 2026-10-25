@@ -62,9 +62,7 @@ fn github_fake_conversion_makes_the_app_the_services() {
     assert_eq!((app.id, app.slug.as_ref()), (8, b"example-app".as_slice()));
     let response = h.ask(Method::Get, b"/app", Some(old.expose()), b"");
     f::refusal(&h, &response, 401, b"Bad credentials");
-    assert_eq!(h.service.installations().iter().count(), 3);
-    assert_eq!(h.service.installations().get(1).expect("old installation").account, 22);
-    assert!(h.service.installations().get(3).expect("old installation").suspended, "old suspension retained");
+    assert_eq!(h.service.installations().iter().count(), 0, "new App has no installations");
     let response = h.app(Method::Get, b"/app/hook/config", b"");
     let (_, Document::HookConfig(hook)) = h.decode(Kind::HookConfig, &response) else {
         panic!("hook document");
@@ -215,4 +213,27 @@ fn github_fake_converted_slug_reads_the_bot_without_a_credential() {
         f::refusal(&h, &response, 404, b"Not Found");
     }
     assert_eq!((h.calls, h.hooks), (0, 0));
+}
+
+#[test]
+fn github_fake_new_app_does_not_inherit_the_seeded_apps_installation() {
+    let mut h = f::pages();
+    let token = h.mint(1, false);
+    let input = f::manifest(f::NAME, f::REDIRECT, f::SETUP);
+    let created = h.page(Method::Post, b"/organizations/acme/settings/apps/new?state=new-app", &f::form(&input));
+    assert_eq!(created.status, 200);
+    let converted = f::convert(&mut h, &f::code(&created));
+    assert_eq!(converted.status, 201);
+    let installed = h.page(Method::Get, &f::parts(&[f::INSTALL, b"new-app"]), b"");
+    assert_eq!(installed.status, 302);
+    assert_eq!(
+        installed.location.as_deref(),
+        Some(b"https://setup.test/install?installation_id=4&setup_action=install&state=new-app".as_slice())
+    );
+    assert_eq!(h.service.installations().iter().count(), 1);
+    assert!(h.service.installations().get(1).is_none());
+    assert_eq!(
+        h.service.installations().token(token.token.expose(), h.now),
+        Err(crate::installations::Denied::Unknown)
+    );
 }

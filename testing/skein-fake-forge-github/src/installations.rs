@@ -107,6 +107,14 @@ impl Installations {
         Self { life, ..Self::new(limits, seed) }
     }
 
+    /// Conversion replaces the fake's one App. Its installations and tokens
+    /// belong to the previous App; keep the id and random streams advancing.
+    pub(crate) fn replace_app(&mut self) {
+        self.rows.clear();
+        self.tokens.clear();
+        while self.events.pop().is_some() {}
+    }
+
     /// Number of successful mints, also the latest token's mint number.
     #[must_use]
     pub const fn minted(&self) -> u64 {

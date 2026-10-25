@@ -10,7 +10,7 @@ use skein_forge::github::{
 
 #[test]
 fn github_fake_install_creates_the_installation() {
-    let mut h = f::converted();
+    let mut h = f::converted_with_installations();
     let answer = h.page(Method::Get, &f::parts(&[f::INSTALL, b"s1"]), b"");
     assert_eq!(answer.status, 302);
     assert_eq!(
@@ -38,7 +38,7 @@ fn github_fake_install_creates_the_installation() {
 
 #[test]
 fn github_fake_install_reach_and_update() {
-    let mut h = f::converted();
+    let mut h = f::converted_with_installations();
     let answer = h.page(Method::Get, &f::parts(&[f::INSTALL, b"s1&account=acme&repository_ids=2,4"]), b"");
     assert_eq!(answer.status, 302);
     assert_eq!(
@@ -81,7 +81,7 @@ fn github_fake_install_reach_and_update() {
 
 #[test]
 fn github_fake_install_store_is_bounded() {
-    let mut h = f::converted();
+    let mut h = f::converted_with_installations();
     let answer = h.page(Method::Get, &f::parts(&[f::INSTALL, b"s1"]), b"");
     assert_eq!(answer.status, 302);
     // Remove alice and fill her slot with a distinct scenario-independent installation.
@@ -104,7 +104,7 @@ fn github_fake_install_store_is_bounded() {
 
 #[test]
 fn github_fake_install_response_bound_preserves_the_store() {
-    let mut h = f::converted();
+    let mut h = f::converted_with_installations();
     h.service.limits.response = 128;
     let state = [b'a'; 100];
     let answer = h.page(Method::Get, &f::parts(&[f::INSTALL, &state]), b"");
@@ -131,13 +131,13 @@ fn github_fake_install_follows_the_whole_setup() {
     assert_eq!(answer.status, 302);
     assert_eq!(
         answer.location.as_deref(),
-        Some(b"https://setup.test/install?installation_id=1&setup_action=update&state=s1".as_slice())
+        Some(b"https://setup.test/install?installation_id=4&setup_action=install&state=s1".as_slice())
     );
-    let token = h.mint(1, false);
+    let token = h.mint(4, false);
     assert_eq!(token.expires, super::wall(4800));
     assert_eq!(
         h.service.installations().token(token.token.expose(), h.now),
-        Ok(&Grant { installation: 1, scope: Scope::Full })
+        Ok(&Grant { installation: 4, scope: Scope::Full })
     );
     assert_eq!((h.calls, h.hooks), (0, 0), "setup makes no domain calls or hooks");
 }
