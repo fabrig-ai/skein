@@ -851,6 +851,11 @@ below are tracked in STATUS.md.
   its advancing updated timestamp remain unconfirmed live.
 - **The browser's pages, as plain HTTP** (seams S4), at the `web`
   routes, which the same listener serves:
+  - `GET /favicon.ico` is a browser resource, with no API version or
+    credential. The fake supplies no icon and answers a bodyless `204`,
+    keeping the connection available for the App's next page. Other API
+    routes still require their version header. This keeps the browser's
+    automatic icon lookup from reporting an API-version error as trouble.
   - `POST /settings/apps/new?state=<s>`, and
     `/organizations/<org>/settings/apps/new?state=<s>`, take the form's
     `manifest` field. The answer is `200` with a small page holding one

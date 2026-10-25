@@ -103,3 +103,20 @@ fn a_matching_delivery_log_read_is_answered_304_without_a_body() {
     let third = connection.ask(&f::parts(&[&head, b"\r\n"]));
     assert_eq!(third, first, "the same connection serves the next unconditional log read normally");
 }
+
+#[test]
+fn browser_favicon_without_api_headers_is_bodyless_and_keeps_the_connection() {
+    let mut connection = Connection::new();
+    // Chromium asks for this resource while following the App's browser pages.
+    let request = b"GET /favicon.ico HTTP/1.1\r\nHost: fake.test\r\nUser-Agent: Chromium\r\n\r\n";
+    let first = connection.ask(request);
+    assert!(first.starts_with(b"HTTP/1.1 204 No Content\r\n"), "favicon: {first:?}");
+    let body_start = bytes::find(&first, b"\r\n\r\n").unwrap().checked_add(4).unwrap();
+    assert_eq!(body_start, first.len(), "the optional icon has no body");
+    assert!(bytes::find(&first, b"\r\nContent-Length:").is_none());
+    assert!(bytes::find(&first, b"\r\nTransfer-Encoding:").is_none());
+
+    let api = connection.ask(b"GET /app HTTP/1.1\r\nHost: fake.test\r\nUser-Agent: Chromium\r\n\r\n");
+    assert!(api.starts_with(b"HTTP/1.1 400 Bad Request\r\n"), "API reads still require their version header");
+    assert_eq!(connection.ask(request), first, "the same connection serves another browser resource");
+}
