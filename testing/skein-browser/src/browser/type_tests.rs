@@ -72,7 +72,7 @@ fn paste_strips_line_endings_only_in_single_line_inputs() {
         peer.reply(b"DOM.describeNode", br#"{"backendNodeId":7}"#, b"result", node);
         peer.reply(b"DOM.focus", br#"{"backendNodeId":7}"#, b"result", b"{}");
         peer.reply(b"Input.insertText", expected, b"result", b"{}");
-        assert!(matches!(peer.browser.events.pop_front(), Some(Event::Done { op: READ })));
+        let Some(Event::Done { op: READ }) = peer.browser.events.pop_front() else { panic!("typing completes once") };
     }
 }
 
@@ -81,5 +81,5 @@ fn a_single_line_value_needs_only_focus_and_insert() {
     let mut peer = Peer::new(b"first second");
     peer.reply(b"DOM.focus", br#"{"backendNodeId":7}"#, b"result", b"{}");
     peer.reply(b"Input.insertText", br#"{"text":"first second"}"#, b"result", b"{}");
-    assert!(matches!(peer.browser.events.pop_front(), Some(Event::Done { op: READ })));
+    let Some(Event::Done { op: READ }) = peer.browser.events.pop_front() else { panic!("typing completes once") };
 }
