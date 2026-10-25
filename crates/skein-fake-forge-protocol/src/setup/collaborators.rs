@@ -21,6 +21,14 @@ pub(super) fn repository(config: &Config, at: &Repo) -> Option<u32> {
     None
 }
 impl Store {
+    /// Setup accounts are collaborators only through an explicit collaborator grant.
+    /// Scenario-only users retain the domain's configured collaborator table.
+    pub(crate) fn lists_collaborator(&self, config: &Config, at: &Repo, user: u64) -> bool {
+        let Some(account) = self.user(user) else { return true };
+        let Some(repository) = repository(config, at) else { return false };
+        self.collaborator(repository, &account.login).is_some()
+    }
+
     /// Inspects a setup grant by scenario repository id without consulting domain permissions.
     #[must_use]
     pub fn collaborator(&self, repository: u32, login: &[u8]) -> Option<Grant> {
