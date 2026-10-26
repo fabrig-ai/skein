@@ -5,6 +5,7 @@ use skein_lib::{Duration, Queue, Time, Wall};
 use skein_playground::visitor::{Limits, Settings, Visitor};
 use skein_ui_web::{bridge::Duty, fetch::Report};
 use skein_world::{Host, Memory, Outcome, Referee, World};
+pub mod bare;
 mod contracts;
 pub mod server;
 const QUEUE: u32 = 256;

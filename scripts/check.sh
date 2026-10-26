@@ -41,7 +41,7 @@ step wasm cargo check --target wasm32-unknown-unknown -p skein-lib -p skein-code
 step wasm cargo clippy --target wasm32-unknown-unknown -p skein-ui -p skein-ui-web \
     -p skein-ui-example-view -p skein-ui-example-shell-web -- -D warnings
 step wasm-portable cargo clippy --target wasm32-unknown-unknown \
-    -p skein-lib -p skein-io -p skein-sim -p skein-shell -p skein-fake-machine -p skein-tls -p skein-sim-world \
+    -p skein-lib -p skein-io -p skein-sim -p skein-shell -p skein-fake-machine -p skein-tls -p skein-sim-world -p skein-playground \
     -p skein-kv -p skein-json -p skein-http -p skein-channel -p skein-codec \
     -p skein-fake-llm-domain -p skein-fake-llm-protocol -p skein-fake-forge-domain \
     -p skein-fake-forge-protocol -p skein-fake-forge-github -p skein-fake-peers -- -D warnings

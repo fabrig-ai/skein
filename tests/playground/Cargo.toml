@@ -15,6 +15,7 @@ skein-io.workspace = true
 skein-http.workspace = true
 skein-shell.workspace = true
 skein-sim.workspace = true
+skein-sim-world.workspace = true
 skein-world.workspace = true
 skein-heap.workspace = true
 
