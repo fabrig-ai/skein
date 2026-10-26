@@ -59,27 +59,29 @@ pub struct StartupAppend {
 pub type StartupAppends = fn(&Spawn) -> Vec<StartupAppend>;
 
 #[derive(Debug)]
-pub(crate) struct Startup {
-    pub(crate) roots: StartupRoots,
-    pub(crate) appends: StartupAppends,
+pub struct Startup {
+    pub roots: StartupRoots,
+    pub appends: StartupAppends,
 }
 
-pub(crate) fn no_appends(_spawn: &Spawn) -> Vec<StartupAppend> {
+#[must_use]
+pub fn no_appends(_spawn: &Spawn) -> Vec<StartupAppend> {
     Vec::new()
 }
 
-pub(crate) fn check_appends(appends: &[StartupAppend]) {
+pub fn check_appends(appends: &[StartupAppend]) {
     for (index, append) in appends.iter().enumerate() {
         assert!(!append.name.is_empty(), "startup append files have names");
         assert!(!appends.iter().take(index).any(|other| other.name == append.name), "startup append names are unique");
     }
 }
 
-pub(crate) fn no_roots(_spawn: &Spawn) -> Vec<StartupRoot> {
+#[must_use]
+pub fn no_roots(_spawn: &Spawn) -> Vec<StartupRoot> {
     Vec::new()
 }
 
-pub(crate) fn check_roots(roots: &[StartupRoot]) {
+pub fn check_roots(roots: &[StartupRoot]) {
     for (index, root) in roots.iter().enumerate() {
         assert!(!root.name.is_empty(), "startup roots have names");
         assert!(!roots.iter().take(index).any(|other| other.name == root.name), "startup root names are unique");

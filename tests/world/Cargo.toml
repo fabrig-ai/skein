@@ -12,6 +12,7 @@ skein-fail-stop.workspace = true
 skein-lib.workspace = true
 skein-io.workspace = true
 skein-sim.workspace = true
+skein-sim-world.workspace = true
 skein-heap.workspace = true
 skein-world.workspace = true
 skein-shell.workspace = true
