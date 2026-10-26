@@ -24,7 +24,8 @@ pub struct Limits {
 /// Constructor refusal returned to the world before any effects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// The world supplied unusable limits, configuration or a non-loopback address.
+    /// The world supplied unusable limits, configuration or a non-loopback address,
+    /// or requested TLS on the portable target (testing.md, 10).
     Limits,
 }
 

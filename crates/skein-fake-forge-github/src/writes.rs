@@ -228,7 +228,10 @@ fn verdict_of(verdict: skein_forge::api::Verdict) -> a::Verdict {
         skein_forge::api::Verdict::Comment => a::Verdict::Comment,
     }
 }
-#[expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")]
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")
+)]
 fn operation(service: &Service, request: Request, access: &Access) -> Result<(Stage, Op), Response> {
     let (stage, write) = match request {
         Request::Merge { number, head, method, .. } => {

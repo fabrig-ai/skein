@@ -29,7 +29,8 @@ pub enum Error {
     Stream(Fault),
     /// rustls failed for a reason of its own: no entropy from the kernel,
     /// or its keys exhausted; on the native face, also when its tokens below
-    /// run out.
+    /// run out. Also refuses the portable target, where a world runs in plaintext
+    /// (testing.md, 10).
     Other,
 }
 

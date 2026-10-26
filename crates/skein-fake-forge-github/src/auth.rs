@@ -63,7 +63,10 @@ impl Service {
         let (slot, grant) = self.installations.token_slot(bearer, now).ok()?;
         Some(Bearer::Installation { slot, installation: grant.installation })
     }
-    #[expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")]
+    #[cfg_attr(
+        target_pointer_width = "64",
+        expect(clippy::result_large_err, reason = "bounded inline responses avoid an allocation on refusals")
+    )]
     pub(crate) fn access(&self, bearer: Bearer) -> Result<Access, Response> {
         match bearer {
             Bearer::Person { index, user } => {
