@@ -8,6 +8,8 @@ pub enum Call {
     Write(Vec<u8>, Vec<u8>),
     Remove(Vec<u8>),
     Send(u32),
+    Abandon(u32),
+    ReadOn,
     Navigate(Vec<u8>),
     Stream(crate::transport::StreamDuty),
 }
@@ -42,6 +44,12 @@ impl crate::platform::Platform for FakePlatform {
     }
     fn send(&mut self, exchange: &crate::fetch::Exchange) {
         self.calls.push(Call::Send(exchange.id));
+    }
+    fn abandon(&mut self, exchange: u32) {
+        self.calls.push(Call::Abandon(exchange));
+    }
+    fn read_on(&mut self) {
+        self.calls.push(Call::ReadOn);
     }
     fn stream(&mut self, duty: crate::transport::StreamDuty) {
         self.calls.push(Call::Stream(duty));
