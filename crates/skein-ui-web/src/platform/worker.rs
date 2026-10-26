@@ -3,7 +3,7 @@ use skein_lib::{Duration, Time, Wall};
 use std::collections::BTreeMap;
 
 mod bridge;
-pub use bridge::{Bridge, Heard};
+pub use bridge::{Bridge, Heard, Limits};
 
 /// The world's clock with each bridge message and after each slice (playground.md, 5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

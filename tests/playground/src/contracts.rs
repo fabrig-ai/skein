@@ -3,7 +3,7 @@ use skein_ui_web::{bridge::Duty, fetch::Report, transport::StreamDuty};
 use skein_world::domain::Ledger;
 use std::collections::VecDeque;
 #[derive(Clone, Copy)]
-pub(super) enum Input {
+pub enum Input {
     Exchange(u32),
     Abandon(u32),
     Open,
@@ -11,7 +11,8 @@ pub(super) enum Input {
     ReadOn,
 }
 impl Input {
-    pub(super) fn of(duty: &Duty) -> Self {
+    #[must_use]
+    pub fn of(duty: &Duty) -> Self {
         match duty {
             Duty::Exchange(exchange) => Self::Exchange(exchange.id),
             Duty::Abandon { exchange } => Self::Abandon(*exchange),
@@ -21,15 +22,16 @@ impl Input {
         }
     }
 }
-pub(super) struct Contracts {
+pub struct Contracts {
     exchanges: Ledger<u32, ()>,
     streams: VecDeque<bool>,
 }
 impl Contracts {
-    pub(super) fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self { exchanges: Ledger::new("visitor exchange"), streams: VecDeque::new() }
     }
-    pub(super) fn input(&mut self, input: Input) {
+    pub fn input(&mut self, input: Input) {
         match input {
             Input::Exchange(id) => self.exchanges.open(id, ()),
             Input::Abandon(id) => {
@@ -39,7 +41,7 @@ impl Contracts {
             Input::Close | Input::ReadOn => {}
         }
     }
-    pub(super) fn report(&mut self, report: &Report) {
+    pub fn report(&mut self, report: &Report) {
         match report {
             Report::Answered { exchange, .. } | Report::Failed { exchange } => self.exchanges.end(*exchange),
             Report::StreamOpened => {
@@ -53,8 +55,18 @@ impl Contracts {
             Report::StreamPiece { .. } => assert_eq!(self.streams.front(), Some(&true), "pieces follow StreamOpened"),
         }
     }
-    pub(super) fn settled(&self) {
+    #[must_use]
+    pub fn is_settled(&self) -> bool {
+        self.exchanges.is_empty() && self.streams.is_empty()
+    }
+    pub fn settled(&self) {
         self.exchanges.assert_settled();
         assert!(self.streams.is_empty(), "every Open has one terminal");
+    }
+}
+
+impl Default for Contracts {
+    fn default() -> Self {
+        Self::new()
     }
 }

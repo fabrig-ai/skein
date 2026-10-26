@@ -60,13 +60,13 @@ impl Connection {
     fn read(&mut self) {
         self.requests.push(http::Request::Body(Down::Demand { read: Read::Arrived { max: limits().read }, room: 0 }));
     }
-    fn respond(&mut self) {
+    fn respond(&mut self, different: bool) {
         let call = self.call.as_ref().expect("request head");
         let target = std::str::from_utf8(&call.target).expect("HTTP target ASCII");
         let mut status = 200;
         let mut headers = Vec::new();
         if target.starts_with("/echo") || target == "/other" || target == "/echoes" {
-            self.answer.extend_from_slice(call.method.as_bytes());
+            self.answer.extend_from_slice(if different && target == "/echo" { b"PUT" } else { call.method.as_bytes() });
             self.answer.push(b'\n');
             self.answer.extend_from_slice(&call.target);
             self.answer.push(b'\n');
@@ -138,7 +138,14 @@ impl Connection {
                 .expect("write fits"),
         }));
     }
-    fn progress(&mut self, now: Time, wall: Wall, slow: Duration, io_requests: &mut Queue<io::Request>) -> bool {
+    fn progress(
+        &mut self,
+        now: Time,
+        wall: Wall,
+        slow: Duration,
+        different: bool,
+        io_requests: &mut Queue<io::Request>,
+    ) -> bool {
         if self.truncated
             && self.responded
             && self.offset == self.answer.len()
@@ -193,7 +200,7 @@ impl Connection {
             }
         }
         if !self.responded && self.ready.is_some_and(|at| at <= now) {
-            self.respond();
+            self.respond(different);
         }
         if self.events.room() >= http::DOWN_MAX_OUT.above
             && self.below.room() >= http::DOWN_MAX_OUT.below
@@ -248,6 +255,10 @@ pub struct Server {
     pub accepted: usize,
     pub closing: bool,
     slow: Duration,
+    /// Number of lines emitted by the scripted print route.
+    pub printed: usize,
+    /// Give the echo route a different, equally sized answer.
+    pub different: bool,
     pub printer: Option<skein_sim_world::Printer>,
 }
 impl Server {
@@ -269,6 +280,8 @@ impl Server {
             accepted: 0,
             closing: false,
             slow,
+            printed: 0,
+            different: false,
             printer: None,
         }
     }
@@ -347,14 +360,16 @@ impl Host for Server {
         let mut at = 0;
         while at < self.connections.len() && self.requests.room() > ROOM {
             let responded = self.connections[at].responded;
-            let done = self.connections[at].progress(now, wall, self.slow, &mut self.requests);
+            let done = self.connections[at].progress(now, wall, self.slow, self.different, &mut self.requests);
             if !responded
                 && self.connections[at].responded
                 && self.connections[at].call.as_ref().expect("answered head").target.as_ref() == b"/print"
-                && let Some(printer) = &mut self.printer
             {
-                use std::io::Write;
-                writeln!(printer, "a scripted line").expect("the world's output has room");
+                self.printed += 1;
+                if let Some(printer) = &mut self.printer {
+                    use std::io::Write;
+                    writeln!(printer, "a scripted line").expect("the world's output has room");
+                }
             }
             if done {
                 let connection = self.connections.remove(at);

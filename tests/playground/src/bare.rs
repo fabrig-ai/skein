@@ -12,7 +12,7 @@ use skein_sim_world::{NoMachine, World};
 use skein_ui_web::{
     bridge::{Duty, Said, Start, ToWorld},
     fetch::Exchange,
-    platform::worker::{Heard, Speed},
+    platform::worker::{Heard, Limits, Speed},
 };
 
 pub const SEED: u64 = 73;
@@ -26,6 +26,31 @@ pub struct Process {
     kind: Kind,
     end: Option<Time>,
     closing: bool,
+}
+impl Process {
+    #[must_use]
+    pub fn server(end: Option<Time>, different: bool, printer: Option<skein_sim_world::Printer>) -> Self {
+        let mut server = server::Server::new(SLOW);
+        server.different = different;
+        server.printer = printer;
+        Self { kind: Kind::Server(Box::new(server)), end, closing: false }
+    }
+    #[must_use]
+    pub fn visitor(end: Option<Time>, duties: u32) -> Self {
+        let mut limits = limits();
+        limits.duties = duties;
+        Self { kind: Kind::Visitor(Box::new(Visitor::new(settings(limits, server::ADDRESS)))), end, closing: false }
+    }
+    #[must_use]
+    pub fn printed(&self) -> usize {
+        match &self.kind {
+            Kind::Server(server) => server.printed,
+            Kind::Visitor(_) => 0,
+        }
+    }
+    pub fn close(&mut self) {
+        self.end = Some(Time::ZERO);
+    }
 }
 pub struct Visit;
 impl Composition for Visit {
@@ -94,16 +119,8 @@ impl Host for Process {
 pub fn world(end: Option<Time>, duties: u32) -> World<Process> {
     let mut world = World::new(SEED, skein_sim::Config::calm());
     let printer = world.printer(b"scripted server", skein_sim_world::Stream::Output);
-    world.spawn(|| {
-        let mut server = server::Server::new(SLOW);
-        server.printer = Some(printer);
-        Process { kind: Kind::Server(Box::new(server)), end, closing: false }
-    });
-    world.spawn(|| {
-        let mut limits = limits();
-        limits.duties = duties;
-        Process { kind: Kind::Visitor(Box::new(Visitor::new(settings(limits, server::ADDRESS)))), end, closing: false }
-    });
+    world.spawn(|| Process::server(end, false, Some(printer)));
+    world.spawn(|| Process::visitor(end, duties));
     // Admit the listener before the page sends its first request.
     while world.busy() {
         world.step();
@@ -128,13 +145,16 @@ pub fn slices(budget: u32, speed: Speed, end: Option<Time>, duties: u32) -> Slic
 }
 #[must_use]
 pub fn native(speed: Speed) -> Native<Visit> {
-    Native::new(
-        world(Some(END), 4),
-        Start { story: b"scripted".as_slice().into(), seed: SEED, start: skein_sim::Config::calm().wall },
-        16,
-        2,
-        speed,
-    )
+    native_with_log(speed, 16 * 1024, 16)
+}
+#[must_use]
+pub fn start() -> Start {
+    Start { story: b"scripted".as_slice().into(), seed: SEED, start: skein_sim::Config::calm().wall }
+}
+pub const BUILD: &[u8] = b"scripted-build";
+#[must_use]
+pub fn native_with_log(speed: Speed, log: u32, budget: u32) -> Native<Visit> {
+    Native::new(world(Some(END), 4), start(), budget, BUILD, Limits { exchanges: 2, log }, speed)
 }
 pub fn give(slices: &mut Slices<Visit>, duty: Duty, at: Time) {
     slices.heard(ToWorld::Duty(duty), at);
