@@ -1,6 +1,9 @@
-//! The worker platform's portable clock, store and navigation (ui-web.md, 18).
+//! The worker platform's portable bridge, clock, store and navigation (ui-web.md, 18).
 use skein_lib::{Duration, Time, Wall};
 use std::collections::BTreeMap;
+
+mod bridge;
+pub use bridge::{Bridge, Heard};
 
 /// The world's clock with each bridge message and after each slice (playground.md, 5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
