@@ -2,3 +2,8 @@
 #![forbid(unsafe_code)]
 
 pub mod visitor;
+
+pub mod native;
+pub mod slices;
+#[cfg(target_arch = "wasm32")]
+pub mod worker;
