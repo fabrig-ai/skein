@@ -6,7 +6,7 @@ pub mod visitor;
 
 pub mod native;
 pub mod slices;
-#[cfg(target_arch = "wasm32")]
-pub mod worker;
 #[cfg(test)]
 mod tests;
+#[cfg(target_arch = "wasm32")]
+pub mod worker;

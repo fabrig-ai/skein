@@ -6,7 +6,7 @@ use skein_playground::visitor::{Limits, Settings, Visitor};
 use skein_ui_web::{bridge::Duty, fetch::Report};
 use skein_world::{Host, Memory, Outcome, Referee, World};
 pub mod bare;
-mod contracts;
+pub mod contracts;
 pub mod server;
 const QUEUE: u32 = 256;
 const FINISH: Time = Time::from_nanos(10_000_000_000);
@@ -135,7 +135,9 @@ impl VisitorProcess {
         }
     }
 }
-fn duty_bytes(duty: &Duty) -> u64 {
+/// Heap bytes held by a scripted duty, including its container capacity.
+#[must_use]
+pub fn duty_bytes(duty: &Duty) -> u64 {
     let bytes = match duty {
         Duty::Exchange(exchange) => {
             exchange.path.len()
@@ -355,7 +357,9 @@ pub fn visitor(procs: &[Process]) -> &VisitorProcess {
         })
         .expect("visitor process")
 }
-fn copy_report(report: &Report) -> Report {
+/// Copy a report for observations outside the process's owned history.
+#[must_use]
+pub fn copy_report(report: &Report) -> Report {
     match report {
         Report::Answered { exchange, status, body } => {
             Report::Answered { exchange: *exchange, status: *status, body: body.clone() }

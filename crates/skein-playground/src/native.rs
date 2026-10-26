@@ -7,7 +7,7 @@ use skein_ui_web::{
     fetch::{Exchange, Report},
     platform::{
         Platform,
-        worker::{Bridge, Heard, Memory, Speed},
+        worker::{Bridge, Heard, Limits, Memory, Speed},
     },
     store::Record,
     transport::StreamDuty,
@@ -26,8 +26,15 @@ pub struct Native<C: Composition> {
 
 impl<C: Composition> Native<C> {
     #[must_use]
-    pub fn new(world: World<C::Process, C::Machine>, start: Start, budget: u32, exchanges: u32, speed: Speed) -> Self {
-        let mut page = Bridge::new(start, exchanges, speed, Time::ZERO);
+    pub fn new(
+        world: World<C::Process, C::Machine>,
+        start: Start,
+        budget: u32,
+        build: &[u8],
+        limits: Limits,
+        speed: Speed,
+    ) -> Self {
+        let mut page = Bridge::new(start, build, limits, speed, Time::ZERO);
         let first = page.outgoing().expect("start is first");
         assert!(matches!(decode_to_world(&first).expect("encoded start"), ToWorld::Start(_)), "start is first");
         Self {
@@ -54,6 +61,12 @@ impl<C: Composition> Native<C> {
             }
             self.slices.slice(self.browser);
         }
+    }
+
+    /// The page's session log, kept independently of the world.
+    #[must_use]
+    pub fn log(&self) -> Box<[u8]> {
+        self.page.log()
     }
 
     #[must_use]
