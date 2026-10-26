@@ -16,6 +16,7 @@ pub(super) struct Connection {
     pub(super) owner: Token,
     pub(super) socket: Option<Token>,
     pub(super) connected: bool,
+    pub(super) lost: bool,
     pub(super) kind: Kind,
     machine: http::Client,
     events: Queue<http::Event>,
@@ -40,6 +41,7 @@ impl Connection {
             kind,
             socket: None,
             connected: false,
+            lost: false,
             machine: http::Client::new(&limits.http),
             events: Queue::with_capacity(ROOM),
             requests,
@@ -85,7 +87,6 @@ impl Connection {
             Kind::Stream { .. } => Report::StreamEnded,
         }
     }
-    #[expect(clippy::too_many_lines, reason = "the HTTP event alphabet is handled in one bounded pass")]
     pub(super) fn progress(
         &mut self,
         now: Time,
@@ -95,13 +96,17 @@ impl Connection {
         reports: &mut Queue<Report>,
         io_requests: &mut Queue<io::Request>,
     ) -> bool {
+        if self.lost && self.events.is_empty() {
+            reports.push(self.failed());
+            return true;
+        }
         if !self.connected {
             return false;
         }
         if let Some(event) = self.events.pop() {
             match event {
                 http::Event::Response(response) => {
-                    for Header { name, value } in response.headers.iter() {
+                    for Header { name, value } in &response.headers {
                         if name.eq_ignore_ascii_case(b"set-cookie") {
                             jar.set(value, wall);
                         }
