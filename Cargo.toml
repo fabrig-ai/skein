@@ -69,6 +69,7 @@ members = [
     "tests/ui-text",
     "tests/ui",
     "tests/world",
+    "tests/playground",
 ]
 
 [workspace.package]
@@ -87,6 +88,7 @@ skein-throwaway-forgejo = { path = "testing/skein-throwaway-forgejo" }
 skein-fake-person-browser = { path = "testing/skein-fake-person-browser" }
 skein-ui-example-server = { path = "examples/ui/server" }
 skein-ui-web = { path = "crates/skein-ui-web" }
+skein-playground = { path = "crates/skein-playground" }
 wasm-bindgen = "=0.2.126"
 js-sys = "=0.3.103"
 web-sys = "=0.3.103"
