@@ -11,10 +11,6 @@ publish.workspace = true
 skein-lib.workspace = true
 skein-json.workspace = true
 skein-oauth.workspace = true
-
-rustls.workspace = true
-
-[dev-dependencies]
 skein-tls.workspace = true
 
 [lints]
