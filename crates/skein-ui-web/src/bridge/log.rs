@@ -7,11 +7,16 @@
 //! Headers encode `name: value\n` records; names contain neither colon nor
 //! LF, values contain no LF. Exchange headers are UTF-8.
 //!
-//! The fold hashes `report answered <id> <status> <body>\n`,
+//! Reports and printed lines are folded apart, each in its own order:
+//! slices preserve each stream's order but can change their interleaving.
+//! The report hash uses `report answered <id> <status> <body>\n`,
 //! `report failed <id>\n`, `report stream-opened\n`,
 //! `report stream-refused <status>\n`, `report stream-piece <bytes>\n`,
-//! `report stream-ended\n`, `line <out|err> <process> <line>\n`, and
-//! `stopped\n`, in order. Byte fields follow the same base64 rule.
+//! `report stream-ended\n`. The line hash uses
+//! `line <out|err> <process> <line>\n`. Byte fields follow the same base64 rule.
+//! The fold's digest is SHA-256 of the report digest, then the line digest,
+//! then one byte: 1 if the world stopped, 0 otherwise. Taking it resets both
+//! hashes and the stop flag.
 
 use super::{Duty, Line, Output, Said, Stamp, Start};
 use crate::{fetch::Exchange, fetch::Report, transport::Header, transport::StreamDuty};
@@ -137,7 +142,7 @@ impl Writer {
         } else {
             let mut text = Text::Bytes(out);
             text.put(b"end ");
-            text.hex(&self.fold.hash.clone().finish());
+            text.hex(&self.fold.digest());
             text.put(b"\n");
             return text.finish();
         }
@@ -188,19 +193,29 @@ pub enum Refused {
 
 /// The digest of what was said, folded as the writer folds it.
 pub struct Fold {
-    hash: Sha256,
+    reports: Sha256,
+    lines: Sha256,
+    stopped: bool,
 }
 
 impl Default for Fold {
     fn default() -> Self {
-        Self { hash: Sha256::new() }
+        Self { reports: Sha256::new(), lines: Sha256::new(), stopped: false }
     }
 }
 
 impl Fold {
     /// A report, a line or the stop folded; anything else is not.
     pub fn said(&mut self, said: &Said) {
-        let mut out = Text::Hash(&mut self.hash);
+        let mut out = match said {
+            Said::Report(_) => Text::Hash(&mut self.reports),
+            Said::Line(_) => Text::Hash(&mut self.lines),
+            Said::Stopped => {
+                self.stopped = true;
+                return;
+            }
+            Said::Slice | Said::Stamp(_) | Said::Failed { words: _ } => return,
+        };
         match said {
             Said::Report(report) => {
                 out.put(b"report ");
@@ -238,15 +253,22 @@ impl Fold {
                 out.put(b" ");
                 out.encoded(line);
             }
-            Said::Stopped => out.put(b"stopped"),
-            Said::Slice | Said::Stamp(_) | Said::Failed { words: _ } => return,
+            Said::Stopped | Said::Slice | Said::Stamp(_) | Said::Failed { words: _ } => return,
         }
         out.put(b"\n");
     }
 
     /// The digest so far, and a new fold from here.
     pub fn take(&mut self) -> [u8; 32] {
-        core::mem::replace(&mut self.hash, Sha256::new()).finish()
+        core::mem::take(self).digest()
+    }
+
+    fn digest(&self) -> [u8; 32] {
+        let mut hash = Sha256::new();
+        hash.update(&self.reports.clone().finish());
+        hash.update(&self.lines.clone().finish());
+        hash.update(&[u8::from(self.stopped)]);
+        hash.finish()
     }
 }
 
