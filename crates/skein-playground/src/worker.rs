@@ -75,8 +75,14 @@ pub fn run<C: Composition + 'static>(make: Make<C>, budget: u32) {
     shared.borrow_mut().timeout = Some(timeout);
     let messaged = Rc::clone(&shared);
     let message = Closure::new(move |event: MessageEvent| {
-        let bytes = event.data().dyn_into::<js_sys::ArrayBuffer>().expect("bridge ArrayBuffer");
-        let message = decode_to_world(&js_sys::Uint8Array::new(&bytes).to_vec()).expect("bridge message");
+        let data = event.data();
+        let bytes = if let Some(bytes) = data.dyn_ref::<js_sys::Uint8Array>() {
+            bytes.to_vec()
+        } else {
+            let buffer = data.dyn_into::<js_sys::ArrayBuffer>().expect("bridge bytes");
+            js_sys::Uint8Array::new(&buffer).to_vec()
+        };
+        let message = decode_to_world(&bytes).expect("bridge message");
         let mut worker = messaged.borrow_mut();
         let at = instant(&worker.scope);
         if let Some(slices) = &mut worker.slices {
@@ -92,6 +98,8 @@ pub fn run<C: Composition + 'static>(make: Make<C>, budget: u32) {
     scope.set_onmessage(Some(message.as_ref().unchecked_ref()));
     // The callbacks and loop live for the worker's lifetime; ending the worker releases them.
     shared.borrow_mut().message = Some(message);
+    // Zero bytes tell the page the handler is installed, before it sends Start.
+    post_bytes(&scope, &[]);
 }
 
 impl<C: Composition> Worker<C> {
@@ -124,7 +132,11 @@ impl<C: Composition> Worker<C> {
 }
 
 fn post(scope: &DedicatedWorkerGlobalScope, message: &ToPage) {
-    let bytes = js_sys::Uint8Array::from(encode_to_page(message).as_ref());
+    post_bytes(scope, encode_to_page(message).as_ref());
+}
+
+fn post_bytes(scope: &DedicatedWorkerGlobalScope, bytes: &[u8]) {
+    let bytes = js_sys::Uint8Array::from(bytes);
     let buffer = bytes.buffer();
     let transfer = js_sys::Array::new();
     transfer.push(&buffer);
