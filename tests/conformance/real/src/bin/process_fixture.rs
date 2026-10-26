@@ -116,7 +116,8 @@ fn fixture(mode: Option<&str>, args: &mut std::env::Args) -> ExitCode {
                 }
                 "supervise-ignore" => "trap '' TERM; printf 'ready\\n'; exec sleep 60",
                 "supervise-grandchild" => {
-                    "/usr/bin/setsid /bin/sh -c \"trap 'printf tree-term\\\\n >&2; exit 0' TERM; printf 'ready\\\\n'; while :; do :; done\" & printf 'grandchild:%s\\n' \"$!\" >&2; wait"
+                    // The leaf reports its PID before readiness can prompt TERM.
+                    r#"/usr/bin/setsid /bin/sh -c "trap 'printf tree-term\\n >&2; exit 0' TERM; printf 'grandchild:%s\\n' \"\$\$\" >&2; printf 'ready\\n'; while :; do :; done" & wait"#
                 }
                 _ => unreachable!("the fixture selected its supervised mode"),
             };

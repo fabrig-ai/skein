@@ -7,6 +7,8 @@ use skein_world::end_to_end::{Binary, Command, Containment, Mode, StartError};
 use skein_world::{Host, Referee, real};
 use skein_world_tests::hosted::{Act, Script};
 
+const WORLD_PATIENCE: Duration = Duration::from_secs(2);
+
 /// Whether `fd` is open: a poll that does not wait answers every open
 /// descriptor, whatever it is, and refuses a closed one as EBADF. A `Stat`
 /// of `/dev/fd` would not do on macOS, where the child's handle is a kqueue.
@@ -766,6 +768,7 @@ enum SupervisedTrigger {
 
 struct SupervisedJudge {
     trigger: SupervisedTrigger,
+    grace: Duration,
     term_at: Option<Time>,
     kill_at: Option<Time>,
     next: Option<Time>,
@@ -794,7 +797,7 @@ impl Referee<Process> for SupervisedJudge {
         } else if let Some(term_at) = self.term_at
             && child.counts().is_none()
         {
-            let grace = term_at.saturating_add(Duration::from_millis(20));
+            let grace = term_at.saturating_add(self.grace);
             if now >= grace && self.kill_at.is_none() {
                 child.signal_tree(Signal::Kill);
                 self.kill_at = Some(now);
@@ -810,7 +813,7 @@ impl Referee<Process> for SupervisedJudge {
             assert!(child.counts().is_none(), "a living tree retains its keeper after leader exit");
             self.saw_retained_exit = true;
             if let Some(term_at) = self.term_at
-                && now < term_at.saturating_add(Duration::from_millis(20))
+                && now < term_at.saturating_add(self.grace)
             {
                 self.saw_grace = true;
                 assert!(child.tree_status().killed_pids.is_empty(), "the keeper leaves escalation to its referee");
@@ -819,7 +822,7 @@ impl Referee<Process> for SupervisedJudge {
         self.next = if child.counts().is_some() {
             None
         } else if let Some(term_at) = self.term_at {
-            self.kill_at.is_none().then_some(term_at.saturating_add(Duration::from_millis(20)))
+            self.kill_at.is_none().then_some(term_at.saturating_add(self.grace))
         } else {
             match self.trigger {
                 #[cfg(target_os = "linux")]
@@ -856,11 +859,21 @@ impl Referee<Process> for SupervisedJudge {
 }
 
 fn supervised_run(mode: &str, containment: Containment, trigger: SupervisedTrigger) -> real::Outcome<Process> {
+    supervised_run_with_grace(mode, containment, trigger, Duration::from_millis(20))
+}
+
+fn supervised_run_with_grace(
+    mode: &str,
+    containment: Containment,
+    trigger: SupervisedTrigger,
+    grace: Duration,
+) -> real::Outcome<Process> {
     use skein_world::end_to_end::Expectation;
     let binary = Binary::start_contained(fixture(mode), Mode::Pipes, 4096, Expectation::Supervise, containment)
         .expect("a supervised fixture starts");
     let judge = SupervisedJudge {
         trigger,
+        grace,
         term_at: None,
         kill_at: None,
         next: None,
@@ -869,7 +882,7 @@ fn supervised_run(mode: &str, containment: Containment, trigger: SupervisedTrigg
     };
     let mut world = real::World::new(judge);
     world.spawn_with_fds(binary.descriptors(), || Process::Child(binary));
-    world.run(&Clock::new(), Duration::from_secs(2))
+    world.run(&Clock::new(), WORLD_PATIENCE)
 }
 
 // The detached descendant is retained by Linux's tree keeper.
@@ -890,6 +903,7 @@ fn a_retained_exit_observation_records_grace_before_the_next_act() {
                 // Sample the retained exit at the start of a grace, with no subsequent act.
                 let mut probe = SupervisedJudge {
                     trigger: SupervisedTrigger::LeaderExit,
+                    grace: Duration::from_millis(20),
                     term_at: Some(now),
                     kill_at: None,
                     next: None,
@@ -916,6 +930,7 @@ fn a_retained_exit_observation_records_grace_before_the_next_act() {
     let judge = Observed {
         judge: SupervisedJudge {
             trigger: SupervisedTrigger::LeaderExit,
+            grace: Duration::from_millis(20),
             term_at: None,
             kill_at: None,
             next: None,
@@ -981,7 +996,7 @@ fn whole_tree_term_reaches_detached_descendants_before_the_leader_exits() {
     use skein_world::end_to_end::Cleanup;
     for containment in [Containment::Walk, Containment::Best] {
         for mode in ["supervise-term", "supervise-grandchild"] {
-            let outcome = supervised_run(mode, containment, SupervisedTrigger::Ready);
+            let outcome = supervised_run_with_grace(mode, containment, SupervisedTrigger::Ready, WORLD_PATIENCE);
             let child = tree_child(&outcome);
             assert_eq!(child.tree_status().cleanup(), Cleanup::Terminate);
             assert!(child.tree_status().terminated_pids.contains(&descendant(child.stderr())));
@@ -1061,6 +1076,7 @@ fn supervised_tree_signals_stay_inside_their_own_delegated_cgroup() {
     let pidfd = second.descriptors()[0];
     let mut world = real::World::new(SupervisedJudge {
         trigger: SupervisedTrigger::Ready,
+        grace: Duration::from_millis(20),
         term_at: None,
         kill_at: None,
         next: None,
@@ -1111,6 +1127,7 @@ fn capture_run(command: Command, limit: usize, trigger: SupervisedTrigger, force
         .expect("a supervised capture starts");
     let mut world = real::World::new(SupervisedJudge {
         trigger,
+        grace: Duration::from_millis(20),
         term_at: None,
         kill_at: None,
         next: None,
