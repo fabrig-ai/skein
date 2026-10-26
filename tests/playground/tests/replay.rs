@@ -1,5 +1,5 @@
 use skein_io::kernel;
-use skein_lib::{Queue, Time, Wall};
+use skein_lib::{Duration, Queue, Time, Wall};
 use skein_playground::{
     native::Native,
     replay::{Differs, Feed},
@@ -301,7 +301,15 @@ fn a_log_is_kept_across_a_worlds_failure() {
     let Duty::Exchange(exchange) = bare::exchange(ID, "/echo") else { unreachable!("exchange fixture") };
     page.send(&exchange);
     let sent = skein_ui_web::bridge::decode_to_world(&page.outgoing().unwrap()).unwrap();
-    let clock = Clock { step: 7, now: Time::ZERO, wall: bare::start().start, idle: false, due: None };
+    let clock = Clock {
+        step: 7,
+        now: Time::ZERO,
+        wall: bare::start().start,
+        idle: false,
+        due: None,
+        memory: 0,
+        slice: Duration::ZERO,
+    };
     let stamp = Stamp { step: clock.step, instant: clock.now };
     page.incoming(&encode_to_page(&ToPage { clock, said: Said::Stamp(stamp) }), Time::ZERO).unwrap();
     let before = page.log();
