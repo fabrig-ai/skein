@@ -1,5 +1,5 @@
 //! The page's browser end of the worker bridge (ui-web.md, 18).
-use super::{Bridge, Heard, Limits, Speed};
+use super::{Bridge, Figures, Heard, Limits, Speed, hold::Hold};
 use crate::{fetch::Report, inbox::Inbox, platform, transport::StreamDuty};
 use skein_lib::{Time, Wall};
 use std::{
@@ -56,6 +56,7 @@ impl Log {
 
 struct Shared<R> {
     bridge: Rc<RefCell<Bridge>>,
+    hold: RefCell<Hold>,
     stop: Rc<StopState>,
     inbox: Rc<Inbox<R>>,
     heard: fn(Heard) -> R,
@@ -89,6 +90,7 @@ impl<R: 'static> Worker<R> {
             let weak = weak.clone();
             Shared {
                 bridge: Rc::new(RefCell::new(Bridge::new(start, build, limits, speed, platform::clocks().0))),
+                hold: RefCell::new(Hold::default()),
                 stop: Rc::new(StopState {
                     worker,
                     ended: Cell::new(false),
@@ -189,6 +191,12 @@ impl<R: 'static> Worker<R> {
         Log { bridge: Rc::clone(&self.shared.bridge) }
     }
 
+    /// The high water of the world's memory and slice duration.
+    #[must_use]
+    pub fn figures(&self) -> Figures {
+        self.shared.bridge.borrow().figures()
+    }
+
     /// Ends the worker at a failure, reset or new story. Nothing is heard after.
     pub fn end(&self) {
         self.shared.stop.end();
@@ -204,9 +212,15 @@ impl<R: 'static> Shared<R> {
         loop {
             let bytes = self.bridge.borrow_mut().outgoing();
             let Some(bytes) = bytes else { break };
+            self.hold.borrow_mut().push(bytes);
+        }
+        loop {
+            let bytes = self.hold.borrow_mut().outgoing();
+            let Some(bytes) = bytes else { break };
             let bytes = js_sys::Uint8Array::from(bytes.as_ref());
-            let transfer = js_sys::Array::of1(&bytes.buffer());
-            if worker.post_message_with_transfer(&bytes, &transfer).is_err() {
+            let buffer = bytes.buffer();
+            let transfer = js_sys::Array::of1(&buffer);
+            if worker.post_message_with_transfer(&buffer, &transfer).is_err() {
                 self.fail(b"A message could not be sent to the world's worker.");
                 return;
             }
@@ -225,6 +239,15 @@ impl<R: 'static> Shared<R> {
             self.fail(b"The world's worker sent a message that was not bytes.");
             return;
         };
+        let first = self.hold.borrow_mut().incoming();
+        self.flush();
+        if self.stop.ended.get() {
+            return;
+        }
+        if first && bytes.is_empty() {
+            self.set_timer();
+            return;
+        }
         let heard = self.bridge.borrow_mut().incoming(&bytes, platform::clocks().0);
         match heard {
             Ok(Heard::Nothing) => self.set_timer(),

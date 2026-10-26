@@ -7,7 +7,7 @@ use crate::{
     platform::worker::{Clock, Speed},
     transport::StreamDuty,
 };
-use skein_lib::{Time, Wall};
+use skein_lib::{Duration, Time, Wall};
 
 fn world_messages() -> Vec<ToWorld> {
     vec![
@@ -54,6 +54,8 @@ fn clock() -> Clock {
         wall: Wall::from_nanos(0x2345_6789_abcd_ef01),
         idle: true,
         due: Some(Time::from_nanos(u64::MAX)),
+        memory: 0x3456_789a_bcde_f012,
+        slice: Duration::from_nanos(u64::MAX),
     }
 }
 
@@ -77,7 +79,15 @@ fn page_messages() -> Vec<ToPage> {
     ];
     let mut messages: Vec<_> = said.into_iter().map(|said| ToPage { clock: clock(), said }).collect();
     messages.push(ToPage {
-        clock: Clock { step: 0, now: Time::from_nanos(0), wall: Wall::from_nanos(0), idle: false, due: None },
+        clock: Clock {
+            step: 0,
+            now: Time::from_nanos(0),
+            wall: Wall::from_nanos(0),
+            idle: false,
+            due: None,
+            memory: 0,
+            slice: Duration::ZERO,
+        },
         said: Said::Slice,
     });
     messages
@@ -135,6 +145,8 @@ fn clock_bytes(idle: u8, due: &[u8]) -> Vec<u8> {
     bytes.extend_from_slice(&clock.wall.as_nanos().to_be_bytes());
     bytes.push(idle);
     bytes.extend_from_slice(due);
+    bytes.extend_from_slice(&clock.memory.to_be_bytes());
+    bytes.extend_from_slice(&clock.slice.as_nanos().to_be_bytes());
     bytes
 }
 

@@ -1,11 +1,11 @@
 use crate::{
     bridge::{Duty, Line, Malformed, Output, Said, Stamp, Start, ToPage, ToWorld, decode_to_world, encode_to_page},
     fetch::{Exchange, Report},
-    platform::worker::{Bridge, Clock, Heard, Limits, Speed},
+    platform::worker::{Bridge, Clock, Figures, Heard, Limits, Speed},
     store::Record,
     transport::StreamDuty,
 };
-use skein_lib::{Time, Wall};
+use skein_lib::{Duration, Time, Wall};
 
 const BROWSER_START: u64 = 1_000;
 const WALL_START: u64 = 10_000;
@@ -34,11 +34,41 @@ fn bridge(exchanges: u32, speed: u32) -> Bridge {
 }
 
 fn clock() -> Clock {
-    Clock { step: 7, now: at(100), wall: Wall::from_nanos(WALL_START + 100), idle: false, due: None }
+    Clock {
+        step: 7,
+        now: at(100),
+        wall: Wall::from_nanos(WALL_START + 100),
+        idle: false,
+        due: None,
+        memory: 0,
+        slice: Duration::ZERO,
+    }
 }
 
 fn incoming(bridge: &mut Bridge, said: Said) -> Heard {
     bridge.incoming(&encode_to_page(&ToPage { clock: clock(), said }), at(BROWSER_START)).expect("valid message")
+}
+
+#[test]
+fn the_page_keeps_the_figures_high_water() {
+    let mut bridge = bridge(1, 1);
+    assert_eq!(bridge.figures(), Figures { memory: 0, slice: Duration::ZERO });
+    let file = bridge.log();
+    for (memory, nanos, most_memory, longest) in
+        [(65_536, 3, 65_536, 3), (32_768, 9, 65_536, 9), (131_072, 5, 131_072, 9), (0, 0, 131_072, 9)]
+    {
+        let clock = Clock { memory, slice: Duration::from_nanos(nanos), ..clock() };
+        let bytes = encode_to_page(&ToPage { clock, said: Said::Slice });
+        assert_eq!(bridge.incoming(&bytes, at(BROWSER_START)), Ok(Heard::Nothing));
+        assert_eq!(bridge.figures(), Figures { memory: most_memory, slice: Duration::from_nanos(longest) });
+    }
+    let before = bridge.figures();
+    let clock = Clock { memory: u64::MAX, slice: Duration::from_nanos(u64::MAX), ..clock() };
+    let mut bytes = encode_to_page(&ToPage { clock, said: Said::Slice }).into_vec();
+    bytes.push(255);
+    assert_eq!(bridge.incoming(&bytes, at(BROWSER_START)), Err(Malformed));
+    assert_eq!(bridge.figures(), before);
+    assert_eq!(bridge.log(), file, "clocks never enter the session log");
 }
 
 fn exchange() -> Exchange {
@@ -242,7 +272,15 @@ fn the_clock_follows_the_worlds_messages() {
     assert_eq!(bridge.timer(at(151)), None);
     assert_eq!(bridge.now(at(BROWSER_START + 9)), (at(150), Wall::from_nanos(WALL_START + 150)));
 
-    let lagging = Clock { step: 8, now: at(140), wall: Wall::from_nanos(WALL_START + 140), idle: false, due: None };
+    let lagging = Clock {
+        step: 8,
+        now: at(140),
+        wall: Wall::from_nanos(WALL_START + 140),
+        idle: false,
+        due: None,
+        memory: 0,
+        slice: Duration::ZERO,
+    };
     let message = ToPage { clock: lagging, said: Said::Report(Report::Failed { exchange: 999 }) };
     assert_eq!(bridge.incoming(&encode_to_page(&message), at(BROWSER_START + 10)), Ok(Heard::Nothing));
     assert_eq!(bridge.now(at(BROWSER_START + 11)), (at(150), Wall::from_nanos(WALL_START + 150)));
