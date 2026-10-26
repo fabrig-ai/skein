@@ -722,7 +722,6 @@ dependencies = [
 name = "skein-fake-oauth"
 version = "0.0.0"
 dependencies = [
- "rustls",
  "skein-json",
  "skein-lib",
  "skein-oauth",

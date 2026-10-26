@@ -1,10 +1,6 @@
 //! Signed issuer documents and faults (oauth.md, 2.2, 5 and 7).
 use crate::{Account, Config, Error, HttpEvidence, HttpResponse, Limits, Request, key};
 use alloc::boxed::Box;
-use rustls::{
-    SignatureScheme,
-    pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer},
-};
 use skein_json::writer::{Encoder, Limits as WriterLimits};
 use skein_lib::{
     Duration, Queue, Time, Wall, Writer,
@@ -207,10 +203,7 @@ pub(super) fn claims(
 }
 fn sign(input: &[u8]) -> Result<Box<[u8]>, Error> {
     let raw = base64::decode(Alphabet::Standard, key::PKCS8.as_bytes(), 2048).or(Err(Error::Plan))?;
-    let der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(raw.as_ref()));
-    let key = rustls::crypto::ring::sign::any_supported_type(&der).or(Err(Error::Plan))?;
-    let signer = key.choose_scheme(&[SignatureScheme::RSA_PKCS1_SHA256]).ok_or(Error::Plan)?;
-    let signature = signer.sign(input).or(Err(Error::Plan))?;
+    let signature = skein_tls::sign_rs256_pkcs8(&raw, input).ok_or(Error::Plan)?;
     encoded(&signature)
 }
 fn encoded(raw: &[u8]) -> Result<Box<[u8]>, Error> {
