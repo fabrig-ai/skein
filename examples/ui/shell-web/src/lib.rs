@@ -8,7 +8,7 @@ use skein_ui_web::{
     Look, fetch, history,
     inbox::Inbox,
     page::{Page, web::Dom},
-    platform,
+    platform::{self, Platform},
     store::Store,
     timer, title,
     transport::{self, Carried, Requests},
@@ -194,7 +194,7 @@ impl Shell {
                 inbox.raise(Report::Carried(report));
             }
             if read_on {
-                self.platform.fetch.read_on();
+                self.platform.read_on();
             }
         }
         // Build once after all waiting reports; document work can raise the next turn's reports.
