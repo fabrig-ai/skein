@@ -60,7 +60,7 @@ read cap, and a chunked body a byte at a time. A request reaches the
 domain only at HTTP's `End`.
 
 `forge::Peer::new` serves Forgejo and `forge::Peer::github` hosts the
-`testing/skein-fake-forge-github` layer for GitHub's API and browser routes
+`crates/skein-fake-forge-github` layer for GitHub's API and browser routes
 on one plaintext loopback origin. Both borrow an owner's
 `Rc<RefCell<forge::Forge>>`; peers and another fake may share that handle.
 Each domain call receives a shared reply identity, translated back to its

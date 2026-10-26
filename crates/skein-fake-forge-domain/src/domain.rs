@@ -219,7 +219,10 @@ pub(crate) struct Call {
 }
 
 #[derive(Debug)]
-#[expect(clippy::large_enum_variant, reason = "bounded call slots retain their answers inline; limits count State")]
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(clippy::large_enum_variant, reason = "bounded call slots retain their answers inline; limits count State")
+)]
 enum State {
     /// The answer is decided, and goes out when the call's timer fires; then
     /// the call lands, if it is to land late.
