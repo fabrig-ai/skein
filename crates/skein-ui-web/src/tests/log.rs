@@ -10,7 +10,9 @@ use skein_lib::{Time, Wall, Writer as BytesWriter, base64, base64::Alphabet, sha
 
 const BUILD: &[u8] = b"bundle-digest";
 const ROOM: u32 = 16_384;
-const EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const CANONICAL_REPORTS: &[u8] = b"report answered 7 201 AP8=\nreport failed 8\nreport stream-opened\nreport stream-refused 403\nreport stream-piece cGllY2U=\nreport stream-ended\n";
+const CANONICAL_LINES: &[u8] = b"line out c2VydmVy AP8=\nline err = =\n";
+const EMPTY: &str = "82c0f0f259e8cffecead54325fadb48f15a4e761dae5ffaf31209993eacbb24d";
 
 fn start() -> Start {
     Start { story: b"story-a".as_slice().into(), seed: u64::MAX, start: Wall::from_nanos(u64::MAX) }
@@ -69,6 +71,14 @@ fn hash(bytes: &[u8]) -> [u8; 32] {
     hash.finish()
 }
 
+fn digest(reports: &[u8], lines: &[u8], stopped: bool) -> [u8; 32] {
+    // Hash the two literal canonical streams, then their fixed-size envelope.
+    let mut envelope = Vec::from(hash(reports));
+    envelope.extend_from_slice(&hash(lines));
+    envelope.push(u8::from(stopped));
+    hash(&envelope)
+}
+
 fn empty_file() -> String {
     String::from_utf8(Writer::new(BUILD, &start(), ROOM).file().into()).unwrap()
 }
@@ -117,11 +127,11 @@ fn the_digest_folds_reports_lines_and_the_stop_alone() {
         interleaved.said(&Said::Failed { words: b"failed".as_slice().into() });
         interleaved.said(&said);
     }
-    let canonical = b"report answered 7 201 AP8=\nreport failed 8\nreport stream-opened\nreport stream-refused 403\nreport stream-piece cGllY2U=\nreport stream-ended\nline out c2VydmVy AP8=\nline err = =\nstopped\n";
-    assert_eq!(alone.take(), hash(canonical));
-    assert_eq!(interleaved.take(), hash(canonical));
-    assert_eq!(alone.take(), hash(b""));
-    assert_eq!(interleaved.take(), hash(b""));
+    let expected = digest(CANONICAL_REPORTS, CANONICAL_LINES, true);
+    assert_eq!(alone.take(), expected);
+    assert_eq!(interleaved.take(), expected);
+    assert_eq!(alone.take(), digest(b"", b"", false));
+    assert_eq!(interleaved.take(), digest(b"", b"", false));
 }
 
 #[test]
@@ -136,10 +146,10 @@ fn a_stamp_pairs_with_the_oldest_duty_sent() {
     let log = log::read(&writer.file()).unwrap();
     assert_eq!(log.inputs[0].duty, Duty::Abandon { exchange: 42 });
     assert_eq!(log.inputs[0].stamp, stamp(3));
-    assert_eq!(log.inputs[0].digest, hash(b"report stream-opened\n"));
+    assert_eq!(log.inputs[0].digest, digest(b"report stream-opened\n", b"", false));
     assert_eq!(log.inputs[1].duty, Duty::ReadOn);
     assert_eq!(log.inputs[1].stamp, stamp(4));
-    assert_eq!(log.inputs[1].digest, hash(b"report stream-ended\n"));
+    assert_eq!(log.inputs[1].digest, digest(b"report stream-ended\n", b"", false));
 }
 
 #[test]
@@ -149,7 +159,7 @@ fn a_log_at_its_bound_is_whole() {
     assert_eq!(u32::try_from(file.len()).unwrap(), bound);
     let log = log::read(&file).unwrap();
     assert_eq!(log.inputs.len(), 1);
-    assert_eq!(log.end, End::Said(hash(b"")));
+    assert_eq!(log.end, End::Said(digest(b"", b"", false)));
     let minimum = u32::try_from(empty_file().len()).unwrap();
     assert_eq!(Writer::new(BUILD, &start(), minimum).file().len(), usize::try_from(minimum).unwrap());
 }
@@ -188,7 +198,7 @@ fn a_queued_cut_waits_for_its_stamp() {
     writer.sent(&Duty::ReadOn);
     writer.sent(&Duty::ReadOn);
     writer.sent(&Duty::ReadOn);
-    assert_eq!(log::read(&writer.file()).unwrap().end, End::Said(hash(b"")));
+    assert_eq!(log::read(&writer.file()).unwrap().end, End::Said(digest(b"", b"", false)));
     writer.said(&Said::Stamp(stamp(0)));
     assert_eq!(writer.file(), first.file());
     writer.said(&Said::Stamp(stamp(0)));
@@ -300,7 +310,7 @@ fn an_unstamped_duty_is_not_written() {
     writer.said(&Said::Stopped);
     let log = log::read(&writer.file()).unwrap();
     assert!(log.inputs.is_empty());
-    assert_eq!(log.end, End::Said(hash(b"stopped\n")));
+    assert_eq!(log.end, End::Said(digest(b"", b"", true)));
 }
 
 #[test]
@@ -329,8 +339,8 @@ fn taking_a_file_does_not_reset_the_fold() {
     writer.sent(&Duty::ReadOn);
     writer.said(&Said::Stamp(stamp(0)));
     let log = log::read(&writer.file()).unwrap();
-    assert_eq!(log.inputs[0].digest, hash(b"stopped\n"));
-    assert_eq!(log.end, End::Said(hash(b"")));
+    assert_eq!(log.inputs[0].digest, digest(b"", b"", true));
+    assert_eq!(log.end, End::Said(digest(b"", b"", false)));
 }
 
 #[test]
@@ -345,6 +355,35 @@ fn a_large_fold_has_only_its_final_base64_padding() {
         canonical.push(b'\n');
         let mut fold = Fold::default();
         fold.said(&Said::Report(Report::StreamPiece { bytes: bytes.into() }));
-        assert_eq!(fold.take(), hash(&canonical));
+        assert_eq!(fold.take(), digest(&canonical, b"", false));
+    }
+}
+
+#[test]
+fn interleaving_reports_and_lines_leaves_the_digest() {
+    const FETCH_REPORTS: usize = 6; // The six report variants in reports().
+    const PRINTED_LINES: usize = 2; // Standard output and error in reports().
+    let said = reports();
+    let (reports, lines) = said.split_at(FETCH_REPORTS);
+    let expected = digest(CANONICAL_REPORTS, CANONICAL_LINES, true);
+    // Choose both line positions among all eight items: every interleaving
+    // preserves the FIFO order within the reports and within the lines.
+    for first in 0..FETCH_REPORTS + PRINTED_LINES {
+        for second in first + 1..FETCH_REPORTS + PRINTED_LINES {
+            let mut fold = Fold::default();
+            let mut report = 0;
+            let mut line = 0;
+            for position in 0..FETCH_REPORTS + PRINTED_LINES {
+                if position == first || position == second {
+                    fold.said(&lines[line]);
+                    line += 1;
+                } else {
+                    fold.said(&reports[report]);
+                    report += 1;
+                }
+            }
+            fold.said(&Said::Stopped);
+            assert_eq!(fold.take(), expected, "line positions {first}, {second}");
+        }
     }
 }
