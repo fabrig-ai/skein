@@ -1,7 +1,7 @@
 //! The bridge between the page and a world in a worker (playground.md, 5).
 
 /// A duty of the transport's, as data: what the page hands the world.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Duty {
     Exchange(crate::fetch::Exchange),
     Abandon {
