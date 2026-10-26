@@ -12,6 +12,7 @@ fn inputs(scratch: &Scratch) -> Inputs {
     fs::write(path.join("files/about.txt"), b"About").expect("file");
     fs::write(path.join("a.css"), b"body { color: navy; }").expect("stylesheet");
     Inputs {
+        worker: None,
         name: "notes".into(),
         prefix: "/static/".into(),
         stylesheets: vec![path.join("a.css")],
@@ -35,12 +36,12 @@ fn the_digest_covers_paths_and_bytes() {
     let scratch = Scratch::new("bundle-digest");
     let mut inputs = inputs(&scratch);
     let out = scratch.path().join("out");
-    let original = bundle(&inputs, &glue(), &out).expect("bundle");
+    let original = bundle(&inputs, &glue(), None, &out).expect("bundle");
     fs::write(scratch.path().join("files/about.txt"), b"about").expect("change one byte");
-    let changed = bundle(&inputs, &glue(), &out).expect("bundle");
+    let changed = bundle(&inputs, &glue(), None, &out).expect("bundle");
     assert_ne!(original, changed, "bytes affect the digest");
     inputs.name = "other".into();
-    let renamed = bundle(&inputs, &glue(), &out).expect("bundle");
+    let renamed = bundle(&inputs, &glue(), None, &out).expect("bundle");
     assert_ne!(changed, renamed, "paths affect the digest");
 }
 
@@ -71,8 +72,8 @@ fn the_same_inputs_give_the_same_bundle() {
     let b = scratch.path().join("b");
     fs::create_dir(&a).expect("out");
     fs::write(a.join("stale.txt"), b"stale").expect("old output");
-    let first = bundle(&inputs, &glue(), &a).expect("first");
-    let second = bundle(&inputs, &glue(), &b).expect("second");
+    let first = bundle(&inputs, &glue(), None, &a).expect("first");
+    let second = bundle(&inputs, &glue(), None, &b).expect("second");
     assert_eq!(first, second);
     let files = contents(&a);
     assert_eq!(files, contents(&b));
@@ -85,7 +86,7 @@ fn the_page_matches_its_golden() {
     let scratch = Scratch::new("bundle-golden");
     let inputs = inputs(&scratch);
     let out = scratch.path().join("out");
-    bundle(&inputs, &glue(), &out).expect("bundle");
+    bundle(&inputs, &glue(), None, &out).expect("bundle");
     assert_eq!(fs::read(out.join("index.html")).expect("page"), include_bytes!("tests/golden/index.html"));
 }
 
@@ -97,7 +98,7 @@ fn an_own_page_gets_the_directory_at_each_marker() {
     fs::write(&page, b"\xff{bundle}boot.js {bundle}a.css").expect("own page bytes");
     inputs.page = Some(page);
     let out = scratch.path().join("out");
-    let digest = bundle(&inputs, &glue(), &out).expect("bundle");
+    let digest = bundle(&inputs, &glue(), None, &out).expect("bundle");
     let mut expected = vec![255];
     expected.extend_from_slice(format!("/static/{digest}/boot.js /static/{digest}/a.css").as_bytes());
     assert_eq!(fs::read(out.join("index.html")).expect("page"), expected);
@@ -110,7 +111,7 @@ fn an_own_page_without_the_marker_is_refused() {
     let page = scratch.path().join("own.html");
     fs::write(&page, b"<html></html>").expect("own page");
     inputs.page = Some(page.clone());
-    assert_eq!(bundle(&inputs, &glue(), &scratch.path().join("out")), Err(Refusal::NoMarker { page }));
+    assert_eq!(bundle(&inputs, &glue(), None, &scratch.path().join("out")), Err(Refusal::NoMarker { page }));
 }
 
 #[test]
@@ -120,7 +121,7 @@ fn references_go_under_the_prefix() {
     inputs.prefix = "/assets/ui/".into();
     inputs.noscript = "Use <scripts> & WebAssembly".into();
     let out = scratch.path().join("out");
-    let digest = bundle(&inputs, &glue(), &out).expect("bundle");
+    let digest = bundle(&inputs, &glue(), None, &out).expect("bundle");
     let page = fs::read_to_string(out.join("index.html")).expect("page");
     for reference in ["skein-ui.css", "a.css", "boot.js"] {
         assert!(page.contains(&format!("\"/assets/ui/{digest}/{reference}\"")), "{reference}");
@@ -151,7 +152,7 @@ fn skein_ui_css_comes_first_in_the_page() {
     let scratch = Scratch::new("bundle-css");
     let inputs = inputs(&scratch);
     let out = scratch.path().join("out");
-    let digest = bundle(&inputs, &glue(), &out).expect("bundle");
+    let digest = bundle(&inputs, &glue(), None, &out).expect("bundle");
     let page = fs::read_to_string(out.join("index.html")).expect("page");
     assert!(page.find("/skein-ui.css").expect("kit stylesheet") < page.find("/a.css").expect("owner stylesheet"));
     assert_eq!(fs::read(out.join(digest.to_string()).join("skein-ui.css")).expect("stylesheet"), STYLESHEET);
@@ -175,7 +176,7 @@ fn each_refusal_names_its_file() {
     for (path, expected) in paths.iter().zip(expected) {
         let mut inputs = base.clone();
         inputs.stylesheets.push(path.clone());
-        assert_eq!(bundle(&inputs, &glue(), &scratch.path().join("out")), Err(expected), "{}", path.display());
+        assert_eq!(bundle(&inputs, &glue(), None, &scratch.path().join("out")), Err(expected), "{}", path.display());
     }
 }
 
@@ -209,4 +210,122 @@ fn the_glue_loads_its_sibling_module_when_init_has_no_argument() {
     let glue = super::glue(&module, "notes").expect("web glue");
     let js = std::str::from_utf8(&glue.js).expect("generated JavaScript");
     assert!(js.contains("new URL('notes_bg.wasm', import.meta.url)"));
+}
+
+const PAGE_FILES: &[&str] = &[
+    "a.css",
+    "boot.js",
+    "files/about.txt",
+    "notes.js",
+    "notes_bg.wasm",
+    "pictures/notes/icon.svg",
+    "skein-ui.css",
+    "snippets/notes/grow.js",
+];
+
+#[test]
+fn a_bundle_without_a_worker_is_unchanged() {
+    let scratch = Scratch::new("bundle-no-worker");
+    let inputs = inputs(&scratch);
+    let out = scratch.path().join("out");
+    let digest = bundle(&inputs, &glue(), None, &out).expect("bundle");
+    let files = contents(&out.join(digest.to_string()));
+    assert_eq!(files.keys().map(String::as_str).collect::<Vec<_>>(), PAGE_FILES);
+    assert!(!out.join(digest.to_string()).join("worker.js").exists());
+}
+
+#[test]
+fn a_worker_module_lies_beside_the_page_module() {
+    let scratch = Scratch::new("bundle-worker");
+    let mut inputs = inputs(&scratch);
+    inputs.worker = Some("world".into());
+    let out = scratch.path().join("out");
+    let mut worker = glue();
+    worker.snippets = vec![("world/run.js".into(), b"run".to_vec())];
+    let digest = bundle(&inputs, &glue(), Some(&worker), &out).expect("bundle");
+    let files = contents(&out.join(digest.to_string()));
+    let mut expected = PAGE_FILES.to_vec();
+    expected.extend(["snippets/world/run.js", "worker.js", "world.js", "world_bg.wasm"]);
+    expected.sort_unstable();
+    assert_eq!(files.keys().map(String::as_str).collect::<Vec<_>>(), expected);
+    assert_eq!(files.get("worker.js").expect("starter"), b"import init from \"./world.js\";\ninit();\n");
+    assert_eq!(files.get("world.js"), Some(&worker.js));
+    assert_eq!(files.get("world_bg.wasm"), Some(&worker.wasm));
+    assert_eq!(files.get("snippets/world/run.js").expect("worker snippet"), b"run");
+    let page = fs::read_to_string(out.join("index.html")).expect("page");
+    assert!(page.contains(&format!("/static/{digest}/boot.js")));
+    assert!(!page.contains("worker.js"));
+}
+
+#[test]
+fn the_digest_covers_the_worker_module() {
+    let scratch = Scratch::new("bundle-worker-digest");
+    let mut inputs = inputs(&scratch);
+    inputs.worker = Some("world".into());
+    let out = scratch.path().join("out");
+    let mut worker = glue();
+    let original = bundle(&inputs, &glue(), Some(&worker), &out).expect("bundle");
+    worker.wasm[0] = 1;
+    let changed = bundle(&inputs, &glue(), Some(&worker), &out).expect("changed bundle");
+    assert_ne!(original, changed);
+}
+
+#[test]
+fn a_snippet_both_modules_hold_is_written_once() {
+    let scratch = Scratch::new("bundle-worker-shared");
+    let mut inputs = inputs(&scratch);
+    inputs.worker = Some("world".into());
+    let out = scratch.path().join("out");
+    let digest = bundle(&inputs, &glue(), Some(&glue()), &out).expect("shared snippet");
+    let files = contents(&out.join(digest.to_string()));
+    assert_eq!(files.len(), PAGE_FILES.len() + 3);
+    assert_eq!(files.get("snippets/notes/grow.js"), Some(&glue().snippets[0].1));
+}
+
+#[test]
+fn a_snippet_differing_between_the_modules_is_refused() {
+    let scratch = Scratch::new("bundle-worker-snippet-clash");
+    let mut inputs = inputs(&scratch);
+    inputs.worker = Some("world".into());
+    let mut worker = glue();
+    worker.snippets[0].1.push(b'!');
+    assert_eq!(
+        bundle(&inputs, &glue(), Some(&worker), &scratch.path().join("out")),
+        Err(Refusal::SameName { file: "notes/grow.js".into() })
+    );
+}
+
+#[test]
+fn a_worker_named_as_the_page_module_is_refused() {
+    let scratch = Scratch::new("bundle-worker-name");
+    let mut inputs = inputs(&scratch);
+    inputs.worker = Some(inputs.name.clone());
+    assert_eq!(
+        bundle(&inputs, &glue(), Some(&glue()), &scratch.path().join("out")),
+        Err(Refusal::SameName { file: "notes".into() })
+    );
+}
+
+#[test]
+fn a_worker_without_its_glue_is_refused() {
+    let scratch = Scratch::new("bundle-worker-missing");
+    let mut inputs = inputs(&scratch);
+    let out = scratch.path().join("out");
+    assert_eq!(bundle(&inputs, &glue(), Some(&glue()), &out), Err(Refusal::Worker));
+    inputs.worker = Some("world".into());
+    assert_eq!(bundle(&inputs, &glue(), None, &out), Err(Refusal::Worker));
+}
+
+#[test]
+fn the_worker_starters_name_is_reserved() {
+    let scratch = Scratch::new("bundle-worker-reserved");
+    let mut inputs = inputs(&scratch);
+    for (page, worker) in [("worker", "world"), ("notes", "worker"), ("notes", "boot")] {
+        inputs.name = page.into();
+        inputs.worker = Some(worker.into());
+        assert_eq!(
+            bundle(&inputs, &glue(), Some(&glue()), &scratch.path().join("out")),
+            Err(Refusal::SameName { file: worker.into() })
+        );
+    }
 }
