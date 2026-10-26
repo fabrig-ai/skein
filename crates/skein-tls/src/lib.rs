@@ -53,15 +53,3 @@ pub struct MaxOut {
     /// Requests for the side below.
     pub below: u32,
 }
-
-/// A world draws only from its seed; TLS entropy on the portable target is a bug (tls.md, 4).
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-#[expect(clippy::panic, reason = "a portable world must never request TLS entropy (tls.md, 4)")]
-fn portable_entropy(_bytes: &mut [u8]) -> Result<(), getrandom::Error> {
-    panic!(
-        "skein-tls::portable_entropy: no entropy on the portable target: a world draws only from its seed (tls.md, 4)"
-    );
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-getrandom::register_custom_getrandom!(portable_entropy);

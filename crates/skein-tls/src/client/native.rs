@@ -203,6 +203,11 @@ impl Client {
     /// moment leaves an admitted right waiting.
     #[must_use]
     pub fn new(config: &Config, name: Name, limits: &Limits, lower: &LowerLimits) -> Option<Client> {
+        if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+            // TLS is not available on the portable target: a world runs in plaintext
+            // (testing.md, 10).
+            return None;
+        }
         worst_case(limits)?;
         if lower.read < LARGEST_READ || lower.output < largest_room(limits)? || lower.sends == 0 {
             return None;

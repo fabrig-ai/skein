@@ -144,7 +144,7 @@ skein-world = { path = "testing/skein-world" }
 wasm-bindgen-cli-support = "=0.2.126"
 io-uring = "0.7.15"
 libc = "0.2.186"
-getrandom = "0.2"
+ring = "0.17"
 rustls = { version = "=0.23.41", default-features = false, features = ["ring", "tls12"] }
 
 # Panics are fail-stop and overflow traps, in every profile. Release aborts.
