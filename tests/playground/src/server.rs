@@ -106,7 +106,7 @@ impl Connection {
             assert!(length <= usize::try_from(BYTES).expect("bound fits"));
             self.answer.resize(length, b's');
             self.stream = true;
-        } else if target != "/slow" {
+        } else if target != "/slow" && target != "/print" {
             status = 404;
         }
         let head_only = call.method == Method::Head || status == 204 || status == 304;
@@ -248,6 +248,7 @@ pub struct Server {
     pub accepted: usize,
     pub closing: bool,
     slow: Duration,
+    pub printer: Option<skein_sim_world::Printer>,
 }
 impl Server {
     #[must_use]
@@ -268,6 +269,7 @@ impl Server {
             accepted: 0,
             closing: false,
             slow,
+            printer: None,
         }
     }
     fn event(&mut self, event: io::Event, now: Time, wall: Wall) {
@@ -344,7 +346,17 @@ impl Host for Server {
         }
         let mut at = 0;
         while at < self.connections.len() && self.requests.room() > ROOM {
-            if self.connections[at].progress(now, wall, self.slow, &mut self.requests) {
+            let responded = self.connections[at].responded;
+            let done = self.connections[at].progress(now, wall, self.slow, &mut self.requests);
+            if !responded
+                && self.connections[at].responded
+                && self.connections[at].call.as_ref().expect("answered head").target.as_ref() == b"/print"
+                && let Some(printer) = &mut self.printer
+            {
+                use std::io::Write;
+                writeln!(printer, "a scripted line").expect("the world's output has room");
+            }
+            if done {
                 let connection = self.connections.remove(at);
                 self.answers += usize::from(connection.responded);
                 self.requests.push(io::Request::Close { entity: connection.socket });

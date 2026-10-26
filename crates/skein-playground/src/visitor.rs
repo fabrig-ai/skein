@@ -94,6 +94,11 @@ impl Visitor {
             closing: false,
         }
     }
+    /// Duties that may still enter before the next turn.
+    #[must_use]
+    pub fn room(&self) -> u32 {
+        self.duties.room()
+    }
     /// Queues a duty between turns. Held bytes include owned container capacities.
     pub fn duty(&mut self, duty: Duty) {
         assert!(!self.closing, "no duties after the world's end");

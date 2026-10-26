@@ -1181,11 +1181,15 @@ dependencies = [
 name = "skein-playground"
 version = "0.0.0"
 dependencies = [
+ "js-sys",
  "skein-http",
  "skein-io",
  "skein-lib",
  "skein-shell",
+ "skein-sim-world",
  "skein-ui-web",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -1199,6 +1203,7 @@ dependencies = [
  "skein-playground",
  "skein-shell",
  "skein-sim",
+ "skein-sim-world",
  "skein-ui-web",
  "skein-world",
 ]
