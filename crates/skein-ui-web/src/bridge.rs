@@ -19,7 +19,7 @@ use crate::{
     platform::worker::{Clock, Speed},
     transport::{Header, StreamDuty},
 };
-use skein_lib::{Reader, Time, Wall, Writer};
+use skein_lib::{Duration, Reader, Time, Wall, Writer};
 
 /// What the page sends the world.
 #[derive(Debug, PartialEq, Eq)]
@@ -270,6 +270,8 @@ fn write_page(message: &ToPage, out: &mut Encoding) {
             out.u64(due.as_nanos());
         }
     }
+    out.u64(clock.memory);
+    out.u64(clock.slice.as_nanos());
     match &message.said {
         Said::Slice => out.tag(0),
         Said::Report(report) => {
@@ -425,6 +427,8 @@ fn read_page(reader: &mut Reader<'_>, allocate: bool) -> Option<ToPage> {
             1 => Some(Time::from_nanos(reader.u64()?)),
             _ => return None,
         },
+        memory: reader.u64()?,
+        slice: Duration::from_nanos(reader.u64()?),
     };
     let said = match reader.u8()? {
         0 => Said::Slice,

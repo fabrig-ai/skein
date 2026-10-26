@@ -7,7 +7,7 @@ use skein_ui_web::{
     fetch::{Exchange, Report},
     platform::{
         Platform,
-        worker::{Bridge, Heard, Limits, Memory, Speed},
+        worker::{Bridge, Figures, Heard, Limits, Memory, Speed},
     },
     store::Record,
     transport::StreamDuty,
@@ -67,6 +67,12 @@ impl<C: Composition> Native<C> {
     #[must_use]
     pub fn log(&self) -> Box<[u8]> {
         self.page.log()
+    }
+
+    /// The world's figures; the native loop reports zeros.
+    #[must_use]
+    pub fn figures(&self) -> Figures {
+        self.page.figures()
     }
 
     #[must_use]

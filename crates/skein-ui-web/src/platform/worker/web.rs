@@ -1,5 +1,5 @@
 //! The page's browser end of the worker bridge (ui-web.md, 18).
-use super::{Bridge, Heard, Limits, Speed};
+use super::{Bridge, Figures, Heard, Limits, Speed};
 use crate::{fetch::Report, inbox::Inbox, platform, transport::StreamDuty};
 use skein_lib::{Time, Wall};
 use std::{
@@ -189,6 +189,12 @@ impl<R: 'static> Worker<R> {
         Log { bridge: Rc::clone(&self.shared.bridge) }
     }
 
+    /// The high water of the world's memory and slice duration.
+    #[must_use]
+    pub fn figures(&self) -> Figures {
+        self.shared.bridge.borrow().figures()
+    }
+
     /// Ends the worker at a failure, reset or new story. Nothing is heard after.
     pub fn end(&self) {
         self.shared.stop.end();
@@ -205,8 +211,9 @@ impl<R: 'static> Shared<R> {
             let bytes = self.bridge.borrow_mut().outgoing();
             let Some(bytes) = bytes else { break };
             let bytes = js_sys::Uint8Array::from(bytes.as_ref());
-            let transfer = js_sys::Array::of1(&bytes.buffer());
-            if worker.post_message_with_transfer(&bytes, &transfer).is_err() {
+            let buffer = bytes.buffer();
+            let transfer = js_sys::Array::of1(&buffer);
+            if worker.post_message_with_transfer(&buffer, &transfer).is_err() {
                 self.fail(b"A message could not be sent to the world's worker.");
                 return;
             }
