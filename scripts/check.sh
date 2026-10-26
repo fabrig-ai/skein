@@ -43,7 +43,7 @@ step wasm cargo clippy --target wasm32-unknown-unknown -p skein-ui -p skein-ui-w
 # TLS needs ring's custom entropy backend on wasm; GitHub's layer links TLS.
 # The peers also need their buffered rustls transport made portable.
 step wasm-portable cargo clippy --target wasm32-unknown-unknown \
-    -p skein-lib -p skein-io -p skein-sim -p skein-shell -p skein-fake-machine \
+    -p skein-lib -p skein-io -p skein-sim -p skein-shell -p skein-fake-machine -p skein-sim-world \
     -p skein-kv -p skein-json -p skein-http -p skein-channel -p skein-codec \
     -p skein-fake-llm-domain -p skein-fake-llm-protocol -p skein-fake-forge-domain \
     -p skein-fake-forge-protocol -- -D warnings
