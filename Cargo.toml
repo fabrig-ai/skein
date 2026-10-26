@@ -24,7 +24,7 @@ members = [
     "testing/skein-browser",
     "testing/skein-lab-browser",
     "testing/skein-echo-client",
-    "testing/skein-fake-machine",
+    "crates/skein-fake-machine",
     "testing/skein-fake-channel",
     "testing/skein-fake-person",
     "testing/skein-fake-person-browser",
@@ -32,7 +32,7 @@ members = [
     "crates/skein-fake-checkout",
     "crates/skein-fake-forge-domain",
     "crates/skein-fake-forge-protocol",
-    "testing/skein-fake-forge-github",
+    "crates/skein-fake-forge-github",
     "crates/skein-fake-llm-domain",
     "crates/skein-fake-llm-protocol",
     "crates/skein-fake-peers",
@@ -113,7 +113,7 @@ skein-oauth-issuer = { path = "crates/skein-oauth-issuer" }
 skein-oauth-accounts = { path = "crates/skein-oauth-accounts" }
 skein-fake-forge-domain = { path = "crates/skein-fake-forge-domain" }
 skein-fake-forge-protocol = { path = "crates/skein-fake-forge-protocol" }
-skein-fake-forge-github = { path = "testing/skein-fake-forge-github" }
+skein-fake-forge-github = { path = "crates/skein-fake-forge-github" }
 skein-fake-llm-domain = { path = "crates/skein-fake-llm-domain" }
 skein-fake-llm-protocol = { path = "crates/skein-fake-llm-protocol" }
 skein-fake-peers = { path = "crates/skein-fake-peers" }
@@ -131,7 +131,7 @@ skein-echo-protocol = { path = "examples/echo/protocol" }
 skein-echo-service = { path = "examples/echo/service" }
 skein-echo-client = { path = "testing/skein-echo-client" }
 skein-browser-world = { path = "tests/browser" }
-skein-fake-machine = { path = "testing/skein-fake-machine" }
+skein-fake-machine = { path = "crates/skein-fake-machine" }
 skein-fake-channel = { path = "testing/skein-fake-channel" }
 skein-fake-checkout = { path = "crates/skein-fake-checkout" }
 skein-world = { path = "testing/skein-world" }
@@ -144,6 +144,7 @@ skein-world = { path = "testing/skein-world" }
 wasm-bindgen-cli-support = "=0.2.126"
 io-uring = "0.7.15"
 libc = "0.2.186"
+getrandom = "0.2"
 rustls = { version = "=0.23.41", default-features = false, features = ["ring", "tls12"] }
 
 # Panics are fail-stop and overflow traps, in every profile. Release aborts.
