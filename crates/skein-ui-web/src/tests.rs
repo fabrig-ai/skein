@@ -1,5 +1,6 @@
 mod bridge;
 mod fixtures;
+mod log;
 mod mapping;
 mod page;
 mod svg;
