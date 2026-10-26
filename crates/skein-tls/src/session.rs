@@ -41,6 +41,11 @@ impl fmt::Debug for Connection {
 /// its `ClientHello` written: rustls draws its randoms and its key share from
 /// the kernel here (tls.md, 4).
 pub(crate) fn connect(config: &Config, name: Name, wall: Wall) -> Result<Connection, Error> {
+    if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+        // TLS is not available on the portable target: a world runs in plaintext
+        // (testing.md, 10).
+        return Err(Error::Other);
+    }
     match UnbufferedClientConnection::new(config.at(wall), name.into_server_name()) {
         Ok(connection) => Ok(Connection(Box::new(connection))),
         Err(error) => Err(failure(error)),

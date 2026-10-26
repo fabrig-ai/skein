@@ -12,7 +12,7 @@ skein-lib.workspace = true
 rustls.workspace = true
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { workspace = true, features = ["custom"] }
+ring = { workspace = true, features = ["wasm32_unknown_unknown_js"] }
 
 [lints]
 workspace = true

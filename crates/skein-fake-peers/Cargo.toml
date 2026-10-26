@@ -21,6 +21,8 @@ skein-oauth.workspace = true
 skein-fake-oauth.workspace = true
 skein-fake-llm-domain.workspace = true
 skein-fake-llm-protocol.workspace = true
+
+[target.'cfg(unix)'.dependencies]
 rustls = { workspace = true, features = ["std"] }
 
 [lints.rust]

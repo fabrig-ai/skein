@@ -21,6 +21,11 @@ pub const RS256_KEY_BYTES: usize = 1196;
 /// does not depend on it. The key is parsed at each call, never kept.
 #[must_use]
 pub fn sign_rs256(key: &[u8], message: &[u8]) -> Option<[u8; 256]> {
+    if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+        // TLS is not available on the portable target: a world runs in plaintext
+        // (testing.md, 10).
+        return None;
+    }
     if key.len() > RS256_KEY_BYTES {
         return None;
     }
@@ -49,6 +54,11 @@ pub struct Rs256Public {
 /// of ring's `RsaKeyPair::from_pkcs8`. Blinding does not change the bytes.
 #[must_use]
 pub fn sign_rs256_pkcs8(key: &[u8], message: &[u8]) -> Option<Box<[u8]>> {
+    if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+        // TLS is not available on the portable target: a world runs in plaintext
+        // (testing.md, 10).
+        return None;
+    }
     let parsed = issuer_key(key)?;
     let signer = parsed.choose_scheme(&[SignatureScheme::RSA_PKCS1_SHA256])?;
     let signature = signer.sign(message).ok()?;

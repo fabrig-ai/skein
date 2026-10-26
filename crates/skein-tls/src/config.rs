@@ -50,6 +50,7 @@ pub enum Refusal {
     /// of them take more than [`ALPN`] bytes.
     Alpn,
     /// The crypto provider has no suite of TLS 1.2 or 1.3: ring's has both.
+    /// Also refuses the portable target, where a world runs in plaintext (testing.md, 10).
     Provider,
 }
 
@@ -81,6 +82,11 @@ impl Config {
     /// Refuses `Roots` when none were taken, and keeps the ALPN refusals.
     /// The shell bounds the input count to `u32`; a larger slice is a bug.
     pub fn from_der(roots: &[Box<[u8]>], alpn: &[&[u8]]) -> Result<(Config, Parsed), Refusal> {
+        if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+            // TLS is not available on the portable target: a world runs in plaintext
+            // (testing.md, 10).
+            return Err(Refusal::Provider);
+        }
         let count = u32::try_from(roots.len()).expect("startup roots have a u32 count bound");
         let provider = ring::default_provider();
         let mut store = RootCertStore::empty();
@@ -103,6 +109,11 @@ impl Config {
     /// The configuration that trusts `roots` and offers `alpn`, in order of
     /// preference, or none (RFC 7301).
     pub fn new(roots: RootCertStore, alpn: &[&[u8]]) -> Result<Config, Refusal> {
+        if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+            // TLS is not available on the portable target: a world runs in plaintext
+            // (testing.md, 10).
+            return Err(Refusal::Provider);
+        }
         Config::with_provider(roots, alpn, ring::default_provider())
     }
 
@@ -111,6 +122,11 @@ impl Config {
     /// for a service, whose exception is ring (tls.md, 4).
     #[doc(hidden)]
     pub fn with_provider(roots: RootCertStore, alpn: &[&[u8]], provider: CryptoProvider) -> Result<Config, Refusal> {
+        if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+            // TLS is not available on the portable target: a world runs in plaintext
+            // (testing.md, 10).
+            return Err(Refusal::Provider);
+        }
         if roots.is_empty() {
             return Err(Refusal::Roots);
         }
