@@ -156,3 +156,40 @@ impl Heap {
         report
     }
 }
+
+/// The simulated loop's optional heap accounting.
+#[derive(Debug)]
+pub(crate) struct Metered(pub(crate) Option<Heap>);
+
+impl skein_sim_world::Meter for Metered {
+    fn admit<T>(&mut self, make: impl FnOnce() -> T, worst_case: fn(&T) -> u64) -> T {
+        match &mut self.0 {
+            Some(heap) => heap.admit(make, worst_case),
+            None => make(),
+        }
+    }
+    fn around<T>(&mut self, at: usize, call: impl FnOnce() -> T) -> T {
+        match &mut self.0 {
+            Some(heap) => heap.around(at, call),
+            None => call(),
+        }
+    }
+    fn release<T>(&mut self, at: usize, proc: T) -> Option<(u64, u64)> {
+        match &mut self.0 {
+            Some(heap) => Some(heap.release(at, proc)),
+            None => {
+                drop(proc);
+                None
+            }
+        }
+    }
+    fn restart<T>(&mut self, at: usize, proc: T, make: impl FnOnce() -> T, worst_case: fn(&T) -> u64) -> T {
+        match &mut self.0 {
+            Some(heap) => heap.restart(at, proc, make, worst_case),
+            None => {
+                drop(proc);
+                make()
+            }
+        }
+    }
+}

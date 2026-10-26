@@ -1,6 +1,6 @@
 //! Independently opened startup descriptors shared by hosted launches and restarts.
 
-use super::{Host, Inherited, Machine, PreparedStartup, Referee, Restart, StartupRoot, World};
+use super::{Host, Inherited, Machine, PreparedStartup, Restart, StartupRoot, World};
 use crate::StartupAppend;
 use alloc::format;
 use alloc::string::String;
@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use skein_io::kernel::Error;
 use skein_sim::Pid;
 
-impl<P: Host, R: Referee<P>, M: Machine> World<P, R, M> {
+impl<P: Host, M: Machine, H: crate::Meter> World<P, M, H> {
     /// Adds a restartable process with independently opened roots and append files.
     pub fn spawn_restartable_startup(
         &mut self,
