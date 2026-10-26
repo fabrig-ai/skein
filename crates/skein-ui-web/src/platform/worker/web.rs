@@ -38,8 +38,24 @@ impl Stop {
     }
 }
 
+/// Reads the session log from anywhere, a panic hook among them
+/// (playground.md, 6).
+#[derive(Clone)]
+pub struct Log {
+    bridge: Rc<RefCell<Bridge>>,
+}
+
+impl Log {
+    /// The log as a file, or none while the platform holds a conflicting
+    /// bridge borrow: a panic there loses the offer, not the visit's other evidence.
+    #[must_use]
+    pub fn file(&self) -> Option<Box<[u8]>> {
+        self.bridge.try_borrow().ok().map(|bridge| bridge.log())
+    }
+}
+
 struct Shared<R> {
-    bridge: RefCell<Bridge>,
+    bridge: Rc<RefCell<Bridge>>,
     stop: Rc<StopState>,
     inbox: Rc<Inbox<R>>,
     heard: fn(Heard) -> R,
@@ -72,7 +88,7 @@ impl<R: 'static> Worker<R> {
         let shared = Rc::new_cyclic(|weak: &std::rc::Weak<Shared<R>>| {
             let weak = weak.clone();
             Shared {
-                bridge: RefCell::new(Bridge::new(start, build, limits, speed, platform::clocks().0)),
+                bridge: Rc::new(RefCell::new(Bridge::new(start, build, limits, speed, platform::clocks().0))),
                 stop: Rc::new(StopState {
                     worker,
                     ended: Cell::new(false),
@@ -165,6 +181,12 @@ impl<R: 'static> Worker<R> {
     #[must_use]
     pub fn log(&self) -> Box<[u8]> {
         self.shared.bridge.borrow().log()
+    }
+
+    /// A handle for reading the log without accessing the shell.
+    #[must_use]
+    pub fn log_handle(&self) -> Log {
+        Log { bridge: Rc::clone(&self.shared.bridge) }
     }
 
     /// Ends the worker at a failure, reset or new story. Nothing is heard after.
