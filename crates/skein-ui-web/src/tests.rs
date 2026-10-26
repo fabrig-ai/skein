@@ -1,3 +1,4 @@
+mod bridge;
 mod fixtures;
 mod mapping;
 mod page;
