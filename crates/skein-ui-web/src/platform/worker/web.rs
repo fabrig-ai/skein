@@ -1,5 +1,5 @@
 //! The page's browser end of the worker bridge (ui-web.md, 18).
-use super::{Bridge, Heard, Speed};
+use super::{Bridge, Heard, Limits, Speed};
 use crate::{fetch::Report, inbox::Inbox, platform, transport::StreamDuty};
 use skein_lib::{Time, Wall};
 use std::{
@@ -38,8 +38,24 @@ impl Stop {
     }
 }
 
+/// Reads the session log from anywhere, a panic hook among them
+/// (playground.md, 6).
+#[derive(Clone)]
+pub struct Log {
+    bridge: Rc<RefCell<Bridge>>,
+}
+
+impl Log {
+    /// The log as a file, or none while the platform holds a conflicting
+    /// bridge borrow: a panic there loses the offer, not the visit's other evidence.
+    #[must_use]
+    pub fn file(&self) -> Option<Box<[u8]>> {
+        self.bridge.try_borrow().ok().map(|bridge| bridge.log())
+    }
+}
+
 struct Shared<R> {
-    bridge: RefCell<Bridge>,
+    bridge: Rc<RefCell<Bridge>>,
     stop: Rc<StopState>,
     inbox: Rc<Inbox<R>>,
     heard: fn(Heard) -> R,
@@ -49,13 +65,14 @@ struct Shared<R> {
 
 impl<R: 'static> Worker<R> {
     /// Starts the module worker from `worker.js` under the bundle's digest
-    /// `directory`, and sends the visit's start. The wrap functions give
-    /// what the page hears and the application's timer firing to its inbox.
+    /// `directory`, whose last path segment names the session log's build,
+    /// and sends the visit's start. The wrap functions give what the page
+    /// hears and the application's timer firing to its inbox.
     #[must_use]
     pub fn new(
         directory: &str,
         start: crate::bridge::Start,
-        exchanges: u32,
+        limits: Limits,
         speed: Speed,
         inbox: Rc<Inbox<R>>,
         heard: fn(Heard) -> R,
@@ -63,13 +80,15 @@ impl<R: 'static> Worker<R> {
     ) -> Self {
         let options = web_sys::WorkerOptions::new();
         options.set_type(web_sys::WorkerType::Module);
-        let address = format!("{}/worker.js", directory.trim_end_matches('/'));
+        let directory = directory.trim_end_matches('/');
+        let build = directory.rsplit('/').next().expect("a directory has a last segment").as_bytes();
+        let address = format!("{directory}/worker.js");
         let worker = web_sys::Worker::new_with_options(&address, &options).ok();
         let document = web_sys::window().expect("browser window").document().expect("browser document");
         let shared = Rc::new_cyclic(|weak: &std::rc::Weak<Shared<R>>| {
             let weak = weak.clone();
             Shared {
-                bridge: RefCell::new(Bridge::new(start, exchanges, speed, platform::clocks().0)),
+                bridge: Rc::new(RefCell::new(Bridge::new(start, build, limits, speed, platform::clocks().0))),
                 stop: Rc::new(StopState {
                     worker,
                     ended: Cell::new(false),
@@ -156,6 +175,18 @@ impl<R: 'static> Worker<R> {
     #[must_use]
     pub fn stop(&self) -> Stop {
         Stop { state: Rc::clone(&self.shared.stop) }
+    }
+
+    /// The session log as a file, readable after a failure, end or stop.
+    #[must_use]
+    pub fn log(&self) -> Box<[u8]> {
+        self.shared.bridge.borrow().log()
+    }
+
+    /// A handle for reading the log without accessing the shell.
+    #[must_use]
+    pub fn log_handle(&self) -> Log {
+        Log { bridge: Rc::clone(&self.shared.bridge) }
     }
 
     /// Ends the worker at a failure, reset or new story. Nothing is heard after.
