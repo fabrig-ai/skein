@@ -11,5 +11,8 @@ publish.workspace = true
 skein-lib.workspace = true
 rustls.workspace = true
 
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { workspace = true, features = ["custom"] }
+
 [lints]
 workspace = true

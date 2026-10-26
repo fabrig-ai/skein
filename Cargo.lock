@@ -1181,11 +1181,15 @@ dependencies = [
 name = "skein-playground"
 version = "0.0.0"
 dependencies = [
+ "js-sys",
  "skein-http",
  "skein-io",
  "skein-lib",
  "skein-shell",
+ "skein-sim-world",
  "skein-ui-web",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -1199,6 +1203,7 @@ dependencies = [
  "skein-playground",
  "skein-shell",
  "skein-sim",
+ "skein-sim-world",
  "skein-ui-web",
  "skein-world",
 ]
@@ -1268,6 +1273,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "skein-sim-world"
+version = "0.0.0"
+dependencies = [
+ "skein-io",
+ "skein-lib",
+ "skein-shell",
+ "skein-sim",
+]
+
+[[package]]
 name = "skein-throwaway-forgejo"
 version = "0.0.0"
 dependencies = [
@@ -1285,6 +1300,7 @@ dependencies = [
 name = "skein-tls"
 version = "0.0.0"
 dependencies = [
+ "getrandom",
  "rustls",
  "skein-lib",
 ]
@@ -1434,6 +1450,7 @@ dependencies = [
  "skein-lib",
  "skein-shell",
  "skein-sim",
+ "skein-sim-world",
 ]
 
 [[package]]
@@ -1448,6 +1465,7 @@ dependencies = [
  "skein-scratch",
  "skein-shell",
  "skein-sim",
+ "skein-sim-world",
  "skein-world",
 ]
 

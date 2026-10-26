@@ -94,6 +94,11 @@ impl Visitor {
             closing: false,
         }
     }
+    /// Duties that may still enter before the next turn.
+    #[must_use]
+    pub fn room(&self) -> u32 {
+        self.duties.room()
+    }
     /// Queues a duty between turns. Held bytes include owned container capacities.
     pub fn duty(&mut self, duty: Duty) {
         assert!(!self.closing, "no duties after the world's end");
@@ -226,7 +231,6 @@ impl Visitor {
             }
         }
     }
-    #[expect(clippy::too_many_arguments, reason = "the owned request parts cross the connection admission together")]
     fn open(
         &mut self,
         kind: Kind,
@@ -293,8 +297,9 @@ impl Visitor {
             }
             io::Event::Failed { owner, .. } | io::Event::Closed { owner } => {
                 if let Some(at) = self.connections.iter().position(|connection| connection.owner == owner) {
-                    self.reports.push(self.connections[at].failed());
-                    self.remove(at);
+                    // Deliver any head already parsed before the transport failed,
+                    // so its cookies survive a truncated or reset body.
+                    self.connections[at].lost = true;
                 }
             }
             io::Event::Listening { .. }
@@ -347,7 +352,7 @@ impl Host for Visitor {
             self.event(event, now, wall);
         }
         let mut at = 0;
-        while at < self.connections.len() && self.requests.room() >= connection::ROOM + 1 {
+        while at < self.connections.len() && self.requests.room() > connection::ROOM {
             if self.connections[at].progress(
                 now,
                 wall,

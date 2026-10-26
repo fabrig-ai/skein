@@ -40,6 +40,13 @@ step clippy cargo clippy --workspace --all-targets -- -D warnings
 step wasm cargo check --target wasm32-unknown-unknown -p skein-lib -p skein-codec -p skein-http
 step wasm cargo clippy --target wasm32-unknown-unknown -p skein-ui -p skein-ui-web \
     -p skein-ui-example-view -p skein-ui-example-shell-web -- -D warnings
+# TLS needs ring's custom entropy backend on wasm; GitHub's layer links TLS.
+# The peers also need their buffered rustls transport made portable.
+step wasm-portable cargo clippy --target wasm32-unknown-unknown \
+    -p skein-lib -p skein-io -p skein-sim -p skein-shell -p skein-fake-machine -p skein-sim-world -p skein-playground \
+    -p skein-kv -p skein-json -p skein-http -p skein-channel -p skein-codec \
+    -p skein-fake-llm-domain -p skein-fake-llm-protocol -p skein-fake-forge-domain \
+    -p skein-fake-forge-protocol -- -D warnings
 scripts/taste.sh crates/skein-tls tests/tls
 # The TLS machine on its own: the workspace's build unifies rustls's std,
 # which tests/tls turns on, and would hide a use of it.

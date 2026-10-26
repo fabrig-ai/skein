@@ -1,7 +1,7 @@
 use crate::{
     bridge::{Duty, Line, Malformed, Output, Said, Stamp, Start, ToPage, ToWorld, decode_to_world, encode_to_page},
     fetch::{Exchange, Report},
-    platform::worker::{Bridge, Clock, Heard, Speed},
+    platform::worker::{Bridge, Clock, Heard, Limits, Speed},
     store::Record,
     transport::StreamDuty,
 };
@@ -9,6 +9,8 @@ use skein_lib::{Time, Wall};
 
 const BROWSER_START: u64 = 1_000;
 const WALL_START: u64 = 10_000;
+const BUILD: &[u8] = b"bridge-test-build";
+const LOG_BYTES: u32 = 16 * 1024; // Room for the finite bridge fixtures.
 const APPLICATION_ID: u32 = 73;
 
 fn at(nanos: u64) -> Time {
@@ -24,7 +26,7 @@ fn outgoing(bridge: &mut Bridge) -> ToWorld {
 }
 
 fn bridge(exchanges: u32, speed: u32) -> Bridge {
-    let mut bridge = Bridge::new(start(), exchanges, Speed(speed), at(BROWSER_START));
+    let mut bridge = Bridge::new(start(), BUILD, Limits { exchanges, log: LOG_BYTES }, Speed(speed), at(BROWSER_START));
     assert_eq!(outgoing(&mut bridge), ToWorld::Start(start()));
     assert_eq!(outgoing(&mut bridge), ToWorld::Pace(Speed(speed)));
     assert_eq!(bridge.outgoing(), None);
@@ -83,7 +85,7 @@ fn open_stream(bridge: &mut Bridge, bound: u32) {
 
 #[test]
 fn the_start_is_the_first_message() {
-    let mut bridge = Bridge::new(start(), 1, Speed(10), at(BROWSER_START));
+    let mut bridge = Bridge::new(start(), BUILD, Limits { exchanges: 1, log: LOG_BYTES }, Speed(10), at(BROWSER_START));
     assert_eq!(bridge.now(at(BROWSER_START + 100)), (Time::ZERO, Wall::from_nanos(WALL_START)));
     assert_eq!(bridge.timer(at(1)), None);
     assert_eq!(outgoing(&mut bridge), ToWorld::Start(start()));
@@ -248,6 +250,7 @@ fn the_clock_follows_the_worlds_messages() {
 
     let clock =
         Clock { now: at(200), wall: Wall::from_nanos(WALL_START + 200), idle: true, due: Some(at(260)), ..lagging };
+    send(&mut bridge, &exchange());
     let message = ToPage { clock, said: Said::Stamp(Stamp { step: 8, instant: at(200) }) };
     assert_eq!(
         bridge.incoming(&encode_to_page(&message), at(BROWSER_START + 20)),
@@ -304,6 +307,7 @@ fn a_pace_selected_while_hidden_waits_for_showing() {
 #[test]
 fn lines_stamps_stop_and_failure_are_heard() {
     let mut bridge = bridge(1, 1);
+    send(&mut bridge, &exchange());
     let line =
         || Line { stream: Output::Error, process: b"server".as_slice().into(), line: b"words".as_slice().into() };
     let stamp = Stamp { step: 19, instant: at(31) };
@@ -392,4 +396,72 @@ fn a_pace_change_preserves_the_instant_and_moves_the_timer() {
     assert_eq!(bridge.now(at(BROWSER_START + 100)), (at(122), Wall::from_nanos(WALL_START + 122)));
     assert_eq!(bridge.timer(at(123)), None);
     assert_eq!(bridge.outgoing(), None);
+}
+
+#[test]
+fn the_log_records_duties_as_sent_and_the_world_as_it_said() {
+    use crate::bridge::log::{End, Fold, read};
+    let mut bridge = bridge(1, 1);
+    let mut duties = Vec::new();
+    bridge.send(&exchange());
+    duties.push(outgoing(&mut bridge));
+    // Refusal at the page's entrance sends no duty.
+    bridge.send(&Exchange { id: APPLICATION_ID + 1, ..exchange() });
+    bridge.abandon(APPLICATION_ID);
+    duties.push(outgoing(&mut bridge));
+    bridge.stream(open(3));
+    duties.push(outgoing(&mut bridge));
+    bridge.read_on();
+    duties.push(outgoing(&mut bridge));
+    bridge.stream(StreamDuty::Close);
+    duties.push(outgoing(&mut bridge));
+    bridge.pace(Speed(0), at(BROWSER_START));
+    assert_eq!(outgoing(&mut bridge), ToWorld::Pace(Speed(0)));
+    let stamp = Stamp { step: 7, instant: at(100) };
+    let line = Said::Line(Line {
+        process: b"server".as_slice().into(),
+        stream: Output::Standard,
+        line: b"hello".as_slice().into(),
+    });
+    let mut fold = Fold::default();
+    fold.said(&line);
+    let first_digest = fold.take();
+    let empty_digest = fold.take();
+    incoming(&mut bridge, line);
+    for _ in &duties {
+        incoming(&mut bridge, Said::Stamp(stamp));
+    }
+    let terminal = Said::Stopped;
+    fold.said(&terminal);
+    let end_digest = fold.take();
+    incoming(&mut bridge, terminal);
+    let log = read(&bridge.log()).unwrap();
+    assert_eq!(log.build.as_ref(), BUILD);
+    assert_eq!(log.start, start());
+    assert_eq!(log.inputs.len(), duties.len());
+    for (at, (input, duty)) in log.inputs.iter().zip(duties).enumerate() {
+        assert_eq!(ToWorld::Duty(input.duty.clone()), duty);
+        assert_eq!(input.stamp, stamp);
+        assert_eq!(input.digest, if at == 0 { first_digest } else { empty_digest });
+    }
+    assert_eq!(log.end, End::Said(end_digest));
+}
+
+#[test]
+fn a_dropped_stale_report_is_still_folded() {
+    use crate::bridge::log::{Fold, read};
+    let mut bridge = bridge(1, 1);
+    let ticket = send(&mut bridge, &exchange());
+    incoming(&mut bridge, Said::Stamp(Stamp { step: 0, instant: Time::ZERO }));
+    bridge.abandon(APPLICATION_ID);
+    outgoing(&mut bridge);
+    incoming(&mut bridge, Said::Stamp(Stamp { step: 1, instant: Time::ZERO }));
+    let stale = answer(ticket, b"old");
+    let mut fold = Fold::default();
+    fold.said(&stale);
+    assert_eq!(incoming(&mut bridge, stale), Heard::Nothing);
+    send(&mut bridge, &exchange());
+    incoming(&mut bridge, Said::Stamp(Stamp { step: 2, instant: Time::ZERO }));
+    let log = read(&bridge.log()).unwrap();
+    assert_eq!(log.inputs[2].digest, fold.take());
 }

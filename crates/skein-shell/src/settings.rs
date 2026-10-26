@@ -1,6 +1,7 @@
 //! A command's settings, their sources, help and refusals (shell.md, 6.5).
 
 use std::fmt;
+#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
 type EnvironmentEntry = (Box<[u8]>, Box<[u8]>);
@@ -276,6 +277,7 @@ pub fn help(settings: &Settings, out: &mut Vec<u8>) {
 
 /// The process's arguments after its program name, as bytes.
 #[must_use]
+#[cfg(unix)]
 pub fn arguments() -> Box<[Box<[u8]>]> {
     std::env::args_os().skip(1).map(|argument| Box::from(argument.as_bytes())).collect()
 }
@@ -283,6 +285,7 @@ pub fn arguments() -> Box<[Box<[u8]>]> {
 /// The process's environment, as bytes, in the kernel's order.
 #[must_use]
 #[expect(clippy::type_complexity, reason = "shell.md, 6.5 returns byte environment pairs without a wrapper type")]
+#[cfg(unix)]
 pub fn environment() -> Box<[(Box<[u8]>, Box<[u8]>)]> {
     std::env::vars_os().map(|(key, value)| (Box::from(key.as_bytes()), Box::from(value.as_bytes()))).collect()
 }
