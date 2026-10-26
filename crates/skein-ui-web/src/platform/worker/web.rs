@@ -17,15 +17,33 @@ pub struct Worker<R> {
     _error: Closure<dyn FnMut(web_sys::Event)>,
 }
 
-struct Shared<R> {
-    bridge: RefCell<Bridge>,
+/// Ends the world's worker from anywhere, a panic hook among them: it
+/// borrows nothing the platform's calls borrow (playground.md, 7).
+#[derive(Clone)]
+pub struct Stop {
+    state: Rc<StopState>,
+}
+
+struct StopState {
     worker: Option<web_sys::Worker>,
-    inbox: Rc<Inbox<R>>,
-    heard: fn(Heard) -> R,
-    due: fn() -> R,
     ended: Cell<bool>,
     deadline: Cell<Option<Time>>,
     timer: Cell<Option<i32>>,
+}
+
+impl Stop {
+    /// Idempotent; after it, nothing more is heard, as after `Worker::end`.
+    pub fn stop(&self) {
+        self.state.end();
+    }
+}
+
+struct Shared<R> {
+    bridge: RefCell<Bridge>,
+    stop: Rc<StopState>,
+    inbox: Rc<Inbox<R>>,
+    heard: fn(Heard) -> R,
+    due: fn() -> R,
     timeout: Closure<dyn FnMut()>,
 }
 
@@ -52,13 +70,15 @@ impl<R: 'static> Worker<R> {
             let weak = weak.clone();
             Shared {
                 bridge: RefCell::new(Bridge::new(start, exchanges, speed, platform::clocks().0)),
-                worker,
+                stop: Rc::new(StopState {
+                    worker,
+                    ended: Cell::new(false),
+                    deadline: Cell::new(None),
+                    timer: Cell::new(None),
+                }),
                 inbox,
                 heard,
                 due,
-                ended: Cell::new(false),
-                deadline: Cell::new(None),
-                timer: Cell::new(None),
                 timeout: Closure::new(move || {
                     if let Some(shared) = weak.upgrade() {
                         shared.fire();
@@ -89,7 +109,7 @@ impl<R: 'static> Worker<R> {
         document
             .add_event_listener_with_callback("visibilitychange", visibility.as_ref().unchecked_ref())
             .expect("visibility listener");
-        if let Some(worker) = &shared.worker {
+        if let Some(worker) = &shared.stop.worker {
             worker.set_onmessage(Some(message.as_ref().unchecked_ref()));
             worker.set_onerror(Some(error.as_ref().unchecked_ref()));
             shared.visibility(document.hidden());
@@ -101,7 +121,7 @@ impl<R: 'static> Worker<R> {
 
     /// The frame's pace from now on.
     pub fn pace(&self, speed: Speed) {
-        if self.shared.ended.get() {
+        if self.shared.stop.ended.get() {
             return;
         }
         self.shared.bridge.borrow_mut().pace(speed, platform::clocks().0);
@@ -126,24 +146,30 @@ impl<R: 'static> Worker<R> {
     /// The application's world deadline, converted again at every world
     /// message, pace change and visibility change. None cancels the timer.
     pub fn deadline(&self, deadline: Option<Time>) {
-        if !self.shared.ended.get() {
-            self.shared.deadline.set(deadline);
+        if !self.shared.stop.ended.get() {
+            self.shared.stop.deadline.set(deadline);
             self.shared.set_timer();
         }
     }
 
+    /// A handle for ending the worker without accessing the shell or bridge.
+    #[must_use]
+    pub fn stop(&self) -> Stop {
+        Stop { state: Rc::clone(&self.shared.stop) }
+    }
+
     /// Ends the worker at a failure, reset or new story. Nothing is heard after.
     pub fn end(&self) {
-        self.shared.end();
+        self.shared.stop.end();
     }
 }
 
 impl<R: 'static> Shared<R> {
     fn flush(&self) {
-        if self.ended.get() {
+        if self.stop.ended.get() {
             return;
         }
-        let worker = self.worker.as_ref().expect("live worker");
+        let worker = self.stop.worker.as_ref().expect("live worker");
         loop {
             let bytes = self.bridge.borrow_mut().outgoing();
             let Some(bytes) = bytes else { break };
@@ -157,7 +183,7 @@ impl<R: 'static> Shared<R> {
     }
 
     fn incoming(&self, value: &JsValue) {
-        if self.ended.get() {
+        if self.stop.ended.get() {
             return;
         }
         let bytes = if let Some(bytes) = value.dyn_ref::<js_sys::Uint8Array>() {
@@ -172,7 +198,7 @@ impl<R: 'static> Shared<R> {
         match heard {
             Ok(Heard::Nothing) => self.set_timer(),
             Ok(Heard::Failed { words }) => {
-                self.end();
+                self.stop.end();
                 self.inbox.raise((self.heard)(Heard::Failed { words }));
             }
             Ok(heard) => {
@@ -184,15 +210,15 @@ impl<R: 'static> Shared<R> {
     }
 
     fn fail(&self, words: &[u8]) {
-        if !self.ended.get() {
-            self.end();
+        if !self.stop.ended.get() {
+            self.stop.end();
             self.inbox.raise((self.heard)(Heard::Failed { words: words.into() }));
         }
     }
 
     fn report(&self, report: Option<Report>) {
         self.flush();
-        if !self.ended.get()
+        if !self.stop.ended.get()
             && let Some(report) = report
         {
             self.inbox.raise((self.heard)(Heard::Report(report)));
@@ -200,7 +226,7 @@ impl<R: 'static> Shared<R> {
     }
 
     fn visibility(&self, hidden: bool) {
-        if self.ended.get() {
+        if self.stop.ended.get() {
             return;
         }
         self.bridge.borrow_mut().visibility(hidden, platform::clocks().0);
@@ -209,15 +235,15 @@ impl<R: 'static> Shared<R> {
     }
 
     fn set_timer(&self) {
-        self.clear_timer();
-        if self.ended.get() {
+        self.stop.clear_timer();
+        if self.stop.ended.get() {
             return;
         }
-        let at = self.deadline.get().and_then(|deadline| self.bridge.borrow().timer(deadline));
+        let at = self.stop.deadline.get().and_then(|deadline| self.bridge.borrow().timer(deadline));
         if let Some(at) = at {
             let nanos = at.saturating_since(platform::clocks().0).as_nanos();
             let millis = i32::try_from(nanos.div_ceil(1_000_000)).unwrap_or(i32::MAX);
-            self.timer.set(Some(
+            self.stop.timer.set(Some(
                 web_sys::window()
                     .expect("browser window")
                     .set_timeout_with_callback_and_timeout_and_arguments_0(
@@ -230,23 +256,23 @@ impl<R: 'static> Shared<R> {
     }
 
     fn fire(&self) {
-        self.timer.set(None);
-        if self.ended.get() {
+        self.stop.timer.set(None);
+        if self.stop.ended.get() {
             return;
         }
-        let at = self.deadline.get().and_then(|deadline| self.bridge.borrow().timer(deadline));
+        let at = self.stop.deadline.get().and_then(|deadline| self.bridge.borrow().timer(deadline));
         if let Some(at) = at {
             if at > platform::clocks().0 {
                 self.set_timer();
                 return;
             }
-            self.deadline.set(None);
+            self.stop.deadline.set(None);
             self.inbox.raise((self.due)());
         }
     }
 }
 
-impl<R> Shared<R> {
+impl StopState {
     fn clear_timer(&self) {
         if let Some(timer) = self.timer.take() {
             web_sys::window().expect("browser window").clear_timeout_with_handle(timer);
@@ -281,28 +307,28 @@ impl<R: 'static> platform::Platform for Worker<R> {
     }
 
     fn send(&mut self, exchange: &crate::fetch::Exchange) {
-        if !self.shared.ended.get() {
+        if !self.shared.stop.ended.get() {
             let report = self.shared.bridge.borrow_mut().send(exchange);
             self.shared.report(report);
         }
     }
 
     fn abandon(&mut self, exchange: u32) {
-        if !self.shared.ended.get() {
+        if !self.shared.stop.ended.get() {
             self.shared.bridge.borrow_mut().abandon(exchange);
             self.shared.flush();
         }
     }
 
     fn read_on(&mut self) {
-        if !self.shared.ended.get() {
+        if !self.shared.stop.ended.get() {
             let report = self.shared.bridge.borrow_mut().read_on();
             self.shared.report(report);
         }
     }
 
     fn navigate(&mut self, to: &[u8]) {
-        if !self.shared.ended.get() && super::navigable(to) {
+        if !self.shared.stop.ended.get() && super::navigable(to) {
             let to = std::str::from_utf8(to).expect("visible ASCII path");
             web_sys::window()
                 .expect("browser window")
@@ -314,7 +340,7 @@ impl<R: 'static> platform::Platform for Worker<R> {
     }
 
     fn stream(&mut self, duty: StreamDuty) {
-        if !self.shared.ended.get() {
+        if !self.shared.stop.ended.get() {
             let report = self.shared.bridge.borrow_mut().stream(duty);
             self.shared.report(report);
         }
@@ -323,7 +349,7 @@ impl<R: 'static> platform::Platform for Worker<R> {
 
 impl<R> Drop for Worker<R> {
     fn drop(&mut self) {
-        self.shared.end();
+        self.shared.stop.end();
         let _removed = self
             .document
             .remove_event_listener_with_callback("visibilitychange", self.visibility.as_ref().unchecked_ref());

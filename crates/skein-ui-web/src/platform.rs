@@ -6,7 +6,7 @@ pub mod worker;
 #[cfg(target_arch = "wasm32")]
 pub use web::{Browser, clocks, facts};
 #[cfg(target_arch = "wasm32")]
-pub use worker::web::Worker;
+pub use worker::web::{Stop, Worker};
 
 pub trait Platform {
     fn read_all(&self) -> Vec<crate::store::Record>;
