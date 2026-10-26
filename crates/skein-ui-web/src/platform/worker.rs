@@ -3,7 +3,7 @@ use skein_lib::{Duration, Time, Wall};
 use std::collections::BTreeMap;
 
 mod bridge;
-pub use bridge::{Bridge, Heard};
+pub use bridge::{Bridge, Heard, Limits};
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 

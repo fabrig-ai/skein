@@ -1,18 +1,28 @@
 //! The page's portable end of the bridge (ui-web.md, 18).
 use super::{Clock, Memory, Speed, WorldClock};
 use crate::{
-    bridge::{Duty, Line, Malformed, Said, Stamp, Start, ToWorld, decode_to_page, encode_to_world},
+    bridge::{Duty, Line, Malformed, Said, Stamp, Start, ToWorld, decode_to_page, encode_to_world, log},
     fetch::{Exchange, Fetch, Report},
     transport::StreamDuty,
 };
 use skein_lib::{Time, Wall};
 use std::collections::VecDeque;
 
+/// The page's end's bounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    /// Exchanges in flight, the page's fetch bound.
+    pub exchanges: u32,
+    /// The most bytes the session log holds, including its terminal.
+    pub log: u32,
+}
+
 /// The page's end of the bridge to a world in a worker (ui-web.md, 18).
 /// The shell drains `outgoing` after each call, bounding the queued messages
 /// to what that call made. Stream opens wait for their terminals in order.
 pub struct Bridge {
     fetch: Fetch,
+    log: log::Writer,
     opens: VecDeque<u64>,
     clock: WorldClock,
     memory: Memory,
@@ -41,10 +51,11 @@ impl Bridge {
     /// followed by the initial pace. Until the world's first message, its
     /// clock is stepping at step zero, instant zero and the start's wall.
     #[must_use]
-    pub fn new(start: Start, exchanges: u32, speed: Speed, at: Time) -> Self {
+    pub fn new(start: Start, build: &[u8], limits: Limits, speed: Speed, at: Time) -> Self {
         let clock = Clock { step: 0, now: Time::ZERO, wall: start.start, idle: false, due: None };
         Self {
-            fetch: Fetch::new(exchanges),
+            fetch: Fetch::new(limits.exchanges),
+            log: log::Writer::new(build, &start, limits.log),
             opens: VecDeque::new(),
             clock: WorldClock::new(clock, at, speed),
             memory: Memory::default(),
@@ -62,7 +73,7 @@ impl Bridge {
         };
         let mut exchange = exchange.clone();
         exchange.id = u32::try_from(ticket).expect("a visit's tickets fit u32");
-        self.outgoing.push_back(ToWorld::Duty(Duty::Exchange(exchange)));
+        self.duty(Duty::Exchange(exchange));
         None
     }
 
@@ -70,7 +81,7 @@ impl Bridge {
     pub fn abandon(&mut self, exchange: u32) {
         if let Some(ticket) = self.fetch.abandon(exchange) {
             let exchange = u32::try_from(ticket).expect("a visit's tickets fit u32");
-            self.outgoing.push_back(ToWorld::Duty(Duty::Abandon { exchange }));
+            self.duty(Duty::Abandon { exchange });
         }
     }
 
@@ -81,7 +92,7 @@ impl Bridge {
             return Some(report);
         }
         if self.fetch.stream_ticket().is_some() {
-            self.outgoing.push_back(ToWorld::Duty(Duty::ReadOn));
+            self.duty(Duty::ReadOn);
         }
         None
     }
@@ -97,7 +108,7 @@ impl Bridge {
             }
             StreamDuty::Close => {}
         }
-        self.outgoing.push_back(ToWorld::Duty(Duty::Stream(duty)));
+        self.duty(Duty::Stream(duty));
         ended
     }
 
@@ -142,6 +153,7 @@ impl Bridge {
     /// then give what the page hears. Malformed bytes change no state.
     pub fn incoming(&mut self, bytes: &[u8], at: Time) -> Result<Heard, Malformed> {
         let message = decode_to_page(bytes)?;
+        self.log.said(&message.said);
         self.clock.report(message.clock, at);
         Ok(match message.said {
             Said::Slice => Heard::Nothing,
@@ -151,6 +163,17 @@ impl Bridge {
             Said::Stopped => Heard::Stopped,
             Said::Failed { words } => Heard::Failed { words },
         })
+    }
+
+    /// The session log as a file, as far as it goes.
+    #[must_use]
+    pub fn log(&self) -> Box<[u8]> {
+        self.log.file()
+    }
+
+    fn duty(&mut self, duty: Duty) {
+        self.log.sent(&duty);
+        self.outgoing.push_back(ToWorld::Duty(duty));
     }
 
     fn set_speed(&mut self, at: Time) {
