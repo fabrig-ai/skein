@@ -3,6 +3,16 @@
 
 use skein_lib::{Duration, Wall};
 
+/// Whether the world keeps its trace (simulator.md, 3): whole, as every
+/// world harness's run keeps it and replays from it, or off, for a world
+/// that runs as long as a page does and replays from a log of its
+/// inputs instead (world.md, 7).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Trace {
+    Whole,
+    Off,
+}
+
 /// How a world behaves. [`Config::calm`] is a well-behaved network;
 /// [`Config::chaos`] turns every fault on.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -23,6 +33,7 @@ pub struct Config {
     pub syn_timeout: Duration,
     /// The wall-clock time when the world starts, at [`skein_lib::Time::ZERO`].
     pub wall: Wall,
+    pub trace: Trace,
     pub faults: Faults,
 }
 
@@ -146,6 +157,7 @@ impl Config {
             max_fds: 1024,
             syn_timeout: Duration::from_secs(127),
             wall: START,
+            trace: Trace::Whole,
             faults: Faults::NONE,
         }
     }
@@ -159,6 +171,7 @@ impl Config {
             max_fds: 1024,
             syn_timeout: Duration::from_secs(127),
             wall: START,
+            trace: Trace::Whole,
             faults: Faults::CHAOS,
         }
     }

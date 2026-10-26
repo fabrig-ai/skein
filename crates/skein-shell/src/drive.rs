@@ -55,6 +55,7 @@ pub trait Host {
 
 /// Runs a service until its entities and kernel operations have settled.
 /// Its exit belongs to the host, after its final drain (shell.md, 13).
+#[cfg(unix)]
 pub fn drive(kernel: &mut crate::Kernel, clock: &crate::Clock, host: &mut impl Host) -> Exit {
     loop {
         kernel.reap(host.completions());

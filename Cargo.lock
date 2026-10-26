@@ -1259,6 +1259,7 @@ dependencies = [
 name = "skein-tls"
 version = "0.0.0"
 dependencies = [
+ "getrandom",
  "rustls",
  "skein-lib",
 ]
