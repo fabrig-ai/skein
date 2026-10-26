@@ -1,5 +1,5 @@
 use crate::replay::{Differs, Feed};
-use skein_lib::{Time, Wall, sha256::Sha256};
+use skein_lib::{Time, Wall};
 use skein_ui_web::bridge::{
     Duty, Line, Output, Said, Stamp, Start,
     log::{self, Writer},
@@ -106,7 +106,10 @@ fn a_differing_end_fails_at_the_end() {
     feed.take(stamp(2)).unwrap();
     feed.said(&line(b"reading"));
     feed.take(stamp(5)).unwrap();
-    assert_eq!(feed.finish(), Err(Differs { input: 2, logged, replayed: Sha256::new().finish(), build: BUILD.into() }));
+    assert_eq!(
+        feed.finish(),
+        Err(Differs { input: 2, logged, replayed: log::Fold::default().take(), build: BUILD.into() })
+    );
 }
 
 #[test]
