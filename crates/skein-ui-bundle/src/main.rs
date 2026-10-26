@@ -3,21 +3,24 @@ use std::process::ExitCode;
 
 use skein_ui_bundle::{Inputs, bundle, glue};
 
-const USAGE: &str = "usage: skein-ui-bundle --module PATH --name NAME --prefix /PREFIX/ --out DIR [--stylesheet PATH]… [--pictures OWNER-PREFIX=DIR]… [--page PATH] [--files DIR] [--noscript WORDS]";
+const USAGE: &str = "usage: skein-ui-bundle --module PATH --name NAME --prefix /PREFIX/ --out DIR [--worker-module PATH --worker-name NAME] [--stylesheet PATH]… [--pictures OWNER-PREFIX=DIR]… [--page PATH] [--files DIR] [--noscript WORDS]";
 
 #[derive(Debug, PartialEq, Eq)]
 struct Arguments {
     module: PathBuf,
+    worker_module: Option<PathBuf>,
     out: PathBuf,
     inputs: Inputs,
 }
 
 fn arguments(args: &[String]) -> Result<Arguments, &'static str> {
     let mut module = None;
+    let mut worker_module = None;
     let mut out = None;
     let mut name = None;
     let mut prefix = None;
     let mut inputs = Inputs {
+        worker: None,
         name: String::new(),
         prefix: String::new(),
         stylesheets: Vec::new(),
@@ -32,6 +35,8 @@ fn arguments(args: &[String]) -> Result<Arguments, &'static str> {
         let value = &pair[1];
         match pair[0].as_str() {
             "--module" if module.is_none() => module = Some(PathBuf::from(value)),
+            "--worker-module" if worker_module.is_none() => worker_module = Some(PathBuf::from(value)),
+            "--worker-name" if inputs.worker.is_none() && segment(value) => inputs.worker = Some(value.clone()),
             "--out" if out.is_none() => out = Some(PathBuf::from(value)),
             "--name" if name.is_none() && segment(value) => name = Some(value.clone()),
             "--prefix" if prefix.is_none() && valid_prefix(value) => prefix = Some(value.clone()),
@@ -49,7 +54,7 @@ fn arguments(args: &[String]) -> Result<Arguments, &'static str> {
             _ => return Err(USAGE),
         }
     }
-    if !pairs.remainder().is_empty() {
+    if !pairs.remainder().is_empty() || worker_module.is_some() != inputs.worker.is_some() {
         return Err(USAGE);
     }
     inputs.name = name.ok_or(USAGE)?;
@@ -57,7 +62,7 @@ fn arguments(args: &[String]) -> Result<Arguments, &'static str> {
     if let Some(words) = noscript {
         inputs.noscript = words;
     }
-    Ok(Arguments { module: module.ok_or(USAGE)?, out: out.ok_or(USAGE)?, inputs })
+    Ok(Arguments { module: module.ok_or(USAGE)?, worker_module, out: out.ok_or(USAGE)?, inputs })
 }
 
 fn segment(value: &str) -> bool {
@@ -77,8 +82,15 @@ fn valid_prefix(value: &str) -> bool {
 fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args = arguments(&args).map_err(str::to_owned)?;
-    let glue = glue(&args.module, &args.inputs.name).map_err(|error| error.to_string())?;
-    let digest = bundle(&args.inputs, &glue, &args.out).map_err(|error| error.to_string())?;
+    let page_glue = glue(&args.module, &args.inputs.name).map_err(|error| error.to_string())?;
+    let worker = args
+        .worker_module
+        .as_ref()
+        .zip(args.inputs.worker.as_ref())
+        .map(|(module, name)| glue(module, name))
+        .transpose()
+        .map_err(|error| error.to_string())?;
+    let digest = bundle(&args.inputs, &page_glue, worker.as_ref(), &args.out).map_err(|error| error.to_string())?;
     println!("{}", args.out.join(digest.to_string()).display());
     Ok(())
 }
@@ -116,6 +128,7 @@ mod tests {
     #[test]
     fn the_arguments_make_inputs() {
         let inputs = Inputs {
+            worker: None,
             name: "notes".into(),
             prefix: "/static/".into(),
             stylesheets: vec!["a.css".into(), "b.css".into()],
@@ -125,7 +138,10 @@ mod tests {
             noscript: "Enable scripts.".into(),
         };
         let complete: Vec<String> = REQUIRED.iter().chain(OPTIONAL).map(|word| (*word).into()).collect();
-        assert_eq!(arguments(&complete), Ok(Arguments { module: "notes.wasm".into(), out: "out".into(), inputs }));
+        assert_eq!(
+            arguments(&complete),
+            Ok(Arguments { module: "notes.wasm".into(), worker_module: None, out: "out".into(), inputs })
+        );
         for tail in [
             &["--unknown", "x"][..],
             &["--name", "second"],
@@ -143,5 +159,34 @@ mod tests {
             assert_eq!(arguments(&args), Err(USAGE), "{prefix}");
         }
         assert_eq!(arguments(&[]), Err(USAGE));
+    }
+    #[test]
+    fn the_worker_arguments_make_inputs_together() {
+        let args = REQUIRED
+            .iter()
+            .chain(["--worker-module", "world.wasm", "--worker-name", "world"].iter())
+            .map(|word| (*word).into())
+            .collect::<Vec<String>>();
+        let parsed = arguments(&args).expect("worker arguments");
+        assert_eq!(parsed.worker_module, Some("world.wasm".into()));
+        assert_eq!(parsed.inputs.worker.as_deref(), Some("world"));
+        for tail in [
+            vec!["--worker-module", "world.wasm"],
+            vec!["--worker-name", "world"],
+            vec!["--worker-module", "world.wasm", "--worker-name", "world", "--worker-module", "other.wasm"],
+            vec!["--worker-module", "world.wasm", "--worker-name", "world", "--worker-name", "other"],
+        ] {
+            let args = REQUIRED.iter().chain(tail.iter()).map(|word| (*word).into()).collect::<Vec<String>>();
+            assert_eq!(arguments(&args), Err(USAGE), "{tail:?}");
+        }
+        for name in ["", ".", "..", "../world", "world/child", "world name"] {
+            let args = REQUIRED
+                .iter()
+                .copied()
+                .chain(["--worker-module", "world.wasm", "--worker-name", name])
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            assert_eq!(arguments(&args), Err(USAGE), "{name}");
+        }
     }
 }
