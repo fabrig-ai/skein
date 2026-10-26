@@ -1,24 +1,13 @@
-use super::{Host, Machine, Outcome, Referee, World};
+use super::{Host, Machine, World};
 use skein_sim::Pid;
 
 /// The state digests a run ended with, for replay (testing.md, 5).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct StateDigests {
-    /// Each surviving process's, in admission order, as `Outcome::procs`.
+    /// Each surviving process's, in admission order, as `Finished::procs`.
     pub procs: Vec<Option<[u8; 32]>>,
     /// The fake machine's.
     pub machine: Option<[u8; 32]>,
-}
-
-impl<P: Host, M: Machine> Outcome<P, M> {
-    /// Reads each surviving process's digest, then the machine's.
-    #[must_use]
-    pub fn state_digests(&self) -> StateDigests {
-        StateDigests {
-            procs: self.procs.iter().map(Host::state_digest).collect(),
-            machine: self.machine.state_digest(),
-        }
-    }
 }
 
 /// Whether a world records state digests beside its boundary records.
@@ -30,7 +19,7 @@ pub enum Digests {
     Traced,
 }
 
-impl<P: Host, R: Referee<P>, M: Machine> World<P, R, M> {
+impl<P: Host, M: Machine, H: crate::Meter> World<P, M, H> {
     /// Sets the digest option before running the world.
     pub fn digests(&mut self, digests: Digests) {
         self.digests = digests;

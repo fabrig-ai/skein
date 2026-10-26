@@ -2,7 +2,7 @@
 //! examples.md, section 6; simulator.md, section 3). It keeps a bounded byte
 //! capture and translates host tokens beside its own writes. It knows no
 //! service policy. `PipeWriter::new` supplies a `Write` sink at startup;
-//! `PipeCapture::host` sends those bytes through the host's actual pipe and
+//! `PipeCapture::host` sends those bytes through the host's pipe and
 //! delays its close until the tail has settled, in either backend.
 
 use alloc::rc::Rc;

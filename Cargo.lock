@@ -1243,6 +1243,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "skein-sim-world"
+version = "0.0.0"
+dependencies = [
+ "skein-io",
+ "skein-lib",
+ "skein-shell",
+ "skein-sim",
+]
+
+[[package]]
 name = "skein-throwaway-forgejo"
 version = "0.0.0"
 dependencies = [
@@ -1410,6 +1420,7 @@ dependencies = [
  "skein-lib",
  "skein-shell",
  "skein-sim",
+ "skein-sim-world",
 ]
 
 [[package]]
@@ -1424,6 +1435,7 @@ dependencies = [
  "skein-scratch",
  "skein-shell",
  "skein-sim",
+ "skein-sim-world",
  "skein-world",
 ]
 

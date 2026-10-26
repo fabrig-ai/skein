@@ -69,6 +69,9 @@ pub struct Script {
     /// Bytes it leaks in its first turn.
     leak: usize,
     worst: u64,
+    /// Calls to this script's iterate, including idle turns.
+    pub turns: u64,
+    printer: Option<skein_sim_world::Printer>,
 }
 
 /// The worst case a script declares: room for its queues, what it receives
@@ -94,7 +97,24 @@ impl Script {
             held: Vec::new(),
             leak: 0,
             worst: WORST,
+            turns: 0,
+            printer: None,
         }
+    }
+
+    /// Queues an input between steps, ready for the next turn.
+    pub fn give(&mut self, act: Act) {
+        self.acts.push_back(act);
+        self.pause = None;
+        self.closing = false;
+        self.done = false;
+    }
+
+    /// Writes a line across two turns through the shell's drain hook.
+    #[must_use]
+    pub fn printing(mut self, printer: skein_sim_world::Printer) -> Script {
+        self.printer = Some(printer);
+        self
     }
 
     /// Adds state for a replay test to distinguish.
@@ -211,6 +231,7 @@ impl Host for Script {
         Some(skein_lib::state_digest(&(&self.received, self.next, self.noted)))
     }
     fn iterate(&mut self, now: Time, _wall: Wall) {
+        self.turns += 1;
         if self.hog > 0 {
             self.held.push(bytes::zeroed(self.hog));
             self.hog = 0;
@@ -223,6 +244,17 @@ impl Host for Script {
             self.landed(now, &complete);
         }
         self.proceed(now);
+    }
+
+    fn drain(&mut self) {
+        use std::io::Write;
+        if let Some(printer) = &mut self.printer {
+            match self.turns {
+                1 => printer.write_all(b"ab").expect("printer has room"),
+                2 => printer.write_all(b"c\nd\n").expect("printer has room"),
+                _ => {}
+            }
+        }
     }
 
     fn completions(&mut self) -> &mut Queue<Complete> {

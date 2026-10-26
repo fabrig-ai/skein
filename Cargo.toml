@@ -134,6 +134,7 @@ skein-browser-world = { path = "tests/browser" }
 skein-fake-machine = { path = "crates/skein-fake-machine" }
 skein-fake-channel = { path = "testing/skein-fake-channel" }
 skein-fake-checkout = { path = "crates/skein-fake-checkout" }
+skein-sim-world = { path = "crates/skein-sim-world" }
 skein-world = { path = "testing/skein-world" }
 
 # The only dependencies from outside the workspace (programming-model.md,

@@ -36,26 +36,32 @@
 extern crate alloc;
 
 pub mod domain;
+#[cfg(unix)]
 pub mod end_to_end;
 pub mod files;
 mod heap;
-mod program;
+mod outcome;
+use skein_sim_world::program;
+#[cfg(unix)]
 pub mod real;
 mod referee;
+#[cfg(unix)]
 pub mod ring;
 pub mod stream;
+#[cfg(unix)]
 mod tree;
 mod world;
-mod writer_pipe;
 
 pub use heap::Memory;
-pub use program::{
-    HostedProgram, Inherited, Machine, NoMachine, StartupAppend, StartupAppends, StartupRoot, StartupRoots,
-};
+pub use outcome::Outcome;
 pub use referee::{Controls, Expectation, Expectations, LastWord, Referee};
 pub use skein_shell::{Host, drive};
-pub use world::{Cut, Digests, Killed, Outcome, StateDigests, World};
-pub use writer_pipe::{PipeCapture, PipeHost, PipeWriter};
+pub use skein_sim_world::{Cut, Digests, Killed, StateDigests};
+pub use skein_sim_world::{
+    HostedProgram, Inherited, Machine, NoMachine, StartupAppend, StartupAppends, StartupRoot, StartupRoots,
+};
+pub use skein_sim_world::{PipeCapture, PipeHost, PipeWriter};
+pub use world::World;
 
 /// Fails the world, loudly, with what it found: a world fails its test as
 /// the simulator does (simulator.md, 5).
