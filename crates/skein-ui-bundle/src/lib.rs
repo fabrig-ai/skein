@@ -21,6 +21,9 @@ pub const STYLESHEET: &[u8] = include_bytes!("../skein-ui.css");
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Inputs {
     pub name: String,
+    /// The worker module's name: its glue is `<worker>.js`, its module
+    /// `<worker>_bg.wasm`, and its starter `worker.js` (playground.md, 7).
+    pub worker: Option<String>,
     /// One or more segments, with one leading and one trailing slash.
     pub prefix: String,
     pub stylesheets: Vec<PathBuf>,
@@ -42,12 +45,24 @@ pub struct Glue {
 /// An input that could not be bundled.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    Type { file: PathBuf },
-    ReservedName { file: PathBuf },
-    SameName { file: PathBuf },
+    Type {
+        file: PathBuf,
+    },
+    ReservedName {
+        file: PathBuf,
+    },
+    SameName {
+        file: PathBuf,
+    },
     Glue,
-    NoMarker { page: PathBuf },
-    Io { path: PathBuf },
+    /// A worker named but its glue not given, or given with no name.
+    Worker,
+    NoMarker {
+        page: PathBuf,
+    },
+    Io {
+        path: PathBuf,
+    },
 }
 
 fn io<T>(path: &Path, result: std::io::Result<T>) -> Result<T, Refusal> {
@@ -55,7 +70,11 @@ fn io<T>(path: &Path, result: std::io::Result<T>) -> Result<T, Refusal> {
 }
 
 /// Replace `out` with the complete bundle, returning its directory's digest.
-pub fn bundle(inputs: &Inputs, glue: &Glue, out: &Path) -> Result<Digest, Refusal> {
+/// `worker` is given exactly when `inputs.worker` names a worker module.
+pub fn bundle(inputs: &Inputs, glue: &Glue, worker: Option<&Glue>, out: &Path) -> Result<Digest, Refusal> {
+    if inputs.worker.is_some() != worker.is_some() {
+        return Err(Refusal::Worker);
+    }
     let mut files = BTreeMap::new();
     files.insert("boot.js".into(), page::starter(&inputs.name));
     files.insert("skein-ui.css".into(), STYLESHEET.to_vec());
@@ -63,6 +82,17 @@ pub fn bundle(inputs: &Inputs, glue: &Glue, out: &Path) -> Result<Digest, Refusa
     insert(&mut files, format!("{}_bg.wasm", inputs.name), glue.wasm.clone(), Path::new(&inputs.name))?;
     for (path, bytes) in &glue.snippets {
         insert(&mut files, format!("snippets/{path}"), bytes.clone(), Path::new(path))?;
+    }
+    if let (Some(name), Some(worker)) = (&inputs.worker, worker) {
+        insert(&mut files, "worker.js".into(), page::starter(name), Path::new(name))?;
+        insert(&mut files, format!("{name}.js"), worker.js.clone(), Path::new(name))?;
+        insert(&mut files, format!("{name}_bg.wasm"), worker.wasm.clone(), Path::new(name))?;
+        for (path, bytes) in &worker.snippets {
+            let name = format!("snippets/{path}");
+            if files.get(&name) != Some(bytes) {
+                insert(&mut files, name, bytes.clone(), Path::new(path))?;
+            }
+        }
     }
     for path in &inputs.stylesheets {
         let name = path.file_name().and_then(|name| name.to_str()).ok_or_else(|| Refusal::Io { path: path.clone() })?;
@@ -140,6 +170,7 @@ impl fmt::Display for Refusal {
             Self::SameName { file } => write!(f, "duplicate bundle name: {}", file.display()),
             Self::NoMarker { page } => write!(f, "page has no {{bundle}} marker: {}", page.display()),
             Self::Io { path } => write!(f, "cannot read or write: {}", path.display()),
+            Self::Worker => f.write_str("worker name and glue must be given together"),
             Self::Glue => f.write_str("cannot generate module glue"),
         }
     }
