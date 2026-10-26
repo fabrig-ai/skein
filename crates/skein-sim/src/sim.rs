@@ -18,7 +18,7 @@ use core::net::SocketAddr;
 use skein_io::kernel::{Addr, Complete, Done, Error, Family, Fd, Op, ServiceSignal, Submit};
 use skein_lib::{Duration, Queue, Rng, Time, Token, Wall};
 
-use crate::config::Config;
+use crate::config::{Config, Trace};
 use crate::machine::{Call, Handle, Ticket};
 use crate::net::{
     EPHEMERAL_FIRST, EPHEMERAL_LAST, Fate, Listener, Socket, SocketId, State, Stream, bindable, loopback, mapped,
@@ -535,7 +535,10 @@ impl Sim {
     /// The trace as text, under the seed that replays it.
     #[must_use]
     pub fn render_trace(&self) -> String {
-        trace::render(self.seed, &self.trace)
+        match self.config.trace {
+            Trace::Whole => trace::render(self.seed, &self.trace),
+            Trace::Off => String::new(),
+        }
     }
 }
 
@@ -1616,7 +1619,10 @@ impl Sim {
     }
 
     fn record(&mut self, pid: Pid, event: Event) {
-        self.trace.push(Entry { at: self.now, pid, event });
+        match self.config.trace {
+            Trace::Whole => self.trace.push(Entry { at: self.now, pid, event }),
+            Trace::Off => {}
+        }
     }
 
     fn process(&self, pid: Pid) -> &Process {
@@ -1651,7 +1657,10 @@ impl Sim {
     #[expect(clippy::panic, reason = "the simulator fails the world on a broken invariant (simulator.md, 5)")]
     fn die(&self, what: &str) -> ! {
         let from = self.trace.len().saturating_sub(TAIL);
-        let tail = trace::render(self.seed, self.trace.get(from..).unwrap_or_default());
+        let tail = match self.config.trace {
+            Trace::Whole => trace::render(self.seed, self.trace.get(from..).unwrap_or_default()),
+            Trace::Off => format!("skein-sim seed {}: trace is off", self.seed),
+        };
         panic!("skein-sim at {} ns, {what}\n{tail}", self.now.as_nanos());
     }
 }

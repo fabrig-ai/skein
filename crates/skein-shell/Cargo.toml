@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 skein-lib.workspace = true
 skein-io.workspace = true
+
+[target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

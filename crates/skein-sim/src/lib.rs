@@ -120,7 +120,7 @@ mod net;
 mod sim;
 mod trace;
 
-pub use config::{Config, Faults};
+pub use config::{Config, Faults, Trace};
 pub use machine::{Answer, Ask, Call, Handle, Program, Reply, Ticket};
 pub use sim::{Pid, Sim};
 pub use trace::{Entry, Event, Fault, Summary, Text, render};
