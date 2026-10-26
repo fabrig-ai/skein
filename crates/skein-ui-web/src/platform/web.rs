@@ -40,6 +40,12 @@ impl<R: 'static> super::Platform for Browser<R> {
     fn send(&mut self, exchange: &crate::fetch::Exchange) {
         self.fetch.exchange(exchange);
     }
+    fn abandon(&mut self, exchange: u32) {
+        self.fetch.abandon(exchange);
+    }
+    fn read_on(&mut self) {
+        self.fetch.read_on();
+    }
     fn navigate(&mut self, to: &[u8]) {
         if !crate::navigation::allowed(to, cfg!(feature = "loopback-navigation")) {
             return;

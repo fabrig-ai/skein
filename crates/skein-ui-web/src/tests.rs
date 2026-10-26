@@ -1,3 +1,4 @@
+mod bridge;
 mod fixtures;
 mod mapping;
 mod page;
@@ -55,6 +56,8 @@ mod hidden;
 mod platform;
 mod store;
 mod transport;
+mod worker;
+mod worker_bridge;
 
 mod history;
 mod restart;
