@@ -158,6 +158,8 @@ fn every_message_carries_the_clock_at_its_slice() {
             wall: world.wall(),
             idle: !world.busy(),
             due: world.next_due(),
+            memory: 0,
+            slice: Duration::ZERO,
         };
         while let Some(message) = slices.outgoing() {
             assert_eq!(message.clock, expected);
@@ -168,6 +170,28 @@ fn every_message_carries_the_clock_at_its_slice() {
     }
     bare::finish(slices);
 }
+#[test]
+fn the_workers_measurements_reach_the_slices_queued_messages() {
+    let mut slices = bare::slices(16, Speed(0), None, 4);
+    for exchange in 1..=2 {
+        give(&mut slices, Duty::Abandon { exchange }, Time::ZERO);
+    }
+    slices.slice(Time::ZERO);
+    let memory = 65_536;
+    let duration = Duration::from_nanos(7);
+    slices.set_figures(memory, duration);
+    let mut stamps = 0;
+    while let Some(message) = slices.outgoing() {
+        assert_eq!(message.clock.memory, memory);
+        assert_eq!(message.clock.slice, duration);
+        if matches!(message.said, Said::Stamp(_)) {
+            stamps += 1;
+        }
+    }
+    assert_eq!(stamps, 2);
+    bare::finish(slices);
+}
+
 #[test]
 fn a_pace_change_banks_elapsed_time_at_the_old_speed() {
     let mut slices = bare::slices(16, Speed(2), Some(END), 4);

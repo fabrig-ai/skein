@@ -1,11 +1,11 @@
 //! The page's portable end of the bridge (ui-web.md, 18).
-use super::{Clock, Memory, Speed, WorldClock};
+use super::{Clock, Figures, Memory, Speed, WorldClock};
 use crate::{
     bridge::{Duty, Line, Malformed, Said, Stamp, Start, ToWorld, decode_to_page, encode_to_world, log},
     fetch::{Exchange, Fetch, Report},
     transport::StreamDuty,
 };
-use skein_lib::{Time, Wall};
+use skein_lib::{Duration, Time, Wall};
 use std::collections::VecDeque;
 
 /// The page's end's bounds.
@@ -25,6 +25,7 @@ pub struct Bridge {
     log: log::Writer,
     opens: VecDeque<u64>,
     clock: WorldClock,
+    figures: Figures,
     memory: Memory,
     outgoing: VecDeque<ToWorld>,
     speed: Speed,
@@ -52,12 +53,21 @@ impl Bridge {
     /// clock is stepping at step zero, instant zero and the start's wall.
     #[must_use]
     pub fn new(start: Start, build: &[u8], limits: Limits, speed: Speed, at: Time) -> Self {
-        let clock = Clock { step: 0, now: Time::ZERO, wall: start.start, idle: false, due: None };
+        let clock = Clock {
+            step: 0,
+            now: Time::ZERO,
+            wall: start.start,
+            idle: false,
+            due: None,
+            memory: 0,
+            slice: Duration::ZERO,
+        };
         Self {
             fetch: Fetch::new(limits.exchanges),
             log: log::Writer::new(build, &start, limits.log),
             opens: VecDeque::new(),
             clock: WorldClock::new(clock, at, speed),
+            figures: Figures::default(),
             memory: Memory::default(),
             outgoing: VecDeque::from([ToWorld::Start(start), ToWorld::Pace(speed)]),
             speed,
@@ -153,6 +163,8 @@ impl Bridge {
     /// then give what the page hears. Malformed bytes change no state.
     pub fn incoming(&mut self, bytes: &[u8], at: Time) -> Result<Heard, Malformed> {
         let message = decode_to_page(bytes)?;
+        self.figures.memory = self.figures.memory.max(message.clock.memory);
+        self.figures.slice = self.figures.slice.max(message.clock.slice);
         self.log.said(&message.said);
         self.clock.report(message.clock, at);
         Ok(match message.said {
@@ -169,6 +181,12 @@ impl Bridge {
     #[must_use]
     pub fn log(&self) -> Box<[u8]> {
         self.log.file()
+    }
+
+    /// The high water of the world's memory and slice duration.
+    #[must_use]
+    pub fn figures(&self) -> Figures {
+        self.figures
     }
 
     fn duty(&mut self, duty: Duty) {

@@ -27,6 +27,8 @@ pub struct Slices<C: Composition> {
     duties: VecDeque<Duty>,
     outgoing: VecDeque<ToPage>,
     stopped: bool,
+    memory: u64,
+    duration: Duration,
 }
 
 impl<C: Composition> Slices<C> {
@@ -51,6 +53,8 @@ impl<C: Composition> Slices<C> {
             duties: VecDeque::new(),
             outgoing: VecDeque::new(),
             stopped: false,
+            memory: 0,
+            duration: Duration::ZERO,
         }
     }
 
@@ -151,8 +155,19 @@ impl<C: Composition> Slices<C> {
         self.last.checked_add(Duration::from_nanos(elapsed)).map(|due| due.max(at))
     }
 
+    /// The browser's figures for the next messages, including queued slice
+    /// outputs. The worker supplies them after measuring the slice; native
+    /// callers leave them at zero.
+    pub fn set_figures(&mut self, memory: u64, slice: Duration) {
+        self.memory = memory;
+        self.duration = slice;
+    }
+
     pub fn outgoing(&mut self) -> Option<ToPage> {
-        self.outgoing.pop_front()
+        let mut message = self.outgoing.pop_front()?;
+        message.clock.memory = self.memory;
+        message.clock.slice = self.duration;
+        Some(message)
     }
 
     #[must_use]
@@ -180,6 +195,8 @@ impl<C: Composition> Slices<C> {
             wall: self.world.wall(),
             idle: !self.world.busy(),
             due: self.world.next_due(),
+            memory: self.memory,
+            slice: self.duration,
         }
     }
 }

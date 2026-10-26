@@ -20,6 +20,26 @@ pub struct Clock {
     pub idle: bool,
     /// Its next due instant, if any.
     pub due: Option<Time>,
+    /// The world's memory in bytes: the worker's WebAssembly memory, which
+    /// only grows (0 natively).
+    pub memory: u64,
+    /// The last slice's duration in browser time (zero natively).
+    pub slice: Duration,
+}
+
+/// The world's figures as the page has seen them (playground.md, 8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Figures {
+    /// The most memory any message's clock named.
+    pub memory: u64,
+    /// The longest slice any message's clock named.
+    pub slice: Duration,
+}
+
+impl Default for Figures {
+    fn default() -> Self {
+        Self { memory: 0, slice: Duration::ZERO }
+    }
 }
 
 /// World nanoseconds per browser nanosecond; zero pauses the clock.

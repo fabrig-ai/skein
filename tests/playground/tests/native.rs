@@ -1,4 +1,4 @@
-use skein_lib::Time;
+use skein_lib::{Duration, Time};
 use skein_playground::{native::Native, slices::Composition};
 use skein_playground_world::bare::{self, END, Visit, exchange, heard};
 use skein_ui_web::{
@@ -6,7 +6,7 @@ use skein_ui_web::{
     fetch::Report,
     platform::{
         Platform,
-        worker::{Heard, Speed},
+        worker::{Figures, Heard, Speed},
     },
     transport::StreamDuty,
 };
@@ -107,6 +107,20 @@ fn a_line_printed_in_the_world_is_heard_on_the_page() {
     assert!(heard(&mut page).iter().any(|heard| matches!(heard, Heard::Line(line) if line.process.as_ref() == b"scripted server" && line.line.as_ref() == b"a scripted line" && line.stream == skein_ui_web::bridge::Output::Standard)));
     finish(&mut page);
 }
+
+#[test]
+fn a_native_walk_has_zero_figures() {
+    let mut page = bare::native(Speed(0));
+    let zero = Figures { memory: 0, slice: Duration::ZERO };
+    assert_eq!(page.figures(), zero);
+    send(&mut page, 1, "/print");
+    page.run();
+    assert!(heard(&mut page).iter().any(|heard| matches!(heard, Heard::Line(_))));
+    assert_eq!(page.figures(), zero);
+    finish(&mut page);
+    assert_eq!(page.figures(), zero);
+}
+
 #[test]
 fn immediate_failures_and_stream_closes_keep_the_pages_order() {
     let mut page = bare::native(Speed(0));

@@ -6,7 +6,7 @@ use crate::{
     },
     store::{Record, Refused, Store},
 };
-use skein_lib::{Rng, Time, Wall};
+use skein_lib::{Duration, Rng, Time, Wall};
 
 const WORLD_START: u64 = 100;
 const BROWSER_START: u64 = 1_000;
@@ -17,7 +17,15 @@ fn instant(nanos: u64) -> Time {
     Time::from_nanos(nanos)
 }
 fn report(idle: bool, due: Option<u64>) -> Clock {
-    Clock { step: 0, now: instant(WORLD_START), wall: Wall::from_nanos(WALL_START), idle, due: due.map(instant) }
+    Clock {
+        step: 0,
+        now: instant(WORLD_START),
+        wall: Wall::from_nanos(WALL_START),
+        idle,
+        due: due.map(instant),
+        memory: 0,
+        slice: Duration::ZERO,
+    }
 }
 fn clock(speed: u32) -> WorldClock {
     WorldClock::new(report(true, None), instant(BROWSER_START), Speed(speed))
