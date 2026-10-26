@@ -17,7 +17,7 @@ skein-lib.workspace = true
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 js-sys.workspace = true
-web-sys = { workspace = true, features = ["Document", "Element", "Node", "NodeList", "Text", "HtmlCollection", "HtmlElement", "HtmlInputElement", "HtmlSelectElement", "HtmlOptionElement", "HtmlOptionsCollection", "HtmlTextAreaElement", "HtmlDialogElement", "Event", "EventTarget", "MouseEvent", "KeyboardEvent", "InputEvent", "ResizeObserver", "ResizeObserverEntry", "DomRect", "DomRectReadOnly", "Window", "Request", "RequestInit", "RequestCredentials", "RequestMode", "Response", "AbortController", "AbortSignal", "Headers", "Navigator", "Performance", "Crypto", "ReadableStream", "ReadableStreamDefaultReader", "Storage", "Location", "History", "PopStateEvent", "BeforeUnloadEvent", "ScrollRestoration"] }
+web-sys = { workspace = true, features = ["Document", "Element", "Node", "NodeList", "Text", "HtmlCollection", "HtmlElement", "HtmlInputElement", "HtmlSelectElement", "HtmlOptionElement", "HtmlOptionsCollection", "HtmlTextAreaElement", "HtmlDialogElement", "Event", "EventTarget", "MouseEvent", "KeyboardEvent", "InputEvent", "ResizeObserver", "ResizeObserverEntry", "DomRect", "DomRectReadOnly", "Window", "Request", "RequestInit", "RequestCredentials", "RequestMode", "Response", "AbortController", "AbortSignal", "Headers", "Navigator", "Performance", "Crypto", "ReadableStream", "ReadableStreamDefaultReader", "Storage", "Location", "History", "PopStateEvent", "BeforeUnloadEvent", "ScrollRestoration", "Worker", "WorkerOptions", "WorkerType", "MessageEvent"] }
 
 
 # Browser parts are ordinary Rust (ui-web.md, 5.1).
