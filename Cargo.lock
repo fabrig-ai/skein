@@ -1179,6 +1179,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "skein-playground"
+version = "0.0.0"
+dependencies = [
+ "skein-http",
+ "skein-io",
+ "skein-lib",
+ "skein-shell",
+ "skein-ui-web",
+]
+
+[[package]]
+name = "skein-playground-world"
+version = "0.0.0"
+dependencies = [
+ "skein-heap",
+ "skein-http",
+ "skein-io",
+ "skein-lib",
+ "skein-playground",
+ "skein-shell",
+ "skein-sim",
+ "skein-ui-web",
+ "skein-world",
+]
+
+[[package]]
 name = "skein-protocol-world"
 version = "0.0.0"
 dependencies = [

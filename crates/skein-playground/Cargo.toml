@@ -1,0 +1,26 @@
+[package]
+name = "skein-playground"
+description = "A visitor carrying the page transport into a simulated world"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skein-lib.workspace = true
+skein-io.workspace = true
+skein-http.workspace = true
+skein-shell.workspace = true
+skein-ui-web.workspace = true
+
+# The playground is ordinary Rust (playground.md, 2).
+[lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

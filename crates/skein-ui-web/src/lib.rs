@@ -17,6 +17,7 @@ pub use wasm_bindgen::prelude::wasm_bindgen;
 #[cfg(test)]
 mod tests;
 
+pub mod bridge;
 pub mod fetch;
 pub mod hidden;
 pub mod platform;
