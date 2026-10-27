@@ -22,7 +22,7 @@ fn a_root_tree_lists_files_and_directories_in_name_order() {
     assert!(more);
     let (second, more) = tree(&h, TreeOf::Commit(FIRST), 2, 2);
     assert_eq!(&*second[0].name, b"z.txt");
-    assert!(!more);
+    assert!(more, "a nonempty page is truncated when the whole tree exceeds the page size");
 }
 #[test]
 fn a_subtree_is_read_by_its_id() {
@@ -77,7 +77,7 @@ fn a_tree_is_paged_with_truncated() {
         (0, Some(b"a.txt".as_slice()), true),
         (1, Some(b"a.txt".as_slice()), true),
         (2, Some(b"docs".as_slice()), true),
-        (3, Some(b"z.txt".as_slice()), false),
+        (3, Some(b"z.txt".as_slice()), true),
         (4, None, false),
     ] {
         let (entries, more) = tree(&h, TreeOf::Commit(FIRST), page, 1);

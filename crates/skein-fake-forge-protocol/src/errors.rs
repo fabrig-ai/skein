@@ -19,6 +19,7 @@ pub fn answer(error: Error, route: Route, now: Time) -> Failure {
     let mut failure = Failure { status: 422, message: b"", retry_after: None };
     failure.status = match error {
         Error::Missing(What::Branch) if route == Route::DeleteBranch => 500,
+        Error::Missing(What::Branch) if route == Route::Dispatch => 400,
         Error::Missing(_) => 404,
         Error::Refused if route.is_git() => 403,
         Error::Refused if route == Route::Rerun => 400,

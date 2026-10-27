@@ -318,3 +318,11 @@ fn style_refusals_use_the_pinned_status_and_message() {
     let failure = crate::errors::for_request(a::Error::Conflict, &merge_update, Time::ZERO);
     assert_eq!((failure.status, failure.message), (409, b"merge failed because of conflict".as_slice()));
 }
+
+#[test]
+fn dispatch_of_a_missing_branch_is_400_and_a_missing_workflow_is_404() {
+    let dispatch =
+        Request::Dispatch { at: at(), workflow: boxed(b"gate.yml"), branch: boxed(b"absent"), inputs: Box::new([]) };
+    assert_eq!(crate::errors::for_request(a::Error::Missing(a::What::Branch), &dispatch, Time::ZERO).status, 400);
+    assert_eq!(crate::errors::for_request(a::Error::Missing(a::What::File), &dispatch, Time::ZERO).status, 404);
+}
