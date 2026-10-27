@@ -13,7 +13,7 @@ fn trees(p: &mut Probe<'_>) -> Result<()> {
     f.put(REPO, "main", "tests/two.rs", "child two\n")?;
     let head = p.head("tree-fixture-head", "main")?;
     let commit = p.get("tree-fixture-commit", &format!("{REPO}/git/commits/{head}"))?;
-    let root = text(commit.root().get("tree").get("sha"))?;
+    let root = text(commit.root().get("commit").get("tree").get("sha"))?;
     let name = "tree-commit-id-answers-root-tree";
     let by_commit = p.get(name, &format!("{REPO}/git/trees/{head}?page=1&per_page=2"))?;
     let by_tree = p.get("tree-root-id", &format!("{REPO}/git/trees/{root}?page=1&per_page=2"))?;
@@ -150,8 +150,8 @@ fn updates(p: &mut Probe<'_>) -> Result<()> {
         answer.status == 200
             && head != old
             && first.root().get("parents").nth(0).get("sha").is(&base)
-            && first.root().get("message").str().is_some_and(|m| m.trim_end() == "first.txt")
-            && second.root().get("message").str().is_some_and(|m| m.trim_end() == "second.txt"),
+            && first.root().get("commit").get("message").str().is_some_and(|m| m.trim_end() == "first.txt")
+            && second.root().get("commit").get("message").str().is_some_and(|m| m.trim_end() == "second.txt"),
         &answer,
     );
     let name = "update-rebase-containing-base-changes-nothing";
