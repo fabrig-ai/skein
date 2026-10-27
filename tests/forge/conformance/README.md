@@ -45,8 +45,8 @@ by `holds`, `fails` or `unchecked` lines. Pass `--runner` naming the
 pinned runner for Actions facts and their transcripts.
 The runner connects through its private token file. The base Actions fixture
 executes two inline host shell jobs, one succeeding and one failing. The artifact
-fixture fetches `https://code.forgejo.org/actions/upload-artifact@v3` on its host
-runner. Without a runner those facts remain unchecked. Webhook deliveries are recorded
+fixture uses a host-shell `run:` step and `curl` to speak the Actions runtime
+artifact protocol used by `upload-artifact@v3`; it fetches no action. Without a runner those facts remain unchecked. Webhook deliveries are recorded
 in `deliveries/<event-type>/{request,response}` with their own mask map;
 the listener holds its answer while status and mergeability probes run.
 
@@ -109,4 +109,7 @@ and `other`. Its scanned captures include the dispatch, run, jobs and job log;
 all artifacts, the `tests` filter, an absent name and an unknown run; and the ZIP
 download, including a redirect target when it stays on the fixture origin.
 The run read records the dispatch commit independently of the artifact listing.
+The upload creates an `actions_storage` container through `ACTIONS_RUNTIME_URL`,
+uploads the file with `Content-Range`, then finalizes its size. Authentication
+uses the step's `ACTIONS_RUNTIME_TOKEN`; captured curl diagnostics redact it.
 An upload failure stops recording with those supporting captures retained.
