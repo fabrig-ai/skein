@@ -469,6 +469,8 @@ fn operation(value: Operation) -> &'static [u8] {
         Operation::Reopen => b"reopen",
         Operation::DeleteBranch => b"delete_branch",
         Operation::Status => b"status",
+        Operation::Dispatch => b"dispatch",
+        Operation::Rerun => b"rerun",
         Operation::PutPage => b"put_page",
         Operation::DeletePage => b"delete_page",
         Operation::Clone => b"clone",

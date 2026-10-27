@@ -273,7 +273,14 @@ fn ci_statuses_keep_a_null_creator_before_and_after_a_success() {
         [(a::Check::Pending, b"\"status\":\"pending\"".as_slice()), (a::Check::Passed, b"\"status\":\"success\"")]
     {
         let answer = a::Answer::Checks(Box::new([a::CheckSummary {
-            status: a::Status { context: boxed(b"build"), state, author: 3, at: Time::ZERO },
+            status: a::Status {
+                description: Box::new([]),
+                link: Box::new([]),
+                context: boxed(b"build"),
+                state,
+                author: 3,
+                at: Time::ZERO,
+            },
             description: boxed(b"CI"),
             link: boxed(b"/org/repo/actions/runs/1/jobs/0"),
             job: None,
