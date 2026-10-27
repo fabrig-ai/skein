@@ -296,3 +296,19 @@ fn the_pinned_diverging_fast_forward_error_is_an_unknown_write_outcome() {
     round_request(plan.begin());
     assert_eq!(plan.answer(500, &body), Step::Done(Err(Error::Timeout)));
 }
+
+#[test]
+fn runs_filter_workflows_locally_but_more_counts_the_providers_rows() {
+    let matching = wire_run();
+    let mut unrelated = matching.clone();
+    unrelated.id = 8;
+    unrelated.workflow = Box::from(*b"other.yaml");
+    let body = server_answer(&server::Answer::Runs { total_count: 2, runs: Box::new([unrelated.clone(), matching]) });
+    let mut plan = known(Op::Read(Read::Runs { workflow: Box::from(*b"ci.yaml"), commit: HEAD, page: 1 }));
+    round_request(plan.begin());
+    assert_eq!(plan.answer(200, &body), Step::Done(Ok(Answer::Runs { runs: Box::new([run_value()]), more: true })));
+    let body = server_answer(&server::Answer::Runs { total_count: 2, runs: Box::new([unrelated.clone(), unrelated]) });
+    let mut plan = known(Op::Read(Read::Runs { workflow: Box::from(*b"ci.yaml"), commit: HEAD, page: 2 }));
+    round_request(plan.begin());
+    assert_eq!(plan.answer(200, &body), Step::Done(Ok(Answer::Runs { runs: Box::new([]), more: true })));
+}
