@@ -1100,8 +1100,10 @@ name = "skein-oauth"
 version = "0.0.0"
 dependencies = [
  "skein-codec",
+ "skein-codegen",
  "skein-json",
  "skein-lib",
+ "skein-scratch",
  "skein-tls",
 ]
 

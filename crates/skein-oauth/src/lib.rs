@@ -13,6 +13,7 @@ mod json;
 mod jwt;
 mod keys;
 mod machine;
+#[path = "../patches/mod.rs"]
 pub mod patches;
 mod pkce;
 mod record;

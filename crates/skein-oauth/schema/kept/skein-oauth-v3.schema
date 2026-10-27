@@ -1,0 +1,15 @@
+family skein-oauth 3
+
+versioned record SavedToken {
+    key: u32
+    generation: u64
+    expires_at: u64                 # nanoseconds of wall time
+    access_token: secret 65536
+    refresh_token: option secret 65536
+    metadata: option bytes 65536
+    issued_client_id: option text 4096
+    granted_scopes: option text 4096
+    subject: option text 4096
+    id_token: option secret 65536
+    earliest_refresh_at: option u64 # nanoseconds of wall time
+}

@@ -13,5 +13,9 @@ skein-lib.workspace = true
 skein-json.workspace = true
 skein-tls.workspace = true
 
+[dev-dependencies]
+skein-codegen.workspace = true
+skein-scratch.workspace = true
+
 [lints]
 workspace = true
