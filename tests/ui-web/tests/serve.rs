@@ -32,6 +32,7 @@ fn the_server_serves_a_bundle_it_did_not_make() {
     let scratch = Scratch::new("example-serves-bundle");
     let out = scratch.path().join("bundle");
     let inputs = Inputs {
+        worker: None,
         name: "notes".into(),
         prefix: "/bundle/".into(),
         stylesheets: vec![],
@@ -41,7 +42,7 @@ fn the_server_serves_a_bundle_it_did_not_make() {
         noscript: "Scripts required.".into(),
     };
     let glue = Glue { js: b"export default function init() {}".to_vec(), wasm: b"\0asm".to_vec(), snippets: vec![] };
-    let digest = skein_ui_bundle::bundle(&inputs, &glue, &out).expect("bundle written");
+    let digest = skein_ui_bundle::bundle(&inputs, &glue, None, &out).expect("bundle written");
     let bundle = Bundle::read(&out).expect("server reads startup files");
     assert_eq!(bundle.digest, digest.to_string());
     let mut state = State::new();

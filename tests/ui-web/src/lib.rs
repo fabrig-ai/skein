@@ -46,6 +46,7 @@ pub fn chromium() -> std::path::PathBuf {
 pub fn fixture_bundle(scratch: &skein_scratch::Scratch, module: &[u8]) -> std::path::PathBuf {
     let out = scratch.path().join("bundle");
     let inputs = skein_ui_bundle::Inputs {
+        worker: None,
         name: "fixture".into(),
         prefix: "/bundle/".into(),
         stylesheets: vec![],
@@ -55,7 +56,7 @@ pub fn fixture_bundle(scratch: &skein_scratch::Scratch, module: &[u8]) -> std::p
         noscript: "Scripts required.".into(),
     };
     let glue = skein_ui_bundle::Glue { js: module.to_vec(), wasm: b"\0asm".to_vec(), snippets: vec![] };
-    skein_ui_bundle::bundle(&inputs, &glue, &out).expect("fixture bundle");
+    skein_ui_bundle::bundle(&inputs, &glue, None, &out).expect("fixture bundle");
     out
 }
 #[must_use]

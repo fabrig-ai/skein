@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Exchange {
     pub id: u32,
     pub path: Box<[u8]>,
