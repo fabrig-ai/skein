@@ -1,0 +1,8 @@
+POST /api/v1/repos/fixture/turn/actions/workflows/artifact.yaml/dispatches HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Content-Type: application/json
+Content-Length: 14
+Connection: close
+
+{"ref":"main"}
