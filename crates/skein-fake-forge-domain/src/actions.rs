@@ -101,7 +101,6 @@ pub(crate) fn rerun(domain: &mut Domain, id: Id<Repository>, commit: u64, contex
 }
 
 pub(crate) fn verdict(repository: &mut Repository, commit: u64, context: u32, state: Check) {
-    let failing = *repository.failing.get(usize::try_from(context).expect("bounded context")).expect("CI context");
     let kept = repository.runs.get_mut(&commit).expect("CI run");
     let job = kept.jobs.get_mut(context).expect("CI job");
     job.state = RunState::Completed;
@@ -110,7 +109,8 @@ pub(crate) fn verdict(repository: &mut Repository, commit: u64, context: u32, st
         Check::Failed => Conclusion::Failure,
         Check::Pending => unreachable!("a verdict ends a job"),
     });
-    job.steps = outcome_steps(&job.name, state, failing);
+    // Commit CI steps are derived from its context and outcome when read.
+    job.steps = Box::new([]);
     complete(kept);
 }
 
@@ -189,7 +189,18 @@ pub(crate) fn jobs(repository: &Repository, id: u64) -> Result<Answer, Error> {
     let kept = run(repository, id)?;
     let mut answer = List::with_capacity(kept.jobs.len());
     for job in &kept.jobs {
-        answer.push(job.clone()).expect("one entry per job");
+        let mut view = job.clone();
+        if kept.run.workflow.is_none() && job.state == RunState::Completed {
+            let state = match job.conclusion {
+                Some(Conclusion::Success) => Check::Passed,
+                Some(Conclusion::Failure) => Check::Failed,
+                None => unreachable!("a completed CI job has a conclusion"),
+            };
+            let failing =
+                *repository.failing.get(usize::try_from(job.index).expect("bounded context")).expect("CI context");
+            view.steps = outcome_steps(&job.name, state, failing);
+        }
+        answer.push(view).expect("one entry per job");
     }
     Ok(Answer::Jobs(answer.into_boxed()))
 }

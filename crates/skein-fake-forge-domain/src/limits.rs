@@ -130,32 +130,37 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     // Groups and their commits occupy the existing branch/commit budgets;
     // Group metadata is inline in Item and Pull, counted by their slots.
     let directories = limits.files.checked_mul(limits.name_bytes)?.checked_add(1)?;
-    let directory_scratch = Map::<Box<[u8]>, [u8; 20]>::worst_case(directories)?
-        .checked_add(times(directories, u64::from(limits.name_bytes))?)?
-        .checked_add(times(limits.files.checked_add(1)?, name_hash(limits)?)?)?
+    let directory_scratch = Map::<(u32, u32), [u8; 20]>::worst_case(directories)?
+        .checked_add(List::<((u32, u32), [u8; 20])>::worst_case(limits.files.checked_add(1)?)?)?
         .checked_add(Map::<Box<[u8]>, (crate::api::EntryKind, u32, [u8; 20])>::worst_case(limits.files)?)?
         .checked_add(times(limits.files, u64::from(limits.name_bytes))?)?
         .checked_add(times(limits.files, tree_entry(limits)?)?)?;
     let run_scratch = Map::<u64, u64>::worst_case(limits.statuses.checked_add(limits.workflow_runs)?)?
-        .checked_add(run_heap(limits)?)?
+        .checked_add(kept_run_heap(limits, limits.workflow_runs > 0)?)?
         .checked_add(job_heap(limits)?)?
         .checked_add(u64::from(limits.name_bytes).checked_mul(2)?)?;
     let queue_scratch = u64::from(limits.name_bytes).checked_mul(4)?;
-    let scratch = queue_scratch
-        .checked_add(directory_scratch)?
-        .checked_add(run_scratch)?
-        .checked_add(tree(limits)?.checked_mul(2)?)?
+    let merge_scratch = queue_scratch
+        .checked_add(tree(limits)?.checked_mul(2)?.max(changes(limits)?))?
         .checked_add(Set::<u64>::worst_case(limits.commits)?.checked_mul(2)?)?
         .checked_add(Queue::<u64>::worst_case(limits.commits)?)?
-        .checked_add(tree(limits)?)?
-        .checked_add(changes(limits)?)?
-        .checked_add(List::<StatusView>::worst_case(limits.contexts)?)?
         .checked_add(List::<u64>::worst_case(limits.commits)?)?
         .checked_add(List::<u64>::worst_case(limits.items)?)?
-        .checked_add(Set::<(Time, u64)>::worst_case(limits.items)?)?
         .checked_add(call(limits)?)?
-        .checked_add(item(limits)?)?
         .checked_add(observation(limits)?)?;
+    // Comparisons own changed files; replay owns trees instead. Item construction,
+    // status snapshots and listing indexes do not retain merge scratch.
+    let item_scratch = item(limits)?
+        .checked_add(List::<StatusView>::worst_case(limits.contexts)?)?
+        .checked_add(call(limits)?)?
+        .checked_add(observation(limits)?)?
+        .checked_add(Set::<(Time, u64)>::worst_case(limits.items)?)?
+        .checked_add(List::<u64>::worst_case(limits.items)?)?;
+    // Tree reads, run reads/dispatches and merges use separate scratch lifetimes.
+    let scratch = merge_scratch
+        .max(item_scratch)
+        .max(directory_scratch.checked_add(call(limits)?)?)
+        .max(run_scratch.checked_add(call(limits)?)?.checked_add(observation(limits)?)?);
     repositories
         .checked_add(commits)?
         .checked_add(calls)?
@@ -195,10 +200,10 @@ fn repository(limits: &Limits) -> Option<u64> {
         Map::<Box<[u8]>, Status>::worst_case(limits.contexts)?.checked_add(times(limits.contexts, context)?)?;
     let statuses = Map::<u64, Map<Box<[u8]>, Status>>::worst_case(limits.statuses)?
         .checked_add(times(limits.statuses, contexts)?)?;
-    let run_count = limits.statuses.checked_add(limits.workflow_runs)?;
     let runs = Map::<u64, RunKept>::worst_case(limits.statuses)?
         .checked_add(Map::<u64, RunKept>::worst_case(limits.workflow_runs)?)?
-        .checked_add(times(run_count, run_heap(limits)?)?)?;
+        .checked_add(times(limits.statuses, kept_run_heap(limits, false)?)?)?
+        .checked_add(times(limits.workflow_runs, kept_run_heap(limits, true)?)?)?;
     let workflow = u64::try_from(size_of::<Workflow>())
         .ok()?
         .checked_add(name.checked_mul(2)?)?
@@ -287,7 +292,10 @@ fn answer(limits: &Limits) -> Option<u64> {
     )?;
     let threads = times(limits.comments, comment)?;
     let pulls = times(limits.page_size, pull.checked_add(u64::try_from(size_of::<Pull>()).ok()?)?)?;
-    let runs = times(limits.page_size, u64::try_from(size_of::<Run>()).ok()?.checked_add(run_heap(limits)?)?)?;
+    let runs = times(
+        limits.page_size.min(limits.statuses.checked_add(limits.workflow_runs)?),
+        u64::try_from(size_of::<Run>()).ok()?.checked_add(run_payload(limits, limits.workflow_runs > 0)?)?,
+    )?;
     let jobs = times(limits.contexts, u64::try_from(size_of::<Job>()).ok()?.checked_add(job_heap(limits)?)?)?;
     let log = name.checked_mul(6)?.checked_add(91)?;
     let job = u64::try_from(size_of::<Job>()).ok()?.checked_add(job_heap(limits)?.checked_mul(2)?)?;
@@ -392,15 +400,14 @@ fn job_heap(limits: &Limits) -> Option<u64> {
         .checked_add(117)?
         .checked_add(times(3, u64::try_from(size_of::<Step>()).ok()?)?)
 }
-fn run_heap(limits: &Limits) -> Option<u64> {
-    u64::from(limits.name_bytes)
-        .checked_add(inputs(limits)?)?
+fn run_payload(limits: &Limits, dispatched: bool) -> Option<u64> {
+    if dispatched { u64::from(limits.name_bytes).checked_add(inputs(limits)?) } else { Some(0) }
+}
+fn kept_run_heap(limits: &Limits, dispatched: bool) -> Option<u64> {
+    run_payload(limits, dispatched)?
         .checked_add(List::<Job>::worst_case(limits.contexts)?)?
-        .checked_add(times(limits.contexts, job_heap(limits)?)?)
+        .checked_add(times(limits.contexts, if dispatched { job_heap(limits)? } else { u64::from(limits.name_bytes) })?)
 }
 fn tree_entry(limits: &Limits) -> Option<u64> {
     u64::from(limits.name_bytes).checked_add(u64::try_from(size_of::<TreeEntry>()).ok()?)
-}
-fn name_hash(limits: &Limits) -> Option<u64> {
-    u64::from(limits.name_bytes).checked_add(u64::try_from(size_of::<(Box<[u8]>, [u8; 20])>()).ok()?)
 }
