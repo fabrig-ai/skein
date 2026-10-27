@@ -27,7 +27,19 @@ fn a_job_with_no_failed_step_translates_to_its_whole_logs_end() {
     ]);
     let result = translate::answer(
         &asked,
-        forge::Answer::Job { job: forge::Job { id: 7, run: 3, index: 0, attempt: 2 }, steps },
+        forge::Answer::Job {
+            job: forge::Job {
+                id: 7,
+                run: 3,
+                index: 0,
+                attempt: 2,
+                name: Box::new([]),
+                state: forge::RunState::Completed,
+                conclusion: Some(forge::Conclusion::Failure),
+                steps: Box::new([]),
+            },
+            steps,
+        },
         &LIMITS,
     );
     assert_eq!(result, api::Answer::Job { attempt, step: None, log: Box::from(&b"cdef"[..]), truncated: true });

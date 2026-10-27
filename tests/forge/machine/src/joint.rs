@@ -150,6 +150,7 @@ impl Joint {
             &mut domain,
             &fake_config,
             raw::Setup {
+                workflows: Box::new([]),
                 id: 2,
                 name: Box::from(path),
                 default: Box::from(b"main".as_slice()),

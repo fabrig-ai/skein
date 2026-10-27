@@ -166,6 +166,7 @@ impl Heap for api::Read {
             Self::Protection { branch } | Self::Branch { branch } => branch.heap(),
             Self::File { path, .. } => path.heap(),
             Self::Pages { after } => after.heap(),
+            Self::Runs { workflow, .. } => workflow.heap(),
             Self::Page { name } => name.heap(),
             Self::Locate
             | Self::Item { .. }
@@ -178,7 +179,6 @@ impl Heap for api::Read {
             | Self::Checks { .. }
             | Self::Job { .. }
             | Self::Log { .. }
-            | Self::Runs { .. }
             | Self::Run { .. }
             | Self::Jobs { .. }
             | Self::Comments { .. }
@@ -188,6 +188,7 @@ impl Heap for api::Read {
             | Self::Statuses { .. }
             | Self::Permission { .. }
             | Self::ListingPermission
+            | Self::GitTree { .. }
             | Self::Tree { .. } => Some(0),
         }
     }
@@ -211,9 +212,11 @@ impl Heap for api::Write {
             | Self::RemoveReviewers { reviewers, .. }
             | Self::SetReviewers { reviewers, .. } => reviewers.heap(),
             Self::CreateBranch { branch, .. } | Self::DeleteBranch { branch } => branch.heap(),
-            Self::Status { context, .. } => context.heap(),
+            Self::Status { context, description, link, .. } => sum(&[context.heap(), description.heap(), link.heap()]),
+            Self::Dispatch { workflow, branch, inputs } => sum(&[workflow.heap(), branch.heap(), inputs.heap()]),
             Self::PutPage { name, content } => sum(&[name.heap(), content.heap()]),
-            Self::DeleteComment { .. }
+            Self::Rerun { .. }
+            | Self::DeleteComment { .. }
             | Self::Submit { .. }
             | Self::Enqueue { .. }
             | Self::Merge { .. }
@@ -243,7 +246,7 @@ impl Heap for api::Answer {
             Self::Comments(comments) => comments.heap(),
             Self::Runs(runs) => runs.heap(),
             Self::Jobs(jobs) => jobs.heap(),
-            Self::Job { steps, .. } => steps.heap(),
+            Self::Job { job, steps } => sum(&[job.heap(), steps.heap()]),
             Self::PullFiles { files, .. } => files.heap(),
             Self::Comparison { files, commits, .. } => sum(&[files.heap(), commits.heap()]),
             Self::Checks(checks) => checks.heap(),
@@ -255,12 +258,13 @@ impl Heap for api::Answer {
             Self::Dependencies(numbers) => numbers.heap(),
             Self::Labels(labels) => labels.heap(),
             Self::Tree(files) => files.heap(),
+            Self::GitTree { entries, .. } => entries.heap(),
             Self::File(bytes) => bytes.heap(),
             Self::Pages { pages, next } => sum(&[pages.heap(), next.heap()]),
             Self::Page(page) => sum(&[page.name.heap(), page.content.heap()]),
             Self::Cloned { default, branches } => sum(&[default.heap(), branches.heap()]),
-            Self::Run(_)
-            | Self::Located { .. }
+            Self::Run(run) => run.heap(),
+            Self::Located { .. }
             | Self::Permission(_)
             | Self::Commit(_)
             | Self::Created(_)
@@ -296,7 +300,7 @@ impl Heap for api::Review {
 }
 impl Heap for api::Status {
     fn heap(&self) -> Option<u64> {
-        self.context.heap()
+        sum(&[self.context.heap(), self.description.heap(), self.link.heap()])
     }
 }
 impl Heap for api::ChangedFile {
@@ -331,12 +335,22 @@ impl Heap for api::Head {
 }
 impl Heap for api::Run {
     fn heap(&self) -> Option<u64> {
-        Some(0)
+        sum(&[self.workflow.heap(), self.inputs.heap()])
     }
 }
 impl Heap for api::Job {
     fn heap(&self) -> Option<u64> {
-        Some(0)
+        sum(&[self.name.heap(), self.steps.heap()])
+    }
+}
+impl Heap for api::WorkflowInput {
+    fn heap(&self) -> Option<u64> {
+        sum(&[self.0.heap(), self.1.heap()])
+    }
+}
+impl Heap for api::TreeEntry {
+    fn heap(&self) -> Option<u64> {
+        self.name.heap()
     }
 }
 impl Heap for api::Step {
