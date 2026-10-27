@@ -12,6 +12,7 @@ use skein_throwaway_forgejo::Exchange;
 use std::{path::Path, time::Duration};
 
 mod actions;
+mod artifacts;
 mod git;
 const REPO: &str = "/api/v1/repos/fixture/turn";
 
@@ -68,6 +69,7 @@ pub(crate) fn record(f: &Fixture, out: &Path, mask: &mut Mask, secrets: &mut Sec
     let mut p = Probe { recorder: Recorder { f, out, mask, secrets }, facts: Vec::new() };
     git::record(&mut p)?;
     actions::record(&mut p)?;
+    artifacts::record(&mut p)?;
     Ok(p.facts)
 }
 
@@ -109,4 +111,11 @@ const NAMES: &[&str] = &[
     "actions-dispatch-job-steps-setup-first-completion-last",
     "actions-dispatch-input-reaches-job-log",
     "actions-runs-filter-workflow-and-head-newest-first",
+    "actions-artifact-upload-completes",
+    "actions-artifact-run-read-keeps-dispatch-head",
+    "actions-artifacts-name-selects-only-that-artifact",
+    "actions-artifacts-absent-name-is-empty",
+    "actions-artifacts-unknown-run-is-404",
+    "actions-artifact-zip-is-direct",
+    "actions-artifact-zip-keeps-one-failed-id-file",
 ];
