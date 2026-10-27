@@ -221,7 +221,7 @@ pub(super) fn runs_found(
 }
 pub(super) fn rerun_found(d: &mut Domain, env: &Env<Limits>, number: u64, run: &api::Run, out: &mut Queue<Request>) {
     let w = d.outbox.entries.get(&number).expect("rerun find entry");
-    let api::Write::Rerun { job: expected } = w.entry.effect.write else {
+    let api::Write::Rerun { attempt: expected } = w.entry.effect.write else {
         unreachable!("rerun lookup");
     };
     if run.commit == expected.head {
