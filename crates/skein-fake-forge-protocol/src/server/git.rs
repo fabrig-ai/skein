@@ -199,6 +199,8 @@ pub(super) fn down(
             | api::Answer::Labels(_)
             | api::Answer::GitTree { .. }
             | api::Answer::Tree(_)
+            | api::Answer::Artifact { .. }
+            | api::Answer::Commits { .. }
             | api::Answer::File(_)
             | api::Answer::Pages { .. }
             | api::Answer::Page(_)

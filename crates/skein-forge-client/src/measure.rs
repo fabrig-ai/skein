@@ -56,6 +56,11 @@ pub fn effect(effect: &Effect) -> Option<u64> {
 pub fn answer_rows(value: &Answer, rows: u32) -> bool {
     let rows = usize::try_from(rows).expect("row limit fits");
     match value {
+        Answer::Commits { commits, .. } => {
+            if commits.len() > rows { return false; }
+            for commit in commits { if commit.parents.len() > rows { return false; } }
+            true
+        }
         Answer::Run(run) => run.jobs.len() <= rows,
         Answer::Runs { runs, .. } => {
             if runs.len() > rows { return false; }

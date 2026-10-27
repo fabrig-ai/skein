@@ -129,7 +129,8 @@ pub(super) fn write(json: &mut Encoder, answer: &Answer) {
             }
             json.array_end();
         }
-        Answer::Tree { .. }
+        Answer::Commits { .. }
+        | Answer::Tree { .. }
         | Answer::Error(_)
         | Answer::Comment(_)
         | Answer::Status(_)

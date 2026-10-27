@@ -52,6 +52,7 @@ pub struct Job {
 pub(crate) struct Kept {
     pub(crate) run: Run,
     pub(crate) jobs: List<Job>,
+    pub(crate) artifact: Option<crate::api::Artifact>,
 }
 
 pub(crate) fn start(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, commit: u64, user: u64) {
@@ -86,7 +87,7 @@ pub(crate) fn start(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, 
         })
         .expect("one job per context");
     }
-    repository.runs.insert(commit, Kept { run, jobs }).expect("room for each retained CI commit");
+    repository.runs.insert(commit, Kept { run, jobs, artifact: None }).expect("room for each retained CI commit");
 }
 
 pub(crate) fn rerun(domain: &mut Domain, id: Id<Repository>, commit: u64, context: u32) {

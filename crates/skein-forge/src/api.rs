@@ -143,6 +143,10 @@ pub enum Read {
     Run { run: u64 },
     /// One tree, not recursively: a commit's root tree, or a tree by its id; pages from 1.
     Tree { object: Commit, page: u32 },
+    /// One file of a run's named artifact, stored or deflated, cut to `max_bytes` (forge.md, 3.2).
+    Artifact { run: u64, name: Box<[u8]>, max_bytes: u32 },
+    /// The commits after `before` up to `after`, oldest first, pages from 1.
+    Commits { before: Commit, after: Commit, page: u32 },
 }
 /// A typed forge write handed down from a committed outbox entry.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -236,6 +240,8 @@ pub enum Answer {
     Run(Run),
     /// One tree's entries, in name order.
     Tree { entries: Box<[Entry]>, more: bool },
+    /// One page of a range's commits, oldest first.
+    Commits { commits: Box<[CommitMessage]>, more: bool },
     /// Return done.
     Done,
 }
@@ -581,4 +587,12 @@ pub enum EntryKind {
     Blob,
     Tree,
     Commit,
+}
+
+/// One commit of a range, with its parents and its whole message.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct CommitMessage {
+    pub id: Commit,
+    pub parents: Box<[Commit]>,
+    pub message: Box<[u8]>,
 }

@@ -3,7 +3,7 @@ use crate::Limits;
 use skein_forge::api::{Answer, Op, Read, Write};
 pub(crate) fn op(value: &Op, l: &Limits) -> bool {
     match value {
-        Op::Read(Read::Job { max_bytes, .. } | Read::File { max_bytes, .. }) => {
+        Op::Read(Read::Job { max_bytes, .. } | Read::File { max_bytes, .. } | Read::Artifact { max_bytes, .. }) => {
             if *max_bytes == 0 || *max_bytes > l.answer_bytes {
                 return false;
             }
@@ -26,6 +26,7 @@ pub(crate) fn op(value: &Op, l: &Limits) -> bool {
 pub(crate) fn read(value: &Read) -> Option<u64> {
     let valid = match value {
         Read::File { path, .. } => !path.is_empty(),
+        Read::Artifact { name, .. } => !name.is_empty(),
         Read::Items { page, .. }
         | Read::Reviews { page, .. }
         | Read::Statuses { page, .. }
@@ -33,6 +34,7 @@ pub(crate) fn read(value: &Read) -> Option<u64> {
         | Read::PullFiles { page, .. }
         | Read::Collaborators { page }
         | Read::Runs { page, .. }
+        | Read::Commits { page, .. }
         | Read::Tree { page, .. } => *page != 0,
         Read::Locate { owner, name } => return skein_forge::locate::bytes(owner, name),
         Read::PullFor { .. }

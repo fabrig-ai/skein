@@ -832,6 +832,8 @@ pub fn worst_case(l: &Limits, s: &Shared, forges: Forges, owned_bytes: u64) -> O
 }
 
 // Forgejo plan boxes, operation staging, kept answer and decoded file/commit/user rows.
+// A range's bounded commit buffer overlaps its output page's native slots;
+// parents and messages share the retained answer's byte envelope.
 fn forgejo_call_heap(l: &Limits, s: &Shared) -> Option<u64> {
     use skein_lib::List;
     u64::try_from(size_of::<skein_forge::forgejo::plans::reads::Plan>())
@@ -847,6 +849,9 @@ fn forgejo_call_heap(l: &Limits, s: &Shared) -> Option<u64> {
         .checked_add(u64::from(s.rows).checked_mul(u64::from(l.string_bytes).checked_mul(2)?)?)?
         .checked_add(List::<api::File>::worst_case(s.rows)?)?
         .checked_add(List::<api::Commit>::worst_case(s.rows)?)?
+        .checked_add(List::<api::CommitMessage>::worst_case(
+            s.rows.min(s.answer_bytes.checked_div(u32::try_from(size_of::<api::CommitMessage>()).ok()?)?),
+        )?)?
         .checked_add(u64::from(l.string_bytes).checked_mul(4)?)?
         .checked_add(u64::from(l.string_bytes).checked_mul(u64::from(l.inner).checked_add(5)?)?)?
         .checked_add(

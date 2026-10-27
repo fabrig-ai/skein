@@ -305,3 +305,55 @@ fn a_jobs_steps_keep_their_numbers_names_and_statuses() {
         })
     );
 }
+
+#[test]
+fn commit_ranges_mirror_forgejos_order_and_keep_merge_parents() {
+    let request = Request::Compare { at: at(), before: routes::object(1), after: routes::object(3), files: false };
+    let input = a::Answer::Commits {
+        commits: Box::new([
+            a::CommitMessage { id: 2, parents: Box::new([1]), message: boxed(b"second\n") },
+            a::CommitMessage { id: 3, parents: Box::new([2, 1]), message: boxed(b"merge\n\nTrailer: kept\n") },
+        ]),
+    };
+    let expected = Answer::Commits {
+        commits: Box::new([
+            d::CommitMessage {
+                id: routes::object(3),
+                parents: Box::new([routes::object(2), routes::object(1)]),
+                message: boxed(b"merge\n\nTrailer: kept\n"),
+            },
+            d::CommitMessage {
+                id: routes::object(2),
+                parents: Box::new([routes::object(1)]),
+                message: boxed(b"second\n"),
+            },
+        ]),
+    };
+    assert_eq!(routes::op(&config(), &request), Ok(a::Op::Read(a::Read::Commits { before: 1, after: 3 })));
+    assert_eq!(answers::read(&config(), &crate::setup::Store::new(&limits()), &request, &input), Ok(expected));
+    assert_eq!(crate::route(&request), crate::Route::Commits);
+}
+
+#[test]
+fn full_messages_are_priced_before_the_protocol_clones_a_range() {
+    let limits = limits();
+    let input = a::Answer::Commits {
+        commits: Box::new([a::CommitMessage {
+            id: 3,
+            parents: Box::new([1, 2]),
+            message: bytes::zeroed(usize::try_from(limits.documents.writer.length).expect("fixture bound")),
+        }]),
+    };
+    let request = Request::Compare { at: at(), before: routes::object(1), after: routes::object(3), files: false };
+    assert_eq!(
+        crate::response::answer(
+            &config(),
+            &crate::setup::Store::new(&limits),
+            &limits,
+            &request,
+            &crate::response::Select::Document,
+            &input
+        ),
+        Err(a::Error::TooLarge)
+    );
+}

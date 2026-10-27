@@ -188,6 +188,8 @@ impl Plan {
             | api::Read::Runs { .. }
             | api::Read::Run { .. }
             | api::Read::Tree { .. }
+            | api::Read::Artifact { .. }
+            | api::Read::Commits { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => return Err(api::Error::InvalidAnswer),
         };
@@ -217,6 +219,8 @@ impl Plan {
             | api::Read::Runs { .. }
             | api::Read::Run { .. }
             | api::Read::Tree { .. }
+            | api::Read::Artifact { .. }
+            | api::Read::Commits { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => false,
         };
@@ -262,6 +266,8 @@ impl Plan {
             | api::Read::Runs { .. }
             | api::Read::Run { .. }
             | api::Read::Tree { .. }
+            | api::Read::Artifact { .. }
+            | api::Read::Commits { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => Err(api::Error::InvalidAnswer),
         }
@@ -294,6 +300,8 @@ impl Plan {
                 | api::Read::Runs { .. }
                 | api::Read::Run { .. }
                 | api::Read::Tree { .. }
+                | api::Read::Artifact { .. }
+                | api::Read::Commits { .. }
                 | api::Read::Job { .. }
                 | api::Read::File { .. } => return Err(api::Error::InvalidAnswer),
             },

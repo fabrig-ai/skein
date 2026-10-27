@@ -43,6 +43,12 @@ pub enum Sort {
 }
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Request {
+    /// A comparison read retaining parents and messages, with files disabled.
+    Commits {
+        at: Repo,
+        before: super::id::ObjectId,
+        after: super::id::ObjectId,
+    },
     /// Lists repositories in id order for an admin picker.
     RepoSearch {
         page: Page,

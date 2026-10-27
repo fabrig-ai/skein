@@ -60,6 +60,7 @@ pub(crate) fn answered(
         | Answer::Settings(_)
         | Answer::Collaborators { .. }
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Permission(_) => unreachable!("outbox operation has another answer shape"),
     }

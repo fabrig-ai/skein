@@ -125,6 +125,9 @@ fn dispatch_world() -> World {
     World::with_workflows(
         Settings::calm(47),
         Box::new([raw::Workflow {
+            fails: Box::new([]),
+            report: None,
+            select: None,
             file: Box::from(b"gate.yml".as_slice()),
             jobs: Box::new([Box::from(b"build".as_slice())]),
             latency_min: Duration::from_secs(1),

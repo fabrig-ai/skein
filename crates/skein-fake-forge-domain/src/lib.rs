@@ -84,3 +84,5 @@ pub use scenario::{
     advance, check, commit, commit_tree, grant, merge_commit, repository, set_failing, set_reachable, set_refusing,
     settings, unborn_repository,
 };
+
+mod reports;

@@ -85,6 +85,10 @@ fn read_op(read: &client::Read, l: &Limits) -> forge::Read {
             page: *page,
             limit: l.rows,
         },
+        client::Read::Artifact { run, name, .. } => forge::Read::Artifact { run: *run, name: name.clone() },
+        client::Read::Commits { before, after, .. } => {
+            forge::Read::Commits { before: number(*before), after: number(*after) }
+        }
         client::Read::Run { run } => forge::Read::Run { run: *run },
         client::Read::Tree { object, page } => forge::Read::GitTree {
             object: if commit(number(*object)) == *object {
@@ -232,6 +236,38 @@ pub fn error(error: forge::Error, now: Time) -> client::Error {
 )]
 pub fn answer(asked: &client::Op, answer: forge::Answer, l: &Limits) -> client::Answer {
     match answer {
+        forge::Answer::Artifact { commit: head, artifact } => {
+            let client::Op::Read(client::Read::Artifact { max_bytes, .. }) = asked else {
+                panic!("artifact read");
+            };
+            let bytes = artifact.bytes;
+            let kept = bytes.len().min(usize::try_from(*max_bytes).expect("byte bound fits"));
+            client::Answer::File {
+                head: commit(head),
+                path: artifact.path,
+                bytes: Box::from(&bytes[..kept]),
+                truncated: kept < bytes.len(),
+            }
+        }
+        forge::Answer::Commits { commits } => {
+            let client::Op::Read(client::Read::Commits { page, .. }) = asked else {
+                panic!("commits read");
+            };
+            let size = usize::try_from(l.rows).expect("page size fits");
+            let skip = usize::try_from(*page - 1).expect("page fits") * size;
+            let more = commits.len() > skip + size;
+            let commits = commits
+                .into_iter()
+                .skip(skip)
+                .take(size)
+                .map(|value| client::CommitMessage {
+                    id: commit(value.id),
+                    parents: value.parents.into_iter().map(commit).collect(),
+                    message: value.message,
+                })
+                .collect();
+            client::Answer::Commits { commits, more }
+        }
         forge::Answer::Located { id } => client::Answer::Located { repository: id },
         forge::Answer::Items { items, more, now } => {
             let mut rows = List::with_capacity(l.rows);
@@ -464,6 +500,8 @@ fn pull_answer(asked: &client::Op, pull: forge::Pull, l: &Limits) -> client::Ans
             | client::Read::Runs { .. }
             | client::Read::Run { .. }
             | client::Read::Tree { .. }
+            | client::Read::Artifact { .. }
+            | client::Read::Commits { .. }
             | client::Read::Job { .. }
             | client::Read::Protection { .. }
             | client::Read::Settings

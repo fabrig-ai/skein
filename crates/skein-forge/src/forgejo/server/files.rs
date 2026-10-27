@@ -98,8 +98,41 @@ fn file(json: &mut Encoder, value: &ChangedFile) {
     json.string(status(value.status));
     json.object_end();
 }
+#[expect(clippy::too_many_lines, reason = "the server encoder names every answer variant at its dispatch boundary")]
 pub(super) fn write(json: &mut Encoder, answer: &Answer) {
     match answer {
+        Answer::Commits { commits } => {
+            json.object_start();
+            json.key(b"total_commits");
+            json.unsigned(u64::try_from(commits.len()).expect("bounded comparison"));
+            json.key(b"commits");
+            json.array_start();
+            for commit in commits {
+                json.object_start();
+                json.key(b"sha");
+                json.string(&id::write(&commit.id));
+                json.key(b"parents");
+                json.array_start();
+                for parent in &commit.parents {
+                    json.object_start();
+                    json.key(b"sha");
+                    json.string(&id::write(parent));
+                    json.object_end();
+                }
+                json.array_end();
+                json.key(b"commit");
+                json.object_start();
+                json.key(b"message");
+                json.string(&commit.message);
+                json.object_end();
+                json.object_end();
+            }
+            json.array_end();
+            json.key(b"files");
+            json.array_start();
+            json.array_end();
+            json.object_end();
+        }
         Answer::Tree { entries, truncated } => {
             json.object_start();
             json.key(b"truncated");

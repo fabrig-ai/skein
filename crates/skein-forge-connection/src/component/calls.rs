@@ -463,7 +463,7 @@ pub(super) fn page_size(op: &api::Op, cap: u32, l: &Limits, s: &Shared) -> u32 {
             api::Read::Branches { .. } => Listing::Branches,
             api::Read::Collaborators { .. } => Listing::Collaborators,
             api::Read::PullFiles { .. } => Listing::PullFiles,
-            api::Read::Compare { .. } => Listing::Compare,
+            api::Read::Compare { .. } | api::Read::Commits { .. } => Listing::Compare,
             api::Read::Runs { .. } => Listing::Runs,
             api::Read::Tree { .. } => Listing::Tree,
             api::Read::Locate { .. }
@@ -474,6 +474,7 @@ pub(super) fn page_size(op: &api::Op, cap: u32, l: &Limits, s: &Shared) -> u32 {
             | api::Read::Permission { .. }
             | api::Read::File { .. }
             | api::Read::Run { .. }
+            | api::Read::Artifact { .. }
             | api::Read::Job { .. }
             | api::Read::Settings => return 1,
         },

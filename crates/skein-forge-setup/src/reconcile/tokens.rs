@@ -200,6 +200,7 @@ impl Tokens {
                 | Row::Pull(_)
                 | Row::File(_)
                 | Row::Commit(_)
+                | Row::CommitMessage(_)
                 | Row::Entry(_)
                 | Row::Run(_)
                 | Row::Job(_)

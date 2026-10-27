@@ -229,6 +229,7 @@ fn pull_answer(config: &Config, setup: &Store, request: &Request, value: &a::Pul
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }
@@ -321,6 +322,7 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }
@@ -378,6 +380,22 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
 #[expect(clippy::too_many_lines, reason = "each domain answer has an explicit Forgejo document projection")]
 pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answer) -> Result<Answer, a::Error> {
     match answer {
+        a::Answer::Commits { commits } => {
+            let mut out = List::with_capacity(u32::try_from(commits.len()).expect("domain bound"));
+            for value in commits.iter().rev() {
+                let mut parents = List::with_capacity(u32::try_from(value.parents.len()).expect("bounded parents"));
+                for id in &value.parents {
+                    parents.push(routes::object(*id)).expect("one id per parent");
+                }
+                out.push(d::CommitMessage {
+                    id: routes::object(value.id),
+                    parents: parents.into_boxed(),
+                    message: value.message.clone(),
+                })
+                .expect("one row per commit");
+            }
+            Ok(Answer::Commits { commits: out.into_boxed() })
+        }
         a::Answer::Settings(settings) => repository(config, request, settings),
         a::Answer::Items { items, .. } => {
             let mut out = List::with_capacity(u32::try_from(items.len()).expect("domain bound"));
@@ -476,6 +494,7 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
         | a::Answer::Dependencies(_)
         | a::Answer::Labels(_)
         | a::Answer::Tree(_)
+        | a::Answer::Artifact { .. }
         | a::Answer::File(_)
         | a::Answer::Pages { .. }
         | a::Answer::Page(_)
@@ -537,6 +556,7 @@ fn collaborators(
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }

@@ -69,6 +69,7 @@ pub fn op(value: &Op) -> Option<u64> {
 fn read(value: &Read) -> Option<u64> {
     match value {
         Read::Runs { workflow, .. } => bytes(workflow),
+        Read::Artifact { name, .. } => bytes(name),
         Read::Locate { owner, name } => bytes(owner)?.checked_add(bytes(name)?),
         Read::File { path, .. } => bytes(path),
         Read::Branches { prefix } => bytes(prefix),
@@ -76,6 +77,7 @@ fn read(value: &Read) -> Option<u64> {
         Read::Branch { branch } | Read::Protection { branch } => bytes(branch),
         Read::Run { .. }
         | Read::Tree { .. }
+        | Read::Commits { .. }
         | Read::Items { .. }
         | Read::Reviews { .. }
         | Read::Statuses { .. }
@@ -154,6 +156,7 @@ pub fn answer(value: &Answer) -> Option<u64> {
             }
             Some(held)
         }
+        Answer::Commits { commits, .. } => commit_messages(commits),
         Answer::Tree { entries, .. } => {
             let mut held = rows(entries.len(), ENTRY_BYTES)?;
             for entry in entries {
@@ -262,6 +265,14 @@ pub fn run(value: &api::Run) -> Option<u64> {
         if let Some(step) = &job.step {
             held = held.checked_add(bytes(&step.name)?)?;
         }
+    }
+    Some(held)
+}
+
+fn commit_messages(commits: &[api::CommitMessage]) -> Option<u64> {
+    let mut held = rows(commits.len(), size_of::<api::CommitMessage>())?;
+    for commit in commits {
+        held = held.checked_add(rows(commit.parents.len(), COMMIT_BYTES)?)?.checked_add(bytes(&commit.message)?)?;
     }
     Some(held)
 }

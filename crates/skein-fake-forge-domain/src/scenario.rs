@@ -20,7 +20,7 @@ use crate::store::{Repository, fit_names, fit_numbers, fits};
 /// commit of its tree, and returns that commit.
 pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
     let limits = &config.limits;
-    let Setup { id, name, default, tree, labels, checks, workflows, protection, hooked } = setup;
+    let Setup { id, name, default, tree, labels, checks, mut workflows, protection, hooked } = setup;
     assert_ne!(id, 0, "a repository's forge id is nonzero");
     for (_, existing) in &domain.names {
         let repository = domain.repositories.get(*existing).expect("a named repository");
@@ -38,6 +38,9 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
                 fits(path, limits.name_bytes).expect("a path within the limits");
                 fits(green, limits.content_bytes).expect("content within the limits");
             }
+            Cue::Tests { path } => {
+                fits(path, limits.name_bytes).expect("cue path fits");
+            }
             Cue::Message { fail } => {
                 fits(fail, limits.content_bytes).expect("a cue within the limits");
             }
@@ -53,7 +56,7 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
         "workflows within the limits"
     );
     let mut workflow_files = skein_lib::Set::with_capacity(limits.workflows);
-    for workflow in &workflows {
+    for workflow in &mut workflows {
         fits(&workflow.file, limits.name_bytes).expect("workflow file within the limits");
         assert!(workflow_files.insert(copy_of(&workflow.file)).expect("bounded workflows"), "unique workflow files");
         fit_names(&workflow.jobs, limits.contexts, limits).expect("workflow jobs within the limits");
@@ -73,11 +76,21 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
             );
             assert!(jobs.insert(copy_of(job)).expect("bounded jobs"), "unique job names");
         }
+        workflow.fails = crate::reports::normalize(&workflow.fails, limits).expect("failed ids fit");
+        if let Some(select) = &workflow.select {
+            fits(select, limits.name_bytes).expect("selection input fits");
+        }
+        if let Some(report) = &workflow.report {
+            fits(&report.artifact, limits.name_bytes).expect("artifact name fits");
+        }
         if let Some(cue) = &workflow.cue {
             match cue {
                 Cue::File { path, green } => {
                     fits(path, limits.name_bytes).expect("cue path fits");
                     fits(green, limits.content_bytes).expect("cue content fits");
+                }
+                Cue::Tests { path } => {
+                    fits(path, limits.name_bytes).expect("cue path fits");
                 }
                 Cue::Message { fail } => {
                     fits(fail, limits.content_bytes).expect("cue message fits");

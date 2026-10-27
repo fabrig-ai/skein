@@ -313,3 +313,93 @@ fn runs_filter_workflows_locally_but_more_counts_the_providers_rows() {
     round_request(plan.begin());
     assert_eq!(plan.answer(200, &body), Step::Done(Ok(Answer::Runs { runs: Box::new([]), more: true })));
 }
+
+fn range_limits() -> crate::forgejo::limits::Limits {
+    // A merge's two parents are the largest nested list in the range fixture.
+    crate::forgejo::limits::Limits { inner: 2, body_bytes: 23, ..limits() }
+}
+const MERGE: api::Commit = {
+    let mut id = [0; 32];
+    id[0] = 2;
+    id
+};
+fn range_values() -> [api::CommitMessage; 3] {
+    [
+        api::CommitMessage { id: BASE, parents: Box::new([]), message: Box::from(*b"first\n\nTrailer: first\n") },
+        api::CommitMessage { id: HEAD, parents: Box::new([BASE]), message: Box::from(*b"second\n") },
+        api::CommitMessage {
+            id: MERGE,
+            parents: Box::new([HEAD, BASE]),
+            message: Box::from(*b"merge\n\nTrailer: merged\n"),
+        },
+    ]
+}
+fn range_document() -> server::Answer {
+    // The fixture has three commits and at most two parents per commit.
+    const COMMITS: u32 = 3;
+    const PARENTS: u32 = 2;
+    let mut commits = skein_lib::List::with_capacity(COMMITS);
+    for value in range_values().into_iter().rev() {
+        let mut parents = skein_lib::List::with_capacity(PARENTS);
+        for id in &value.parents {
+            parents
+                .push(crate::forgejo::id::ObjectId { bytes: *id, format: crate::forgejo::id::ObjectFormat::Sha1 })
+                .expect("fixture parents");
+        }
+        commits
+            .push(d::CommitMessage {
+                id: crate::forgejo::id::ObjectId { bytes: value.id, format: crate::forgejo::id::ObjectFormat::Sha1 },
+                parents: parents.into_boxed(),
+                message: value.message,
+            })
+            .expect("fixture commits");
+    }
+    server::Answer::Commits { commits: commits.into_boxed() }
+}
+
+#[test]
+fn commits_reverse_before_paging_and_keep_merge_parents() {
+    let [first, second, merge] = range_values();
+    for (page, expected) in [
+        (1, Answer::Commits { commits: Box::new([first, second]), more: true }),
+        (2, Answer::Commits { commits: Box::new([merge]), more: false }),
+    ] {
+        let mut run =
+            Run::with_limits(range_limits(), BOUNDS, Op::Read(Read::Commits { before: BASE, after: HEAD, page }));
+        run.begin();
+        assert_eq!(run.answer(200, &server_answer(&range_document())), Step::Done(Ok(expected)));
+        run.assert_sent(&["GET /api/v1/repos/fixture/specimen/compare/0300000000000000000000000000000000000000...0100000000000000000000000000000000000000?files=false&verification=false"]);
+    }
+}
+#[test]
+fn a_commit_page_past_the_range_bound_is_refused() {
+    let mut run = known(Op::Read(Read::Commits { before: BASE, after: HEAD, page: ROWS }));
+    assert_eq!(run.begin(), Step::Done(Err(Error::TooLarge)));
+}
+#[test]
+fn commit_messages_fit_at_the_answer_bound() {
+    // Three native commit slots, three parent ids, and these whole messages.
+    const RANGE_BYTES: u32 = 192 + 96 + 22 + 7 + 23;
+    let mut run = Run::with_limits(
+        range_limits(),
+        crate::forgejo::plans::plan::Bounds { answer_bytes: RANGE_BYTES, ..BOUNDS },
+        Op::Read(Read::Commits { before: BASE, after: HEAD, page: 1 }),
+    );
+    run.begin();
+    let [first, second, _] = range_values();
+    assert_eq!(
+        run.answer(200, &server_answer(&range_document())),
+        Step::Done(Ok(Answer::Commits { commits: Box::new([first, second]), more: true }))
+    );
+}
+#[test]
+fn commit_messages_past_the_answer_bound_are_refused() {
+    const SHORT_RANGE_BYTES: u32 = 192 + 96 + 22 + 7 + 23 - 1;
+    let mut run = Run::with_limits(
+        range_limits(),
+        crate::forgejo::plans::plan::Bounds { answer_bytes: SHORT_RANGE_BYTES, ..BOUNDS },
+        Op::Read(Read::Commits { before: BASE, after: HEAD, page: 1 }),
+    );
+    run.begin();
+    assert_eq!(run.answer(200, &server_answer(&range_document())), Step::Done(Err(Error::TooLarge)));
+}

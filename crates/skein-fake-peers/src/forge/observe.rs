@@ -167,7 +167,7 @@ impl Heap for api::Read {
             Self::File { path, .. } => path.heap(),
             Self::Pages { after } => after.heap(),
             Self::Runs { workflow, .. } => workflow.heap(),
-            Self::Page { name } => name.heap(),
+            Self::Artifact { name, .. } | Self::Page { name } => name.heap(),
             Self::Locate
             | Self::Item { .. }
             | Self::Comment { .. }
@@ -176,6 +176,7 @@ impl Heap for api::Read {
             | Self::Pull { .. }
             | Self::PullFiles { .. }
             | Self::Compare { .. }
+            | Self::Commits { .. }
             | Self::Checks { .. }
             | Self::Job { .. }
             | Self::Log { .. }
@@ -239,6 +240,10 @@ impl Heap for api::Git {
 impl Heap for api::Answer {
     fn heap(&self) -> Option<u64> {
         match self {
+            Self::Artifact { artifact, .. } => {
+                sum(&[artifact.name.heap(), artifact.path.heap(), artifact.bytes.heap()])
+            }
+            Self::Commits { commits } => commits.heap(),
             Self::Items { items, .. } => items.heap(),
             Self::Item { item, comments, .. } => sum(&[item.heap(), comments.heap()]),
             Self::Pull(pull) => pull.heap(),
@@ -276,6 +281,11 @@ impl Heap for api::Answer {
             | Self::Pushed(_)
             | Self::Branch(_) => Some(0),
         }
+    }
+}
+impl Heap for api::CommitMessage {
+    fn heap(&self) -> Option<u64> {
+        sum(&[self.parents.heap(), self.message.heap()])
     }
 }
 impl Heap for api::Summary {

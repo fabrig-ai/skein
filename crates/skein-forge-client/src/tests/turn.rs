@@ -130,3 +130,75 @@ fn a_tree_out_of_git_order_does_not_fit() {
         Error::InvalidAnswer,
     );
 }
+
+fn artifact_read(max_bytes: u32) -> Read {
+    Read::Artifact { run: 7, name: Box::from(*b"tests"), max_bytes }
+}
+fn commit_read() -> Read {
+    Read::Commits { before: [1; 32], after: [2; 32], page: 1 }
+}
+fn commit_message() -> api::CommitMessage {
+    api::CommitMessage { id: [2; 32], parents: Box::new([[1; 32]]), message: Box::from(*b"message\n") }
+}
+#[test]
+fn artifacts_and_commit_pages_check_admission() {
+    for read in [
+        artifact_read(0),
+        artifact_read(LIMITS.answer_bytes + 1),
+        Read::Artifact { run: 7, name: Box::new([]), max_bytes: 1 },
+        Read::Commits { before: [1; 32], after: [2; 32], page: 0 },
+    ] {
+        super::fixtures::recovery::refused_read(read);
+    }
+    assert!(crate::bounds::op(&api::Op::Read(artifact_read(LIMITS.answer_bytes)), &LIMITS));
+    assert!(crate::bounds::op(&api::Op::Read(commit_read()), &LIMITS));
+}
+#[test]
+fn artifact_bytes_and_commit_ids_must_fit_the_call() {
+    let byte_answer =
+        Answer::File { head: [1; 32], path: Box::from(*b"report.xml"), bytes: Box::from(*b"ab"), truncated: false };
+    for (read, answer) in [
+        (artifact_read(1), byte_answer),
+        (commit_read(), Answer::Commits { commits: Box::new([commit_message(), commit_message()]), more: false }),
+    ] {
+        let mut h = Harness::new(LIMITS);
+        h.step(Event::Read { owner: Token::new(1), repository: REPO, read });
+        let sent = h.one();
+        terminal(&h.answer(&sent, 1, Ok(answer)), 1, Error::InvalidAnswer);
+    }
+}
+#[test]
+fn commit_parents_and_messages_obey_the_answer_bounds() {
+    // A native commit slot and one parent precede the message payload.
+    const COMMIT_OVERHEAD: u32 = 64 + 32;
+    let mut value = commit_message();
+    value.parents = super::fixtures::recovery::repeated([1; 32], LIMITS.rows + 1);
+    assert!(!crate::bounds::answer(&Answer::Commits { commits: Box::new([value]), more: false }, &LIMITS));
+    let mut value = commit_message();
+    value.message = skein_lib::bytes::zeroed(usize::try_from(LIMITS.answer_bytes - COMMIT_OVERHEAD).unwrap());
+    assert!(crate::bounds::answer(&Answer::Commits { commits: Box::new([value.clone()]), more: false }, &LIMITS));
+    value.message = skein_lib::bytes::zeroed(usize::try_from(LIMITS.answer_bytes - COMMIT_OVERHEAD + 1).unwrap());
+    assert!(!crate::bounds::answer(&Answer::Commits { commits: Box::new([value]), more: false }, &LIMITS));
+}
+#[test]
+fn artifact_and_commits_retry_as_reads_and_spend_cost() {
+    for (read, answer) in [
+        (
+            artifact_read(1),
+            Answer::File { head: [1; 32], path: Box::from(*b"failed.txt"), bytes: Box::from(*b"a"), truncated: true },
+        ),
+        (commit_read(), Answer::Commits { commits: Box::new([commit_message()]), more: false }),
+    ] {
+        let mut h = Harness::new(LIMITS);
+        h.step(Event::Read { owner: Token::new(1), repository: REPO, read: read.clone() });
+        let first = h.one();
+        assert!(h.answer(&first, 1, Err(Error::Unavailable)).is_empty());
+        h.env.now = h.domain.next_deadline().expect("retry deadline");
+        h.fire();
+        let retry = h.one();
+        assert_eq!(retry.op, api::Op::Read(read));
+        let expected = Box::new([crate::Request::Read { owner: Token::new(1), result: Ok(answer.clone()) }]);
+        assert_eq!(h.answer(&retry, 2, Ok(answer)).as_ref(), expected.as_ref());
+        assert_eq!(h.domain.calls.remaining(), (1, 3));
+    }
+}

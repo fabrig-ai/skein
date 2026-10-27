@@ -28,6 +28,8 @@ enum Asked {
     Review,
     Merge,
     Compare(api::Commit, api::Commit),
+    Artifact,
+    Commits,
     Done,
 }
 struct Measured {
@@ -150,6 +152,20 @@ impl Measured {
                 files: Box::new([]),
                 commits: Box::new([]),
             },
+            Asked::Artifact => api::Answer::File {
+                head: [1; 32],
+                path: Box::from(*b"failed.txt"),
+                bytes: bytes(self.env.limits.answer_bytes - FAILED_PATH_BYTES, b'a'),
+                truncated: true,
+            },
+            Asked::Commits => api::Answer::Commits {
+                commits: Box::new([api::CommitMessage {
+                    id: [3; 32],
+                    parents: Box::new([[1; 32], [2; 32]]),
+                    message: bytes(self.env.limits.answer_bytes - MERGE_MESSAGE_OVERHEAD, b'm'),
+                }]),
+                more: false,
+            },
             Asked::Done => api::Answer::Done,
         };
         self.event(Event::Answered { call: call.token, cost: 1, free: 0, rate: None, result: Ok(result) });
@@ -174,6 +190,8 @@ fn asked(op: &api::Op) -> Asked {
             api::Read::Pull { number } => Asked::Pull(*number),
             api::Read::Reviews { .. } => Asked::Reviews,
             api::Read::Branch { .. } => Asked::Branch,
+            api::Read::Artifact { .. } => Asked::Artifact,
+            api::Read::Commits { .. } => Asked::Commits,
             api::Read::Compare { before, after } => Asked::Compare(*before, *after),
             api::Read::Locate { .. }
             | api::Read::PullFor { .. }
@@ -368,3 +386,19 @@ fn restore_participants(m: &mut Measured, limits: Limits) -> Box<[Watch]> {
     }
     watches.into_boxed()
 }
+
+#[test]
+fn artifacts_and_full_commit_messages_fit_the_memory_bound() {
+    let mut measured = Measured::new(LIMITS);
+    for (owner, read) in [
+        (1, api::Read::Artifact { run: 1, name: bytes(LIMITS.op_bytes, b'a'), max_bytes: LIMITS.answer_bytes }),
+        (2, api::Read::Commits { before: [1; 32], after: [3; 32], page: 1 }),
+    ] {
+        measured.event(Event::Read { owner: Token::new(owner), repository: REPO, read });
+        measured.drive();
+    }
+}
+
+// failed.txt is ten bytes. A native commit slot and its two 32-byte parents precede the message.
+const FAILED_PATH_BYTES: u32 = 10;
+const MERGE_MESSAGE_OVERHEAD: u32 = 64 + 2 * 32;

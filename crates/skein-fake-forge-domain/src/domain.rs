@@ -702,6 +702,8 @@ fn authorized_read(
         | Read::Branch { .. }
         | Read::GitTree { .. }
         | Read::Tree { .. }
+        | Read::Artifact { .. }
+        | Read::Commits { .. }
         | Read::File { .. }
         | Read::Pages { .. }
         | Read::Page { .. }

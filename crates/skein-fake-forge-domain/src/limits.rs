@@ -139,6 +139,11 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         .checked_add(kept_run_heap(limits, limits.workflow_runs > 0)?)?
         .checked_add(job_heap(limits)?)?
         .checked_add(u64::from(limits.name_bytes).checked_mul(2)?)?;
+    // Line parsing, canonicalization and selection can overlap four id arrays,
+    // their owned bytes, and the report's bounded output.
+    let reports_scratch = List::<Box<[u8]>>::worst_case(limits.content_bytes)?
+        .checked_mul(4)?
+        .checked_add(u64::from(limits.content_bytes).checked_mul(4)?)?;
     let queue_scratch = u64::from(limits.name_bytes).checked_mul(4)?;
     let merge_scratch = queue_scratch
         .checked_add(tree(limits)?.checked_mul(2)?.max(changes(limits)?))?
@@ -160,7 +165,7 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     let scratch = merge_scratch
         .max(item_scratch)
         .max(directory_scratch.checked_add(call(limits)?)?)
-        .max(run_scratch.checked_add(call(limits)?)?.checked_add(observation(limits)?)?);
+        .max(run_scratch.checked_add(call(limits)?)?.checked_add(observation(limits)?)?.checked_add(reports_scratch)?);
     repositories
         .checked_add(commits)?
         .checked_add(calls)?
@@ -206,7 +211,9 @@ fn repository(limits: &Limits) -> Option<u64> {
         .checked_add(times(limits.workflow_runs, kept_run_heap(limits, true)?)?)?;
     let workflow = u64::try_from(size_of::<Workflow>())
         .ok()?
-        .checked_add(name.checked_mul(2)?)?
+        .checked_add(name.checked_mul(4)?)?
+        .checked_add(times(limits.content_bytes, u64::try_from(size_of::<Box<[u8]>>()).ok()?)?)?
+        .checked_add(u64::from(limits.content_bytes))?
         .checked_add(names(limits.contexts, limits)?)?
         .checked_add(u64::from(limits.content_bytes))?;
     let workflows = times(limits.workflows, workflow)?;
@@ -299,6 +306,15 @@ fn answer(limits: &Limits) -> Option<u64> {
     let jobs = times(limits.contexts, u64::try_from(size_of::<Job>()).ok()?.checked_add(job_heap(limits)?)?)?;
     let log = name.checked_mul(6)?.checked_add(91)?;
     let job = u64::try_from(size_of::<Job>()).ok()?.checked_add(job_heap(limits)?.checked_mul(2)?)?;
+    let commit_messages = times(
+        limits.commits,
+        u64::try_from(size_of::<crate::api::CommitMessage>())
+            .ok()?
+            .checked_add(16)?
+            .checked_add(u64::from(limits.title_bytes))?
+            .checked_add(u64::from(limits.body_bytes))?
+            .checked_add(2)?,
+    )?;
     let git_tree = times(limits.page_size, tree_entry(limits)?)?;
     // Inspection clones the bypass list as well as branch and contexts.
     let protection =
@@ -316,6 +332,8 @@ fn answer(limits: &Limits) -> Option<u64> {
             .max(dependencies)
             .max(labels)
             .max(comparison)
+            .max(commit_messages)
+            .max(artifact_heap(limits)?)
             .max(checks)
             .max(protection)
             .max(collaborators)
@@ -401,7 +419,11 @@ fn job_heap(limits: &Limits) -> Option<u64> {
         .checked_add(times(3, u64::try_from(size_of::<Step>()).ok()?)?)
 }
 fn run_payload(limits: &Limits, dispatched: bool) -> Option<u64> {
-    if dispatched { u64::from(limits.name_bytes).checked_add(inputs(limits)?) } else { Some(0) }
+    if dispatched {
+        u64::from(limits.name_bytes).checked_add(inputs(limits)?)?.checked_add(artifact_heap(limits)?)
+    } else {
+        Some(0)
+    }
 }
 fn kept_run_heap(limits: &Limits, dispatched: bool) -> Option<u64> {
     run_payload(limits, dispatched)?
@@ -410,4 +432,10 @@ fn kept_run_heap(limits: &Limits, dispatched: bool) -> Option<u64> {
 }
 fn tree_entry(limits: &Limits) -> Option<u64> {
     u64::from(limits.name_bytes).checked_add(u64::try_from(size_of::<TreeEntry>()).ok()?)
+}
+
+fn artifact_heap(limits: &Limits) -> Option<u64> {
+    u64::from(limits.name_bytes)
+        .checked_add(u64::try_from(b"failed.txt".len()).ok()?)?
+        .checked_add(u64::from(limits.content_bytes))
 }
