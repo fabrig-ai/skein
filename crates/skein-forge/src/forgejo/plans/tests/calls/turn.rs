@@ -192,6 +192,7 @@ fn dispatch_and_rerun_have_typed_empty_answers_and_refusals() {
     for (write, status, expected) in [
         (dispatch(), 204, Ok(Answer::Done)),
         (dispatch(), 404, Err(Error::Missing)),
+        (dispatch(), 400, Err(Error::Refused)),
         (dispatch(), 403, Err(Error::Forbidden)),
         (Write::Rerun { attempt: ATTEMPT }, 204, Ok(Answer::Done)),
         (Write::Rerun { attempt: ATTEMPT }, 400, Err(Error::Refused)),
