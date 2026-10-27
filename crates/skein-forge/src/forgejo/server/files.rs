@@ -105,6 +105,11 @@ pub(super) fn write(json: &mut Encoder, answer: &Answer) {
             json.key(b"truncated");
             json.boolean(*truncated);
             json.key(b"tree");
+            if entries.is_empty() {
+                json.null();
+                json.object_end();
+                return;
+            }
             json.array_start();
             for entry in entries {
                 json.object_start();
