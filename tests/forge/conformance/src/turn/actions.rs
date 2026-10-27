@@ -14,8 +14,11 @@ fn dispatch(p: &mut Probe<'_>, name: &str, workflow: &str, branch: &str) -> Resu
     )
 }
 fn wait_run(p: &mut Probe<'_>, head: &str, previous: u64) -> Result<u64> {
+    wait_workflow(p, head, "turn.yaml", previous)
+}
+pub(super) fn wait_workflow(p: &mut Probe<'_>, head: &str, workflow: &str, previous: u64) -> Result<u64> {
     for _ in 0..300 {
-        let read = p.recorder.f.get(&listing(head, "turn.yaml", 1))?;
+        let read = p.recorder.f.get(&listing(head, workflow, 1))?;
         if let Some(id) = rows(&read, "workflow_runs")?.first().and_then(|r| r.get("id").u64())
             && id > previous
         {
@@ -25,7 +28,7 @@ fn wait_run(p: &mut Probe<'_>, head: &str, previous: u64) -> Result<u64> {
     }
     Err("dispatch run not found in 30 seconds".into())
 }
-fn settled(p: &mut Probe<'_>, run: u64) -> Result<Json> {
+pub(super) fn settled(p: &mut Probe<'_>, run: u64) -> Result<Json> {
     let target = format!("{REPO}/actions/runs/{run}");
     for _ in 0..900 {
         let read = p.recorder.f.get(&target)?;

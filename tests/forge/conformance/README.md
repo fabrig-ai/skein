@@ -43,9 +43,10 @@ masking. A leak reports the case and secret kind without printing its value.
 The same run writes `facts.txt`, with Forgejo and runner provenance followed
 by `holds`, `fails` or `unchecked` lines. Pass `--runner` naming the
 pinned runner for Actions facts and their transcripts.
-The runner connects through its private token file and executes two inline host
-shell jobs, one succeeding and one failing; no actions or containers are
-downloaded. Without a runner those facts remain unchecked. Webhook deliveries are recorded
+The runner connects through its private token file. The base Actions fixture
+executes two inline host shell jobs, one succeeding and one failing. The artifact
+fixture fetches `https://code.forgejo.org/actions/upload-artifact@v3` on its host
+runner. Without a runner those facts remain unchecked. Webhook deliveries are recorded
 in `deliveries/<event-type>/{request,response}` with their own mask map;
 the listener holds its answer while status and mergeability probes run.
 
@@ -102,3 +103,10 @@ records rerun attempts, fast-forward-only merges, rebase updates, status words
 and links, and root/directory tree paging in git order. A public bare clone of
 only the throwaway repository supplies an independent root-tree id. Without
 `--runner`, this group's facts are unchecked.
+
+The artifact workflow writes `failed.txt` and uploads it under two names, `tests`
+and `other`. Its scanned captures include the dispatch, run, jobs and job log;
+all artifacts, the `tests` filter, an absent name and an unknown run; and the ZIP
+download, including a redirect target when it stays on the fixture origin.
+The run read records the dispatch commit independently of the artifact listing.
+An upload failure stops recording with those supporting captures retained.
