@@ -1,0 +1,8 @@
+POST /api/v1/repos/fixture/turn/actions/workflows/absent.yaml/dispatches HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Content-Type: application/json
+Content-Length: 53
+Connection: close
+
+{"ref":"dispatch","inputs":{"word":"KIT_TURN_INPUT"}}

@@ -1,0 +1,8 @@
+POST /api/v1/repos/fixture/turn/pulls/2/merge HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Content-Type: application/json
+Content-Length: 86
+Connection: close
+
+{"Do":"fast-forward-only","head_commit_id":"0000000000000000000000000000000000000019"}

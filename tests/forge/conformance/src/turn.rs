@@ -33,7 +33,12 @@ impl Probe<'_> {
     fn fact(&mut self, name: &'static str, holds: bool, response: &Exchange) {
         // The recorder has scanned these bytes before any diagnostic is retained.
         let body = self.recorder.mask.bytes(&response.body);
-        add(&mut self.facts, name, holds, &format!("HTTP {}: {}", response.status, crate::facts::diagnostic(&body)));
+        add(
+            &mut self.facts,
+            name,
+            holds,
+            &format!("HTTP {}: {}", response.status, crate::facts::diagnostic(&body).trim_end()),
+        );
     }
     fn check(&mut self, name: &'static str, holds: bool, detail: &str) {
         add(&mut self.facts, name, holds, detail);
