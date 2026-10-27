@@ -9,7 +9,7 @@ use skein_lib::{Deadlines, Id, List, Map, Queue, Set, Slab, Time};
 use crate::actions::{Failing, Job, Kept as RunKept, Run, Step};
 use crate::api::{
     ChangedFile, CheckSummary, Collaborator, Comment, File, Head, PageName, Permission, Pull, Review,
-    Status as StatusView, Summary,
+    Status as StatusView, Summary, TreeEntry, Workflow,
 };
 use crate::domain::{Alarm, Call};
 use crate::faults::Window;
@@ -46,6 +46,9 @@ pub struct Limits {
     /// Commits of a repository with statuses, and contexts on each.
     pub statuses: u32,
     pub contexts: u32,
+    /// Dispatch-only workflow definitions and retained dispatched runs per repository.
+    pub workflows: u32,
+    pub workflow_runs: u32,
     /// Wiki pages of a repository.
     pub pages: u32,
     /// The most bytes of a name: a repository's, a branch's, a label's, a
@@ -70,10 +73,17 @@ pub struct Limits {
 }
 
 /// The timers armed at most: one per call, one per delivery, and one per
-/// context of each commit with statuses, and one queue wake per repository.
+/// context of each commit with statuses, one per dispatched job, and one queue
+/// wake per repository.
 pub(crate) fn timers(limits: &Limits) -> Option<u32> {
     let checks = limits.repositories.checked_mul(limits.statuses)?.checked_mul(limits.contexts)?;
-    limits.calls.checked_add(limits.hooks)?.checked_add(checks)?.checked_add(limits.repositories)
+    let workflows = limits.repositories.checked_mul(limits.workflow_runs)?.checked_mul(limits.contexts)?;
+    limits
+        .calls
+        .checked_add(limits.hooks)?
+        .checked_add(checks)?
+        .checked_add(workflows)?
+        .checked_add(limits.repositories)
 }
 
 /// The comments a repository holds at most.
@@ -119,8 +129,22 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     // and branch names copied into move/delete observations and hooks.
     // Groups and their commits occupy the existing branch/commit budgets;
     // Group metadata is inline in Item and Pull, counted by their slots.
+    let directories = limits.files.checked_mul(limits.name_bytes)?.checked_add(1)?;
+    let directory_scratch = Map::<Box<[u8]>, [u8; 20]>::worst_case(directories)?
+        .checked_add(times(directories, u64::from(limits.name_bytes))?)?
+        .checked_add(times(limits.files.checked_add(1)?, name_hash(limits)?)?)?
+        .checked_add(Map::<Box<[u8]>, (crate::api::EntryKind, u32, [u8; 20])>::worst_case(limits.files)?)?
+        .checked_add(times(limits.files, u64::from(limits.name_bytes))?)?
+        .checked_add(times(limits.files, tree_entry(limits)?)?)?;
+    let run_scratch = Map::<u64, u64>::worst_case(limits.statuses.checked_add(limits.workflow_runs)?)?
+        .checked_add(run_heap(limits)?)?
+        .checked_add(job_heap(limits)?)?
+        .checked_add(u64::from(limits.name_bytes).checked_mul(2)?)?;
     let queue_scratch = u64::from(limits.name_bytes).checked_mul(4)?;
     let scratch = queue_scratch
+        .checked_add(directory_scratch)?
+        .checked_add(run_scratch)?
+        .checked_add(tree(limits)?.checked_mul(2)?)?
         .checked_add(Set::<u64>::worst_case(limits.commits)?.checked_mul(2)?)?
         .checked_add(Queue::<u64>::worst_case(limits.commits)?)?
         .checked_add(tree(limits)?)?
@@ -166,11 +190,21 @@ fn repository(limits: &Limits) -> Option<u64> {
     let queue = List::<crate::api::QueueEntry>::worst_case(limits.items)?;
     let branches = Map::<Box<[u8]>, u64>::worst_case(limits.branches)?.checked_add(times(limits.branches, name)?)?;
     let has = Set::<u64>::worst_case(limits.commits)?;
-    let contexts = Map::<Box<[u8]>, Status>::worst_case(limits.contexts)?.checked_add(times(limits.contexts, name)?)?;
+    let context = name.checked_add(u64::from(limits.body_bytes))?.checked_add(link_bytes(limits)?)?;
+    let contexts =
+        Map::<Box<[u8]>, Status>::worst_case(limits.contexts)?.checked_add(times(limits.contexts, context)?)?;
     let statuses = Map::<u64, Map<Box<[u8]>, Status>>::worst_case(limits.statuses)?
         .checked_add(times(limits.statuses, contexts)?)?;
+    let run_count = limits.statuses.checked_add(limits.workflow_runs)?;
     let runs = Map::<u64, RunKept>::worst_case(limits.statuses)?
-        .checked_add(times(limits.statuses, List::<Job>::worst_case(limits.contexts)?)?)?;
+        .checked_add(Map::<u64, RunKept>::worst_case(limits.workflow_runs)?)?
+        .checked_add(times(run_count, run_heap(limits)?)?)?;
+    let workflow = u64::try_from(size_of::<Workflow>())
+        .ok()?
+        .checked_add(name.checked_mul(2)?)?
+        .checked_add(names(limits.contexts, limits)?)?
+        .checked_add(u64::from(limits.content_bytes))?;
+    let workflows = times(limits.workflows, workflow)?;
     let page = name.checked_add(u64::from(limits.content_bytes))?;
     let wiki = Map::<Box<[u8]>, Page>::worst_case(limits.pages)?.checked_add(times(limits.pages, page)?)?;
     setup
@@ -182,6 +216,7 @@ fn repository(limits: &Limits) -> Option<u64> {
         .checked_add(has)?
         .checked_add(statuses)?
         .checked_add(runs)?
+        .checked_add(workflows)?
         .checked_add(wiki)
 }
 
@@ -221,7 +256,10 @@ fn answer(limits: &Limits) -> Option<u64> {
     let listed = summary.checked_add(u64::try_from(size_of::<Summary>()).ok()?)?;
     let comment = body.checked_add(u64::try_from(size_of::<Comment>()).ok()?)?;
     let review = body.checked_add(u64::try_from(size_of::<Review>()).ok()?)?;
-    let status = name.checked_add(u64::try_from(size_of::<StatusView>()).ok()?)?;
+    let status = name
+        .checked_add(u64::from(limits.body_bytes))?
+        .checked_add(link_bytes(limits)?)?
+        .checked_add(u64::try_from(size_of::<StatusView>()).ok()?)?;
     let file = name.checked_add(content)?.checked_add(u64::try_from(size_of::<File>()).ok()?)?;
     let named = name.checked_add(u64::try_from(size_of::<PageName>()).ok()?)?;
     let head = name.checked_add(u64::try_from(size_of::<Head>()).ok()?)?;
@@ -242,20 +280,18 @@ fn answer(limits: &Limits) -> Option<u64> {
     let comparison = changes(limits)?.checked_add(times(limits.commits, number)?)?;
     let checks = times(
         limits.contexts,
-        name.checked_mul(2)?
-            .checked_add(51)?
-            .checked_add(body)?
+        status
+            .checked_add(u64::from(limits.body_bytes))?
+            .checked_add(link_bytes(limits)?)?
             .checked_add(u64::try_from(size_of::<CheckSummary>()).ok()?)?,
     )?;
     let threads = times(limits.comments, comment)?;
     let pulls = times(limits.page_size, pull.checked_add(u64::try_from(size_of::<Pull>()).ok()?)?)?;
-    let runs = u64::try_from(size_of::<Run>()).ok()?;
-    let jobs = times(limits.contexts, u64::try_from(size_of::<Job>()).ok()?)?;
+    let runs = times(limits.page_size, u64::try_from(size_of::<Run>()).ok()?.checked_add(run_heap(limits)?)?)?;
+    let jobs = times(limits.contexts, u64::try_from(size_of::<Job>()).ok()?.checked_add(job_heap(limits)?)?)?;
     let log = name.checked_mul(6)?.checked_add(91)?;
-    let job = u64::try_from(size_of::<Job>())
-        .ok()?
-        .checked_add(times(3, u64::try_from(size_of::<Step>()).ok()?)?)?
-        .checked_add(name.checked_mul(7)?.checked_add(117)?)?;
+    let job = u64::try_from(size_of::<Job>()).ok()?.checked_add(job_heap(limits)?.checked_mul(2)?)?;
+    let git_tree = times(limits.page_size, tree_entry(limits)?)?;
     // Inspection clones the bypass list as well as branch and contexts.
     let protection =
         name.checked_add(names(limits.contexts, limits)?)?.checked_add(times(limits.bypassing_users, number)?)?;
@@ -265,6 +301,7 @@ fn answer(limits: &Limits) -> Option<u64> {
             .max(item)
             .max(pull)
             .max(tree)
+            .max(git_tree)
             .max(pages)
             .max(page)
             .max(cloned)
@@ -304,7 +341,9 @@ fn call(limits: &Limits) -> Option<u64> {
     let file =
         name.checked_add(u64::from(limits.content_bytes))?.checked_add(u64::try_from(size_of::<File>()).ok()?)?;
     let commit = times(limits.files, file)?;
-    name.checked_add(issue.max(pull).max(page).max(numbers).max(commit))
+    let status = name.checked_add(u64::from(limits.body_bytes))?.checked_add(link_bytes(limits)?)?;
+    let dispatch = name.checked_mul(2)?.checked_add(inputs(limits)?)?;
+    name.checked_add(issue.max(pull).max(page).max(numbers).max(commit).max(status).max(dispatch))
 }
 
 /// What a summary of an item owns: its text and its labels.
@@ -334,4 +373,34 @@ fn names(count: u32, limits: &Limits) -> Option<u64> {
 
 fn times(count: u32, each: u64) -> Option<u64> {
     u64::from(count).checked_mul(each)
+}
+
+fn link_bytes(limits: &Limits) -> Option<u64> {
+    Some(u64::from(limits.body_bytes).max(u64::from(limits.name_bytes).checked_add(51)?))
+}
+fn inputs(limits: &Limits) -> Option<u64> {
+    times(
+        limits.contexts,
+        u64::from(limits.name_bytes)
+            .checked_add(u64::from(limits.body_bytes))?
+            .checked_add(u64::try_from(size_of::<(Box<[u8]>, Box<[u8]>)>()).ok()?)?,
+    )
+}
+fn job_heap(limits: &Limits) -> Option<u64> {
+    u64::from(limits.name_bytes)
+        .checked_mul(8)?
+        .checked_add(117)?
+        .checked_add(times(3, u64::try_from(size_of::<Step>()).ok()?)?)
+}
+fn run_heap(limits: &Limits) -> Option<u64> {
+    u64::from(limits.name_bytes)
+        .checked_add(inputs(limits)?)?
+        .checked_add(List::<Job>::worst_case(limits.contexts)?)?
+        .checked_add(times(limits.contexts, job_heap(limits)?)?)
+}
+fn tree_entry(limits: &Limits) -> Option<u64> {
+    u64::from(limits.name_bytes).checked_add(u64::try_from(size_of::<TreeEntry>()).ok()?)
+}
+fn name_hash(limits: &Limits) -> Option<u64> {
+    u64::from(limits.name_bytes).checked_add(u64::try_from(size_of::<(Box<[u8]>, [u8; 20])>()).ok()?)
 }

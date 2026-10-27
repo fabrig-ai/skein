@@ -30,21 +30,27 @@ fn a_failing_ci_status_links_its_run_number_and_job_index() {
     assert_eq!(&*second.link, b"/ai/kit/actions/runs/1/jobs/1");
     assert_eq!(second.job, Some(JobRef { run: 1, job: 2, attempt: 1 }));
     assert_eq!(
-        h.ok(PERSON, read(Read::Runs { commit: work, number: 1 })),
-        Answer::Runs(Box::new([Run { id: 1, number: 1, commit: work }]))
+        h.ok(PERSON, read(Read::Runs { workflow: None, commit: Some(work), number: Some(1), page: 1, limit: 1 })),
+        Answer::Runs(Box::new([ci_run(1, 1, work)]))
     );
 }
 
 #[test]
 fn a_commits_run_is_found_by_its_number_and_its_jobs_by_run() {
     let (mut h, work) = failing(0);
-    let expected = Run { id: 1, number: 1, commit: work };
+    let expected = ci_run(1, 1, work);
     let rows = [
-        (Read::Runs { commit: work, number: 1 }, Ok(Answer::Runs(Box::new([expected])))),
-        (Read::Runs { commit: work, number: 2 }, Ok(Answer::Runs(Box::new([])))),
-        (Read::Run { run: 1 }, Ok(Answer::Run(expected))),
+        (
+            Read::Runs { workflow: None, commit: Some(work), number: Some(1), page: 1, limit: 1 },
+            Ok(Answer::Runs(Box::new([expected.clone()]))),
+        ),
+        (
+            Read::Runs { workflow: None, commit: Some(work), number: Some(2), page: 1, limit: 1 },
+            Ok(Answer::Runs(Box::new([]))),
+        ),
+        (Read::Run { run: 1 }, Ok(Answer::Run(expected.clone()))),
         (Read::Run { run: 2 }, Err(Error::Missing(What::Job))),
-        (Read::Jobs { run: 1 }, Ok(Answer::Jobs(Box::new([Job { id: 1, run: 1, index: 0, attempt: 1 }])))),
+        (Read::Jobs { run: 1 }, Ok(Answer::Jobs(Box::new([ci_job(1, 1, 0, 1)])))),
         (Read::Jobs { run: 2 }, Err(Error::Missing(What::Job))),
     ];
     for (input, expected) in rows {
@@ -57,15 +63,21 @@ fn a_commits_run_is_found_by_its_number_and_its_jobs_by_run() {
     let first = crate::repository(&mut h.domain, &CALM, configured);
     crate::grant(&mut h.domain, b"ai/other", ENGINE, Permission::Write);
     let next = h.commit(first, &[(b"src", b"two")]);
+    let created = h.env.now;
     h.call_on(b"ai/other", ENGINE, Op::Git(Git::Push { branch: copy_of(b"work"), commit: next, expected: None }))
         .unwrap();
     assert_eq!(
         h.call_on(b"ai/other", ENGINE, read(Read::Run { run: 2 })),
-        Ok(Answer::Run(Run { id: 2, number: 1, commit: next }))
+        Ok(Answer::Run(Run { created, state: crate::api::RunState::Running, conclusion: None, ..ci_run(2, 1, next) }))
     );
     assert_eq!(
         h.call_on(b"ai/other", ENGINE, read(Read::Jobs { run: 2 })),
-        Ok(Answer::Jobs(Box::new([Job { id: 2, run: 2, index: 0, attempt: 1 }])))
+        Ok(Answer::Jobs(Box::new([Job {
+            state: crate::api::RunState::Running,
+            conclusion: None,
+            steps: Box::new([]),
+            ..ci_job(2, 2, 0, 1)
+        }])))
     );
 }
 
@@ -88,10 +100,7 @@ fn a_job_log_is_read_by_job_id_and_attempt() {
 #[test]
 fn a_rerun_context_answers_its_second_attempt() {
     let (mut h, work) = failing(1000);
-    assert_eq!(
-        h.ok(PERSON, read(Read::Jobs { run: 1 })),
-        Answer::Jobs(Box::new([Job { id: 1, run: 1, index: 0, attempt: 2 }]))
-    );
+    assert_eq!(h.ok(PERSON, read(Read::Jobs { run: 1 })), Answer::Jobs(Box::new([ci_job(1, 1, 0, 2)])));
     let Answer::Checks(checks) = h.ok(PERSON, read(Read::Checks { commit: work })) else { unreachable!("checks") };
     assert_eq!(checks.first().unwrap().job, Some(JobRef { run: 1, job: 1, attempt: 2 }));
     assert_eq!(h.call(PERSON, read(Read::Log { job: 1, attempt: 1, step: None })), Err(Error::Missing(What::Job)));
@@ -233,7 +242,7 @@ fn a_failed_job_read_by_id_has_three_steps_failing_at_the_workflow() {
     assert_eq!(
         h.ok(PERSON, read(Read::Job { job: 1 })),
         Answer::Job {
-            job: Job { id: 1, run: 1, index: 0, attempt: 1 },
+            job: ci_job(1, 1, 0, 1),
             steps: Box::new([
                 Step {
                     number: 0,
@@ -291,7 +300,7 @@ fn a_log_step_past_the_last_is_missing() {
 fn a_job_read_by_id_answers_its_latest_attempt() {
     let (mut h, _) = failing(1000);
     let Answer::Job { job, .. } = h.ok(PERSON, read(Read::Job { job: 1 })) else { unreachable!("job") };
-    assert_eq!(job, Job { id: 1, run: 1, index: 0, attempt: 2 });
+    assert_eq!(job, ci_job(1, 1, 0, 2));
 }
 
 #[test]
@@ -311,8 +320,410 @@ fn forgotten_statuses_remove_the_commits_run() {
     h.push(ENGINE, b"work", one).expect("first head");
     h.push(ENGINE, b"work", two).expect("replacement head");
     assert_eq!(
-        h.ok(PERSON, read(Read::Runs { commit: one, number: 1 })),
+        h.ok(PERSON, read(Read::Runs { workflow: None, commit: Some(one), number: Some(1), page: 1, limit: 1 })),
         Answer::Runs(Box::new([])),
         "the displaced commit's run was forgotten"
     );
+}
+
+fn ci_run(id: u64, number: u64, commit: u64) -> Run {
+    Run {
+        id,
+        number,
+        commit,
+        workflow: None,
+        event: crate::api::RunEvent::Push,
+        user: ENGINE,
+        state: crate::api::RunState::Completed,
+        conclusion: Some(crate::api::Conclusion::Failure),
+        created: Time::ZERO,
+        inputs: Box::new([]),
+    }
+}
+fn ci_job(id: u64, run: u64, index: u32, attempt: u32) -> Job {
+    Job {
+        id,
+        run,
+        index,
+        attempt,
+        name: copy_of(b"ci"),
+        state: crate::api::RunState::Completed,
+        conclusion: Some(crate::api::Conclusion::Failure),
+        steps: crate::actions::steps(b"ci", Failing::Workflow),
+    }
+}
+
+fn dispatch_harness(config: Config, jobs: &[&[u8]]) -> Harness {
+    let mut configured = setup();
+    configured.checks.contexts = Box::new([]);
+    configured.workflows = Box::new([crate::api::Workflow {
+        file: copy_of(b"gate.yml"),
+        jobs: names(jobs),
+        latency_min: Duration::from_secs(10),
+        latency_max: Duration::from_secs(10),
+        passes: 1000,
+        silent: 0,
+        cue: None,
+    }]);
+    Harness::with(config, configured)
+}
+fn dispatch() -> Op {
+    write(Write::Dispatch {
+        workflow: copy_of(b"gate.yml"),
+        branch: copy_of(MAIN),
+        inputs: Box::new([(copy_of(b"key"), copy_of(b"value"))]),
+    })
+}
+fn workflow_runs(h: &Harness) -> Box<[Run]> {
+    let Answer::Runs(runs) = h
+        .inspect(&Read::Runs { workflow: Some(copy_of(b"gate.yml")), commit: None, number: None, page: 1, limit: 2 })
+        .unwrap()
+    else {
+        unreachable!("runs")
+    };
+    runs
+}
+fn run_jobs(h: &Harness, run: u64) -> Box<[Job]> {
+    let Answer::Jobs(jobs) = h.inspect(&Read::Jobs { run }).unwrap() else { unreachable!("jobs") };
+    jobs
+}
+
+#[test]
+fn a_dispatch_runs_its_workflow_at_the_branch_head() {
+    let mut h = dispatch_harness(CALM, &[b"ci", b"fmt"]);
+    let created = h.env.now;
+    assert_eq!(h.call(ENGINE, dispatch()), Ok(Answer::Done));
+    let runs = workflow_runs(&h);
+    let run = &runs[0];
+    assert_eq!(
+        (run.commit, run.event, run.user, run.created),
+        (FIRST, crate::api::RunEvent::Dispatch, ENGINE, created)
+    );
+    assert_eq!(&*run.inputs, &[(copy_of(b"key"), copy_of(b"value"))]);
+    assert_eq!((run.state, run.conclusion), (crate::api::RunState::Running, None));
+    let Answer::Statuses(statuses) = h.inspect(&Read::Statuses { commit: FIRST }).unwrap() else {
+        unreachable!("statuses")
+    };
+    assert_eq!(statuses.len(), 2);
+    for (status, (name, link)) in statuses.iter().zip([
+        (b"gate.yml / ci".as_slice(), b"/ai/kit/actions/runs/1/jobs/0".as_slice()),
+        (b"gate.yml / fmt".as_slice(), b"/ai/kit/actions/runs/1/jobs/1".as_slice()),
+    ]) {
+        assert_eq!(&*status.context, name);
+        assert_eq!(status.state, Check::Pending);
+        assert_eq!(&*status.link, link);
+    }
+    h.settle();
+    let run = &workflow_runs(&h)[0];
+    assert_eq!((run.state, run.conclusion), (crate::api::RunState::Completed, Some(crate::api::Conclusion::Success)));
+    for job in run_jobs(&h, run.id) {
+        assert_eq!(job.conclusion, Some(crate::api::Conclusion::Success));
+        assert_eq!(job.steps.len(), 3);
+    }
+    let Answer::Checks(checks) = h.inspect(&Read::Checks { commit: FIRST }).unwrap() else { unreachable!("checks") };
+    for check in checks {
+        assert_eq!(check.status.state, Check::Passed);
+        assert!(!check.link.is_empty());
+    }
+}
+
+#[test]
+fn two_dispatches_at_one_commit_make_two_runs() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    h.ok(ENGINE, dispatch());
+    h.ok(ENGINE, dispatch());
+    let runs = workflow_runs(&h);
+    assert_eq!(runs.len(), 2);
+    assert_eq!((runs[0].number, runs[1].number), (2, 1));
+    assert_eq!((runs[0].commit, runs[1].commit), (FIRST, FIRST));
+    assert_ne!(run_jobs(&h, runs[0].id)[0].id, run_jobs(&h, runs[1].id)[0].id);
+}
+
+#[test]
+fn a_push_starts_no_workflow() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    let head = h.commit(FIRST, &[(b"src", b"changed")]);
+    h.push(ENGINE, b"work", head).unwrap();
+    h.settle();
+    assert!(workflow_runs(&h).is_empty());
+}
+
+#[test]
+fn a_dispatch_of_a_missing_workflow_or_branch_is_missing() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    for (workflow, branch, missing) in
+        [(b"missing".as_slice(), MAIN, What::File), (b"gate.yml", b"missing", What::Branch)]
+    {
+        assert_eq!(
+            h.call(
+                ENGINE,
+                write(Write::Dispatch { workflow: copy_of(workflow), branch: copy_of(branch), inputs: Box::new([]) })
+            ),
+            Err(Error::Missing(missing))
+        );
+        assert!(workflow_runs(&h).is_empty());
+    }
+    assert_eq!(h.call(PERSON, dispatch()), Err(Error::Forbidden));
+}
+
+#[test]
+fn a_cued_message_fails_the_workflow_step() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    let id = h.domain.id(REPOSITORY);
+    h.domain.repositories.get_mut(id).unwrap().workflows[0].cue = Some(Cue::Message { fail: copy_of(b"FAIL") });
+    let head =
+        crate::commit(&mut h.domain, &CALM, FIRST, files(&[(b"src", b"change")]), b"FAIL this test").unwrap().unwrap();
+    h.push(ENGINE, MAIN, head).unwrap();
+    h.ok(ENGINE, dispatch());
+    h.settle();
+    let run = &workflow_runs(&h)[0];
+    assert_eq!(run.commit, head);
+    assert_eq!(run.conclusion, Some(crate::api::Conclusion::Failure));
+    let jobs = run_jobs(&h, run.id);
+    assert_eq!(jobs[0].steps[0].status, StepStatus::Success);
+    assert_eq!(jobs[0].steps[1].status, StepStatus::Failure);
+}
+
+#[test]
+fn a_setup_fault_fails_the_set_up_step() {
+    let mut h = dispatch_harness(Config { setup_faults: 1000, ..CALM }, &[b"ci"]);
+    h.ok(ENGINE, dispatch());
+    h.settle();
+    let jobs = run_jobs(&h, workflow_runs(&h)[0].id);
+    assert_eq!(jobs[0].steps[0].status, StepStatus::Failure);
+    assert_eq!(jobs[0].steps[1].status, StepStatus::Cancelled);
+    assert_eq!(workflow_runs(&h)[0].conclusion, Some(crate::api::Conclusion::Failure));
+}
+
+#[test]
+fn a_lost_run_fails_with_no_step_failed() {
+    let mut h = dispatch_harness(Config { lost: 1000, ..CALM }, &[b"ci", b"fmt"]);
+    h.ok(ENGINE, dispatch());
+    h.settle();
+    let run = &workflow_runs(&h)[0];
+    assert_eq!(run.conclusion, Some(crate::api::Conclusion::Failure));
+    for job in run_jobs(&h, run.id) {
+        assert_eq!(job.conclusion, Some(crate::api::Conclusion::Failure));
+        for step in &job.steps {
+            assert_ne!(step.status, StepStatus::Failure);
+        }
+    }
+}
+
+#[test]
+fn a_rerun_of_a_failed_job_runs_its_next_attempt() {
+    let mut h = dispatch_harness(Config { setup_faults: 1000, ..CALM }, &[b"ci"]);
+    h.ok(ENGINE, dispatch());
+    h.settle();
+    let run = workflow_runs(&h)[0].id;
+    let job = run_jobs(&h, run)[0].id;
+    h.env.limits.setup_faults = 0;
+    assert_eq!(h.call(ENGINE, write(Write::Rerun { job })), Ok(Answer::Done));
+    assert_eq!(run_jobs(&h, run)[0].attempt, 2);
+    assert_eq!(run_jobs(&h, run)[0].conclusion, None);
+    assert_eq!(workflow_runs(&h)[0].state, crate::api::RunState::Running);
+    h.settle();
+    assert_eq!(run_jobs(&h, run)[0].conclusion, Some(crate::api::Conclusion::Success));
+    assert_eq!(workflow_runs(&h)[0].conclusion, Some(crate::api::Conclusion::Success));
+    assert_eq!(h.call(ENGINE, write(Write::Rerun { job: 999 })), Err(Error::Missing(What::Job)));
+}
+
+#[test]
+fn a_rerun_before_its_run_completes_is_refused() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    h.ok(ENGINE, dispatch());
+    let job = run_jobs(&h, workflow_runs(&h)[0].id)[0].id;
+    assert_eq!(h.call(ENGINE, write(Write::Rerun { job })), Err(Error::Refused));
+    assert_eq!(run_jobs(&h, workflow_runs(&h)[0].id)[0].attempt, 1);
+}
+
+#[test]
+fn runs_are_listed_by_workflow_and_commit_newest_first() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    h.ok(ENGINE, dispatch());
+    h.ok(ENGINE, dispatch());
+    let head = crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"src", b"new", ENGINE).unwrap();
+    h.ok(ENGINE, dispatch());
+    for (page, expected) in [(1, [2].as_slice()), (2, [1].as_slice()), (3, [].as_slice())] {
+        let Answer::Runs(runs) = h
+            .inspect(&Read::Runs {
+                workflow: Some(copy_of(b"gate.yml")),
+                commit: Some(FIRST),
+                number: None,
+                page,
+                limit: 1,
+            })
+            .unwrap()
+        else {
+            unreachable!("runs")
+        };
+        let mut numbers = List::with_capacity(2);
+        for run in runs {
+            numbers.push(run.number).unwrap();
+        }
+        assert_eq!(numbers.as_slice(), expected);
+    }
+    assert_eq!(workflow_runs(&h)[0].commit, head);
+    let Answer::Runs(runs) = h
+        .inspect(&Read::Runs { workflow: Some(copy_of(b"absent")), commit: None, number: None, page: 1, limit: 2 })
+        .unwrap()
+    else {
+        unreachable!("runs")
+    };
+    assert!(runs.is_empty());
+}
+
+#[test]
+fn workflow_runs_past_their_limit_drop_the_oldest() {
+    let mut h = dispatch_harness(Config { limits: Limits { workflow_runs: 1, ..LIMITS }, ..CALM }, &[b"ci"]);
+    h.ok(ENGINE, dispatch());
+    let old = workflow_runs(&h)[0].id;
+    let job = run_jobs(&h, old)[0].id;
+    h.ok(ENGINE, dispatch());
+    assert_eq!(workflow_runs(&h).len(), 1);
+    assert_eq!(h.inspect(&Read::Run { run: old }), Err(Error::Missing(What::Job)));
+    assert_eq!(h.inspect(&Read::Job { job }), Err(Error::Missing(What::Job)));
+    h.settle();
+    assert_eq!(workflow_runs(&h)[0].conclusion, Some(crate::api::Conclusion::Success));
+}
+
+#[test]
+fn a_status_keeps_its_description_and_link() {
+    let mut h = Harness::new(CALM);
+    h.ok(
+        ENGINE,
+        write(Write::Status {
+            commit: FIRST,
+            context: copy_of(b"gate"),
+            state: Check::Passed,
+            description: copy_of(b"proof passed"),
+            link: copy_of(b"https://proof/42"),
+        }),
+    );
+    let Answer::Statuses(statuses) = h.inspect(&Read::Statuses { commit: FIRST }).unwrap() else {
+        unreachable!("statuses")
+    };
+    assert_eq!(&*statuses[0].description, b"proof passed");
+    assert_eq!(&*statuses[0].link, b"https://proof/42");
+    let Answer::Checks(checks) = h.inspect(&Read::Checks { commit: FIRST }).unwrap() else { unreachable!("checks") };
+    assert_eq!(checks[0].description, statuses[0].description);
+    assert_eq!(checks[0].link, statuses[0].link);
+    assert_eq!(checks[0].status, statuses[0]);
+}
+
+#[test]
+fn overlapping_dispatches_keep_the_job_identity_of_the_status_that_reported() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    h.ok(ENGINE, dispatch());
+    let first = workflow_runs(&h)[0].id;
+    let first_job = run_jobs(&h, first)[0].id;
+    let id = h.domain.id(REPOSITORY);
+    let definition = &mut h.domain.repositories.get_mut(id).unwrap().workflows[0];
+    definition.latency_min = Duration::from_secs(2);
+    definition.latency_max = Duration::from_secs(2);
+    definition.passes = 0;
+    h.ok(ENGINE, dispatch());
+    h.settle();
+    let Answer::Checks(checks) = h.inspect(&Read::Checks { commit: FIRST }).unwrap() else { unreachable!("checks") };
+    assert_eq!(checks[0].status.state, Check::Failed);
+    assert_eq!(&*checks[0].link, b"/ai/kit/actions/runs/1/jobs/0");
+    assert_eq!(checks[0].job, Some(JobRef { run: first, job: first_job, attempt: 1 }));
+}
+
+#[test]
+fn explicit_reruns_also_advance_a_completed_commits_ci_job() {
+    let (mut h, _) = failing(0);
+    for attempt in [2, 3] {
+        assert_eq!(h.call(ENGINE, write(Write::Rerun { job: 1 })), Ok(Answer::Done));
+        assert_eq!(run_jobs(&h, 1)[0].attempt, attempt);
+        assert_eq!(run_jobs(&h, 1)[0].state, crate::api::RunState::Running);
+        h.settle();
+        assert_eq!(run_jobs(&h, 1)[0].conclusion, Some(crate::api::Conclusion::Failure));
+    }
+}
+
+#[test]
+fn workflow_and_input_limits_refuse_before_making_a_run() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    let too_many = write(Write::Dispatch {
+        workflow: copy_of(b"gate.yml"),
+        branch: copy_of(MAIN),
+        inputs: Box::new([
+            (copy_of(b"a"), copy_of(b"v")),
+            (copy_of(b"b"), copy_of(b"v")),
+            (copy_of(b"c"), copy_of(b"v")),
+        ]),
+    });
+    assert_eq!(h.call(ENGINE, too_many), Err(Error::TooLarge));
+    assert!(workflow_runs(&h).is_empty());
+    let mut empty = dispatch_harness(Config { limits: Limits { workflow_runs: 0, ..LIMITS }, ..CALM }, &[b"ci"]);
+    assert_eq!(empty.call(ENGINE, dispatch()), Err(Error::Full));
+    assert!(workflow_runs(&empty).is_empty());
+}
+
+#[test]
+fn a_silent_workflow_job_keeps_its_run_running() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    let id = h.domain.id(REPOSITORY);
+    h.domain.repositories.get_mut(id).unwrap().workflows[0].silent = 1000;
+    h.ok(ENGINE, dispatch());
+    h.settle();
+    assert_eq!(workflow_runs(&h)[0].state, crate::api::RunState::Running);
+    assert_eq!(run_jobs(&h, workflow_runs(&h)[0].id)[0].conclusion, None);
+}
+
+#[test]
+fn dispatch_runs_and_commit_ci_keep_separate_identities_and_one_numbering() {
+    let mut h = dispatch_harness(CALM, &[b"ci"]);
+    let id = h.domain.id(REPOSITORY);
+    h.domain.repositories.get_mut(id).unwrap().checks.contexts = names(&[b"ci"]);
+    h.domain.repositories.get_mut(id).unwrap().failing = Box::new([Failing::Workflow]);
+    let head = h.commit(FIRST, &[(b"src", b"new")]);
+    h.push(ENGINE, MAIN, head).unwrap();
+    assert!(workflow_runs(&h).is_empty());
+    h.ok(ENGINE, dispatch());
+    h.settle();
+    let Answer::Runs(runs) =
+        h.inspect(&Read::Runs { workflow: None, commit: Some(head), number: None, page: 1, limit: 2 }).unwrap()
+    else {
+        unreachable!("runs")
+    };
+    assert_eq!(runs.len(), 2);
+    assert_eq!((runs[0].number, runs[0].event), (2, crate::api::RunEvent::Dispatch));
+    assert_eq!((runs[1].number, runs[1].event), (1, crate::api::RunEvent::Push));
+    h.push(ENGINE, b"work", head).unwrap();
+    assert_eq!(workflow_runs(&h).len(), 1);
+    let Answer::Statuses(statuses) = h.inspect(&Read::Statuses { commit: head }).unwrap() else {
+        unreachable!("statuses")
+    };
+    assert_eq!(statuses.len(), 2);
+}
+
+#[test]
+fn a_seed_replays_workflow_latency_runner_faults_and_reruns() {
+    for seed in 0..16 {
+        let config = Config { setup_faults: 350, lost: 250, ..CALM };
+        let mut first = dispatch_harness(config, &[b"ci", b"fmt"]);
+        let mut second = dispatch_harness(config, &[b"ci", b"fmt"]);
+        for h in [&mut first, &mut second] {
+            h.domain.rng = skein_lib::Rng::new(seed);
+            let id = h.domain.id(REPOSITORY);
+            let definition = &mut h.domain.repositories.get_mut(id).unwrap().workflows[0];
+            definition.passes = 450;
+            definition.latency_min = Duration::from_secs(2);
+            definition.latency_max = Duration::from_secs(20);
+            h.ok(ENGINE, dispatch());
+            h.settle();
+            let job = run_jobs(h, workflow_runs(h)[0].id)[0].id;
+            h.ok(ENGINE, write(Write::Rerun { job }));
+            h.settle();
+        }
+        assert_eq!(workflow_runs(&first), workflow_runs(&second), "seed {seed}");
+        assert_eq!(run_jobs(&first, 1), run_jobs(&second, 1), "seed {seed}");
+        assert_eq!(
+            first.inspect(&Read::Statuses { commit: FIRST }),
+            second.inspect(&Read::Statuses { commit: FIRST }),
+            "seed {seed}"
+        );
+    }
 }

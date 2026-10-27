@@ -20,7 +20,7 @@ use crate::store::{Repository, fit_names, fit_numbers, fits};
 /// commit of its tree, and returns that commit.
 pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
     let limits = &config.limits;
-    let Setup { id, name, default, tree, labels, checks, protection, hooked } = setup;
+    let Setup { id, name, default, tree, labels, checks, workflows, protection, hooked } = setup;
     assert_ne!(id, 0, "a repository's forge id is nonzero");
     for (_, existing) in &domain.names {
         let repository = domain.repositories.get(*existing).expect("a named repository");
@@ -48,6 +48,43 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
         fits(&protection.branch, limits.name_bytes).expect("a branch name within the limits");
         fit_names(&protection.contexts, limits.contexts, limits).expect("contexts within the limits");
     }
+    assert!(
+        workflows.len() <= usize::try_from(limits.workflows).expect("workflow bound fits"),
+        "workflows within the limits"
+    );
+    let mut workflow_files = skein_lib::Set::with_capacity(limits.workflows);
+    for workflow in &workflows {
+        fits(&workflow.file, limits.name_bytes).expect("workflow file within the limits");
+        assert!(workflow_files.insert(copy_of(&workflow.file)).expect("bounded workflows"), "unique workflow files");
+        fit_names(&workflow.jobs, limits.contexts, limits).expect("workflow jobs within the limits");
+        assert!(workflow.latency_min <= workflow.latency_max, "workflow latency is a range");
+        let mut jobs = skein_lib::Set::with_capacity(limits.contexts);
+        for job in &workflow.jobs {
+            let length = workflow
+                .file
+                .len()
+                .checked_add(3)
+                .expect("bounded context")
+                .checked_add(job.len())
+                .expect("bounded context");
+            assert!(
+                u32::try_from(length).expect("bounded context") <= limits.name_bytes,
+                "workflow status context fits"
+            );
+            assert!(jobs.insert(copy_of(job)).expect("bounded jobs"), "unique job names");
+        }
+        if let Some(cue) = &workflow.cue {
+            match cue {
+                Cue::File { path, green } => {
+                    fits(path, limits.name_bytes).expect("cue path fits");
+                    fits(green, limits.content_bytes).expect("cue content fits");
+                }
+                Cue::Message { fail } => {
+                    fits(fail, limits.content_bytes).expect("cue message fits");
+                }
+            }
+        }
+    }
     let tree = git::tree(limits, tree).expect("a first tree within the limits");
     let first = git::store(
         domain,
@@ -56,6 +93,7 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
     .expect("room for a first commit");
     let mut repository = Repository::new(limits, copy_of(&name), default, first, checks, protection, hooked);
     repository.id = id;
+    repository.workflows = workflows;
     for label in labels {
         repository.labels.insert(label).expect("a repository's labels are within the limits");
     }
