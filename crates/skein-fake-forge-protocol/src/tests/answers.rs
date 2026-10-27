@@ -310,13 +310,27 @@ fn a_jobs_steps_keep_their_numbers_names_and_statuses() {
 fn a_combined_status_is_computed_over_its_page() {
     let input = a::Answer::Checks(Box::new([
         a::CheckSummary {
-            status: a::Status { context: boxed(b"first"), state: a::Check::Passed, author: 2, at: Time::ZERO },
+            status: a::Status {
+                context: boxed(b"first"),
+                state: a::Check::Passed,
+                author: 2,
+                at: Time::ZERO,
+                description: Box::new([]),
+                link: Box::new([]),
+            },
             description: boxed(b""),
             link: boxed(b""),
             job: None,
         },
         a::CheckSummary {
-            status: a::Status { context: boxed(b"second"), state: a::Check::Pending, author: 2, at: Time::ZERO },
+            status: a::Status {
+                context: boxed(b"second"),
+                state: a::Check::Pending,
+                author: 2,
+                at: Time::ZERO,
+                description: Box::new([]),
+                link: Box::new([]),
+            },
             description: boxed(b""),
             link: boxed(b""),
             job: None,
