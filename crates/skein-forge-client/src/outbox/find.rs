@@ -46,6 +46,7 @@ pub(super) fn listed(
         Phase::Queued
         | Phase::Check
         | Phase::Make
+        | Phase::DispatchRuns { .. }
         | Phase::Compare { .. }
         | Phase::AfterUpdate
         | Phase::AfterMerge { .. } => {
@@ -71,6 +72,7 @@ pub(super) fn comments_found(
         | Phase::Check
         | Phase::Queued
         | Phase::Make
+        | Phase::DispatchRuns { .. }
         | Phase::Compare { .. }
         | Phase::AfterUpdate
         | Phase::AfterMerge { .. } => {
@@ -140,6 +142,7 @@ pub(super) fn reviews_found(
         | Phase::Check
         | Phase::Queued
         | Phase::Make
+        | Phase::DispatchRuns { .. }
         | Phase::Compare { .. }
         | Phase::AfterUpdate
         | Phase::AfterMerge { .. } => {
@@ -168,7 +171,8 @@ pub(super) fn compared(
 ) {
     let head = match phase {
         Phase::Compare { head, .. } => head,
-        Phase::Clock
+        Phase::DispatchRuns { .. }
+        | Phase::Clock
         | Phase::Check
         | Phase::Queued
         | Phase::Make
@@ -183,4 +187,50 @@ pub(super) fn compared(
     } else {
         super::retry::not_found(d, env, number, out);
     }
+}
+
+/// A dispatch has no forge key: its writer, event and start time identify an observed run.
+pub(super) fn runs_found(
+    d: &mut Domain,
+    env: &Env<Limits>,
+    number: u64,
+    phase: Phase,
+    runs: &[api::Run],
+    more: bool,
+    out: &mut Queue<Request>,
+) {
+    let w = d.outbox.entries.get(&number).expect("dispatch find entry");
+    let start = w.entry.start.expect("find has start").at;
+    for run in runs {
+        if run.event == api::Event::Dispatch
+            && crate::identity::writer(d, w.entry.repository, run.actor)
+            && run.created >= start
+        {
+            super::finished(d, env, number, Made::Set, true, out);
+            return;
+        }
+    }
+    let Phase::DispatchRuns { head, page } = phase else {
+        unreachable!("dispatch runs phase");
+    };
+    if more {
+        super::next(d, number, Phase::DispatchRuns { head, page: page.saturating_add(1) });
+    } else {
+        super::retry::not_found(d, env, number, out);
+    }
+}
+pub(super) fn rerun_found(d: &mut Domain, env: &Env<Limits>, number: u64, run: &api::Run, out: &mut Queue<Request>) {
+    let w = d.outbox.entries.get(&number).expect("rerun find entry");
+    let api::Write::Rerun { job: expected } = w.entry.effect.write else {
+        unreachable!("rerun lookup");
+    };
+    if run.commit == expected.head {
+        for job in &run.jobs {
+            if job.id == expected.job && job.attempt > expected.attempt {
+                super::finished(d, env, number, Made::Set, true, out);
+                return;
+            }
+        }
+    }
+    super::retry::not_found(d, env, number, out);
 }

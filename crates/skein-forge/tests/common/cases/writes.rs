@@ -156,6 +156,7 @@ pub fn expected(answer: Answer) -> Document {
         | Answer::Protection(_)
         | Answer::Protections(_)
         | Answer::Collaborators(_)
+        | Answer::Tree { .. }
         | Answer::Permission(_)
         | Answer::Org(_)
         | Answer::CreatedRepository(_)

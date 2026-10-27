@@ -48,6 +48,7 @@ pub struct Plan {
     stage: Stage,
     row: Option<Repository>,
     request: Option<Exchange>,
+    turn: Option<super::turn::Plan>,
     contents: Option<crate::forgejo::plans::contents::Plan>,
     actions: Option<crate::forgejo::plans::actions::Plan>,
     rows: Rows,
@@ -74,6 +75,7 @@ impl Plan {
             stage: Stage::Read,
             row: None,
             request: None,
+            turn: None,
             contents: None,
             actions: None,
             rows: Rows::None,
@@ -121,6 +123,9 @@ impl Plan {
             | api::Read::PullFiles { .. }
             | api::Read::Compare { .. }
             | api::Read::Checks { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => {}
         }
@@ -155,6 +160,11 @@ impl Plan {
         let at = self.at();
         let capacity = bounds.rows;
         let request = match self.read.clone() {
+            api::Read::Runs { workflow, commit, page } => {
+                return Ok(self.turn(super::turn::Mode::Runs { workflow, commit, page }, bounds));
+            }
+            api::Read::Run { run } => return Ok(self.turn(super::turn::Mode::Run(run), bounds)),
+            api::Read::Tree { object, page } => return Ok(self.turn(super::turn::Mode::Tree { object, page }, bounds)),
             api::Read::Items { since, page, kind } => {
                 self.rows = Rows::Items(List::with_capacity(bounds.page_size));
                 let kind = match kind {
@@ -233,6 +243,12 @@ impl Plan {
         };
         Ok(self.send(request))
     }
+    fn turn(&mut self, mode: super::turn::Mode, bounds: Bounds) -> Step {
+        let plan = super::turn::Plan::new(mode, self.row.as_ref().expect("resolved").clone(), bounds);
+        let step = plan.begin(bounds);
+        self.turn = Some(plan);
+        step
+    }
     fn id(&self, bytes: api::Commit) -> ObjectId {
         ObjectId { bytes, format: self.row.as_ref().expect("resolved format").object_format }
     }
@@ -270,6 +286,9 @@ impl Plan {
         word: &[u8],
         tables: &mut Tables,
     ) -> Result<Option<Step>, api::Error> {
+        if let Some(plan) = &mut self.turn {
+            return plan.heard(heard, bounds, self.repository, tables);
+        }
         if let Some(plan) = &mut self.contents {
             return plan.heard(heard, bounds, self.repository, tables);
         }
@@ -435,6 +454,7 @@ impl Plan {
             | d::Row::Team(_)
             | d::Row::File(_)
             | d::Row::Commit(_)
+            | d::Row::Entry(_)
             | d::Row::Run(_)
             | d::Row::Step(_)
             | d::Row::Job(_) => Err(api::Error::InvalidAnswer),
@@ -467,6 +487,9 @@ impl Plan {
                 | api::Read::PullFiles { .. }
                 | api::Read::Compare { .. }
                 | api::Read::Checks { .. }
+                | api::Read::Runs { .. }
+                | api::Read::Run { .. }
+                | api::Read::Tree { .. }
                 | api::Read::Job { .. }
                 | api::Read::File { .. } => false,
             };
@@ -491,6 +514,9 @@ impl Plan {
             | api::Answer::Remarks { .. }
             | api::Answer::Commit(_)
             | api::Answer::Branches(_)
+            | api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
             | api::Answer::Located { .. }
             | api::Answer::PullFiles { .. }
             | api::Answer::Compare { .. }
@@ -552,6 +578,7 @@ impl Plan {
         }
         Ok(())
     }
+    #[expect(clippy::too_many_lines, reason = "exhaustive answer selection names every vocabulary variant")]
     fn push(&mut self, answer: api::Answer) -> Result<(), api::Error> {
         match answer {
             api::Answer::Items { items, .. } => self.push_items(items)?,
@@ -632,6 +659,9 @@ impl Plan {
             }
             api::Answer::Pull(_)
             | api::Answer::Commit(_)
+            | api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
             | api::Answer::Located { .. }
             | api::Answer::PullFiles { .. }
             | api::Answer::Compare { .. }

@@ -510,3 +510,37 @@ fn github_refusal_strings_encoder_bounds_and_escapes() {
         &[],
     );
 }
+
+#[test]
+fn turn_calls_are_refused_without_a_request() {
+    use super::plans::{
+        plan::{Bounds, Plan, Step},
+        tables::Tables,
+    };
+    let head = [0; 32];
+    let job = api::JobAttempt { head, run: 1, job: 2, attempt: 1 };
+    let bounds = Bounds { inner: 4, page_size: 2, rows: 4, answer_bytes: 4096, body_bytes: 4096 };
+    for op in [
+        api::Op::Read(api::Read::Runs { workflow: Box::from(*b"ci.yaml"), commit: head, page: 1 }),
+        api::Op::Read(api::Read::Run { run: 1 }),
+        api::Op::Read(api::Read::Tree { object: head, page: 1 }),
+        api::Op::Write(api::Write::Dispatch {
+            workflow: Box::from(*b"ci.yaml"),
+            branch: Box::from(*b"main"),
+            inputs: Box::new([]),
+        }),
+        api::Op::Write(api::Write::Rerun { job }),
+        api::Op::Write(api::Write::Merge { number: 1, head, how: api::MergeHow::FastForwardOnly }),
+        api::Op::Write(api::Write::Update { number: 1, style: api::UpdateStyle::Rebase }),
+    ] {
+        let mut plan = Plan::new(api::Repository { forge: 1, repository: 1 }, op.clone());
+        let mut tables = Tables::new(1, 1);
+        let result = plan.begin(bounds, b"kit", &mut tables).expect("plan begins");
+        let cost: u32 = match &result {
+            Step::Send(_) | Step::Redirect { .. } => 1,
+            Step::Done(_) => 0,
+        };
+        assert_eq!((result, cost), (Step::Done(Err(api::Error::Refused)), 0), "{op:?}");
+        assert_eq!(plan.pending(), None);
+    }
+}

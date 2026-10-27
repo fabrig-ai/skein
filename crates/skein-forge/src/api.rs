@@ -12,6 +12,11 @@ pub const VALIDATOR_BYTES: usize = 128;
 /// The display reason's byte bound; decoders truncate at a UTF-8 boundary instead of refusing the read.
 pub const DEQUEUED_BYTES: usize = 256;
 
+/// A status's words' bound (forge.md, 3.2).
+pub const DESCRIPTION_BYTES: usize = 140;
+/// A dispatch's inputs' bound (forge.md, 3.2).
+pub const INPUTS: usize = 10;
+
 /// A forge's request window, so the client can use its allowance and reset time.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Rate {
@@ -132,6 +137,12 @@ pub enum Read {
     Collaborators { page: u32 },
     /// Read permission.
     Permission { user: u64 },
+    /// The runs of one workflow, by its file, at one commit, newest first, pages from 1.
+    Runs { workflow: Box<[u8]>, commit: Commit, page: u32 },
+    /// One run with its jobs.
+    Run { run: u64 },
+    /// One tree, not recursively: a commit's root tree, or a tree by its id; pages from 1.
+    Tree { object: Commit, page: u32 },
 }
 /// A typed forge write handed down from a committed outbox entry.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -154,11 +165,15 @@ pub enum Write {
     Reopen { number: u64 },
     /// Checked at exact head. The outbox effect's intended base is a
     /// client-side precondition, checked by reading the pull afresh.
-    Merge { number: u64, head: Commit },
-    /// Forge-side merge update, with two parents and fresh CI.
-    Update { number: u64 },
-    /// Write status.
-    Status { commit: Commit, context: Box<[u8]>, check: Check },
+    Merge { number: u64, head: Commit, how: MergeHow },
+    /// Brings a pull request's branch up to its base (forge.md, 3.2).
+    Update { number: u64, style: UpdateStyle },
+    /// Each of `description` (at most `DESCRIPTION_BYTES`) and `link` (an absolute URL) empty for none.
+    Status { commit: Commit, context: Box<[u8]>, check: Check, description: Box<[u8]>, link: Box<[u8]> },
+    /// Runs a workflow, by its file, at a branch's head; the forge keeps no key and answers no run.
+    Dispatch { workflow: Box<[u8]>, branch: Box<[u8]>, inputs: Box<[Input]> },
+    /// Runs one job again, with the jobs that need it, once its run has completed.
+    Rerun { job: JobAttempt },
     /// Write create branch.
     CreateBranch { branch: Box<[u8]>, commit: Commit },
     /// Write delete branch.
@@ -215,6 +230,12 @@ pub enum Answer {
     Queued,
     /// Return branch.
     Branch(BranchCreation),
+    /// The runs of one workflow at one commit, newest first.
+    Runs { runs: Box<[Run]>, more: bool },
+    /// One run with its jobs.
+    Run(Run),
+    /// One tree's entries, in name order.
+    Tree { entries: Box<[Entry]>, more: bool },
     /// Return done.
     Done,
 }
@@ -475,4 +496,87 @@ pub struct Settings {
 pub struct Collaborator {
     pub user: u64,
     pub permission: Permission,
+}
+
+/// How a merge lands (forge.md, 3.2).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum MergeHow {
+    Style,
+    FastForwardOnly,
+}
+/// How an update brings a branch up to its base (forge.md, 3.2).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum UpdateStyle {
+    Merge,
+    Rebase,
+}
+/// One dispatch input (forge.md, 3.2).
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Input {
+    pub name: Box<[u8]>,
+    pub value: Box<[u8]>,
+}
+/// An Actions run (forge.md, 3.6); `jobs` empty in a `Runs` listing.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Run {
+    pub id: u64,
+    pub number: u64,
+    pub workflow: Box<[u8]>,
+    pub commit: Commit,
+    pub event: Event,
+    /// The user who triggered it, by the forge's id.
+    pub actor: u64,
+    pub state: RunState,
+    /// None while it runs.
+    pub conclusion: Option<Conclusion>,
+    pub url: Box<[u8]>,
+    pub created: Time,
+    pub jobs: Box<[RunJob]>,
+}
+/// What triggered a run (forge.md, 3.6).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Event {
+    Dispatch,
+    Other,
+}
+/// An Actions run's or job's state (forge.md, 3.6).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum RunState {
+    Waiting,
+    Running,
+    Completed,
+}
+/// An Actions run's or job's conclusion (forge.md, 3.6).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Conclusion {
+    Success,
+    Failure,
+    Cancelled,
+    Skipped,
+}
+/// One job of an Actions run (forge.md, 3.6).
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct RunJob {
+    pub id: u64,
+    pub name: Box<[u8]>,
+    pub attempt: u32,
+    pub state: RunState,
+    pub conclusion: Option<Conclusion>,
+    /// None when no step failed.
+    pub step: Option<Step>,
+}
+/// One entry of a tree (forge.md, 3.6).
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Entry {
+    pub name: Box<[u8]>,
+    pub mode: u32,
+    pub kind: EntryKind,
+    pub object: Commit,
+}
+/// A tree entry's object kind (forge.md, 3.6).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum EntryKind {
+    Blob,
+    Tree,
+    Commit,
 }

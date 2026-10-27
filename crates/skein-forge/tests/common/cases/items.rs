@@ -192,6 +192,7 @@ pub fn expected(answer: Answer) -> (Document, Vec<Row>) {
         | Answer::Protection(_)
         | Answer::Protections(_)
         | Answer::Collaborators(_)
+        | Answer::Tree { .. }
         | Answer::Permission(_)
         | Answer::Pulls(_)
         | Answer::Token(_)

@@ -110,6 +110,9 @@ impl Plan {
     #[must_use]
     pub fn new(repository: api::Repository, read: api::Read) -> Self {
         let read = match read {
+            api::Read::Runs { .. } | api::Read::Run { .. } | api::Read::Tree { .. } => {
+                unreachable!("turn calls refused before read plan")
+            }
             api::Read::Locate { owner, name } => Read::Locate { owner, name },
             api::Read::Settings => Read::Settings,
             api::Read::Branch { branch } => Read::Branch { branch },

@@ -580,7 +580,7 @@ fn job_request() -> Request {
     }
 }
 fn job() -> crate::forgejo::document::Job {
-    crate::forgejo::document::Job { id: 2, run_id: 1, attempt: 1 }
+    crate::forgejo::document::Job { id: 2, run_id: 1, attempt: 1, ..crate::forgejo::document::job() }
 }
 fn setup() -> crate::forgejo::document::Step {
     crate::forgejo::document::Step {
@@ -595,7 +595,14 @@ fn a_job_reads_its_steps_numbers_names_and_statuses() {
     let limits = fixtures::limits();
     let body = br#"{"id":2,"run_id":1,"attempt":1,"name":"fail","status":"failure","steps":[{"number":0,"name":"Set up job","status":"success","started":"2020-01-01T00:00:14+05:30"},{"number":1,"name":"exit 1\n","status":"failure"},{"number":2,"name":"Complete job","status":"failure"}]}"#;
     let decoded = fixtures::decode(client::decoder(&job_request(), &limits).unwrap(), body, &limits);
-    assert_eq!(decoded.document, Ok(Document::Job(job())));
+    assert_eq!(
+        decoded.document,
+        Ok(Document::Job(crate::forgejo::document::Job {
+            name: Box::from(*b"fail"),
+            status: StepStatus::Failure,
+            ..job()
+        }))
+    );
     assert_eq!(
         decoded.rows.as_slice(),
         [
@@ -611,7 +618,16 @@ fn a_job_without_a_steps_member_reads_no_steps() {
     let limits = fixtures::limits();
     let body = br#"{"id":4,"run_id":2,"attempt":0,"status":"waiting"}"#;
     let decoded = fixtures::decode(client::decoder(&job_request(), &limits).unwrap(), body, &limits);
-    assert_eq!(decoded.document, Ok(Document::Job(crate::forgejo::document::Job { id: 4, run_id: 2, attempt: 0 })));
+    assert_eq!(
+        decoded.document,
+        Ok(Document::Job(crate::forgejo::document::Job {
+            id: 4,
+            run_id: 2,
+            attempt: 0,
+            status: crate::forgejo::document::StepStatus::Waiting,
+            ..crate::forgejo::document::job()
+        }))
+    );
     assert_eq!(decoded.rows.as_slice(), []);
 }
 #[test]

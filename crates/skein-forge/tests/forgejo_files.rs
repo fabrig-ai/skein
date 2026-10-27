@@ -127,14 +127,14 @@ fn a_failing_actions_status_links_its_run_and_job() {
     let (run_number, job_index) = link.expect("this repository's job link");
     let transcript = forgejo::transcript("actions-runs");
     let runs = forgejo::decode(&forgejo::route(&transcript), &transcript.body);
-    let Row::Run(run) = runs.rows[0] else {
+    let Row::Run(ref run) = runs.rows[0] else {
         panic!("run row");
     };
     assert_eq!(run.index_in_repo, run_number);
     assert_eq!(run.commit_sha, forgejo::sha(16));
     let transcript = forgejo::transcript("actions-jobs");
     let jobs = forgejo::decode(&forgejo::route(&transcript), &transcript.body);
-    let Row::Job(job) = jobs.rows[usize::try_from(job_index).expect("job index fits")] else {
+    let Row::Job(ref job) = jobs.rows[usize::try_from(job_index).expect("job index fits")] else {
         panic!("job row");
     };
     assert_eq!(job.run_id, run.id);

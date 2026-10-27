@@ -244,6 +244,27 @@ pub enum Request {
         path: Box<[u8]>,
         reference: crate::forgejo::id::ObjectId,
     },
+    Tree {
+        at: Repo,
+        object: crate::forgejo::id::ObjectId,
+        page: Page,
+    },
+    WorkflowRuns {
+        at: Repo,
+        workflow: Box<[u8]>,
+        head_sha: crate::forgejo::id::ObjectId,
+        page: Page,
+    },
+    Dispatch {
+        at: Repo,
+        workflow: Box<[u8]>,
+        branch: Box<[u8]>,
+        inputs: Box<[crate::api::Input]>,
+    },
+    Rerun {
+        at: Repo,
+        job: u64,
+    },
     Runs {
         at: Repo,
         head_sha: crate::forgejo::id::ObjectId,
@@ -324,6 +345,8 @@ pub enum Request {
         commit: crate::forgejo::id::ObjectId,
         state: crate::forgejo::document::StatusState,
         context: Box<[u8]>,
+        description: Box<[u8]>,
+        link: Box<[u8]>,
     },
     CreateBranch {
         at: Repo,

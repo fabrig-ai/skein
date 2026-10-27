@@ -24,6 +24,17 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
     let request = match tail {
         [runs] if &**runs == b"runs" => {
             let head = query_value(&target.query, b"head_sha").ok_or(Unrouted::Malformed)?;
+            if let Some(workflow) = query_value(&target.query, b"workflow") {
+                if method != Method::Get {
+                    return Err(Unrouted::Method);
+                }
+                return Ok(Route::Ready(Request::WorkflowRuns {
+                    at,
+                    workflow,
+                    head_sha: id::read(&head).ok_or(Unrouted::Malformed)?,
+                    page: page(&target.query)?,
+                }));
+            }
             let number = query_value(&target.query, b"run_number").ok_or(Unrouted::Malformed)?;
             Request::Runs {
                 at,
@@ -64,6 +75,33 @@ fn run(json: &mut Encoder, value: &Run) {
     json.unsigned(value.index_in_repo);
     json.key(b"commit_sha");
     json.string(&id::write(&value.commit_sha));
+    if !value.workflow.is_empty() {
+        json.key(b"workflow_id");
+        json.string(&value.workflow);
+    }
+    if !value.event.is_empty() {
+        json.key(b"event");
+        json.string(&value.event);
+    }
+    if value.trigger_actor != 0 {
+        json.key(b"trigger_user");
+        json.object_start();
+        json.key(b"id");
+        json.unsigned(value.trigger_actor);
+        json.object_end();
+    }
+    if value.status != document::StepStatus::Unknown {
+        json.key(b"status");
+        json.string(document::step_status_text(value.status));
+    }
+    if !value.html_url.is_empty() {
+        json.key(b"html_url");
+        json.string(&value.html_url);
+    }
+    if !value.workflow.is_empty() || value.created_at != skein_lib::Wall::EPOCH {
+        json.key(b"created");
+        json.string(&crate::forgejo::time::write(value.created_at));
+    }
     json.object_end();
 }
 pub(super) fn write(json: &mut Encoder, answer: &Answer) {
@@ -89,7 +127,8 @@ pub(super) fn write(json: &mut Encoder, answer: &Answer) {
             }
             json.array_end();
         }
-        Answer::Error(_)
+        Answer::Tree { .. }
+        | Answer::Error(_)
         | Answer::Comment(_)
         | Answer::Status(_)
         | Answer::Review(_)
@@ -137,6 +176,14 @@ fn job(json: &mut Encoder, value: &Job, steps: &[Step]) {
     json.unsigned(value.run_id);
     json.key(b"attempt");
     json.unsigned(u64::from(value.attempt));
+    if !value.name.is_empty() {
+        json.key(b"name");
+        json.string(&value.name);
+    }
+    if value.status != document::StepStatus::Unknown {
+        json.key(b"status");
+        json.string(document::step_status_text(value.status));
+    }
     if !steps.is_empty() {
         json.key(b"steps");
         json.array_start();

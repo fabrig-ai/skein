@@ -29,10 +29,23 @@ pub fn file(n: u32) -> ChangedFile {
     }
 }
 pub fn run() -> Run {
-    Run { id: 1, index_in_repo: 1, commit_sha: forgejo::sha(16) }
+    Run {
+        id: 1,
+        index_in_repo: 1,
+        commit_sha: forgejo::sha(16),
+        workflow: Box::from(*b"conformance.yaml"),
+        event: Box::from(*b"push"),
+        trigger_actor: 1,
+        status: StepStatus::Failure,
+        html_url: Box::from(*b"http://127.0.0.1:3000/fixture/specimen/actions/runs/1"),
+        created_at: Wall::from_nanos(1_577_817_011_000_000_000),
+    }
 }
 pub fn jobs() -> Box<[Job]> {
-    Box::from([Job { id: 1, run_id: 1, attempt: 1 }, Job { id: 2, run_id: 1, attempt: 1 }])
+    Box::from([
+        Job { id: 1, run_id: 1, attempt: 1, name: Box::from(*b"pass"), status: StepStatus::Success },
+        Job { id: 2, run_id: 1, attempt: 1, name: Box::from(*b"fail"), status: StepStatus::Failure },
+    ])
 }
 pub fn status(context: &[u8], status: StatusState, description: &[u8], target_url: &[u8], at: u64) -> CommitStatus {
     CommitStatus {
@@ -49,7 +62,7 @@ pub fn raw() -> Request {
 }
 pub fn failing_job() -> Answer {
     Answer::Job {
-        job: Job { id: 2, run_id: 1, attempt: 1 },
+        job: Job { id: 2, run_id: 1, attempt: 1, name: Box::from(*b"fail"), status: StepStatus::Failure },
         steps: Box::from([
             Step { number: 0, name: Box::from(*b"Set up job"), status: StepStatus::Success },
             Step {
@@ -210,6 +223,7 @@ pub fn expected(answer: Answer) -> (Document, Vec<Row>) {
         | Answer::Protection(_)
         | Answer::Protections(_)
         | Answer::Collaborators(_)
+        | Answer::Tree { .. }
         | Answer::Permission(_) => panic!("file family answer"),
     }
 }

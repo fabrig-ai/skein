@@ -28,59 +28,277 @@ pub enum Accept {
 /// One request at GitHub's pin, with repository path bytes from its row.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Request {
-    LogPage { ask: super::log::Ask, per_page: u32 },
-    LogDelivery { id: u64, event: Box<[u8]> },
-    Installations { page: u32 },
-    Installation { id: u64 },
-    Mint { installation: u64, scope: Scope },
-    Reachable { page: u32, per_page: u32 },
+    LogPage {
+        ask: super::log::Ask,
+        per_page: u32,
+    },
+    LogDelivery {
+        id: u64,
+        event: Box<[u8]>,
+    },
+    Installations {
+        page: u32,
+    },
+    Installation {
+        id: u64,
+    },
+    Mint {
+        installation: u64,
+        scope: Scope,
+    },
+    Reachable {
+        page: u32,
+        per_page: u32,
+    },
     Viewer,
-    Merge { owner: Box<[u8]>, name: Box<[u8]>, number: u64, head: api::Commit, method: super::plans::tables::Method },
-    Enqueue { id: Box<[u8]>, head: api::Commit },
-    PullGraphql { owner: Box<[u8]>, name: Box<[u8]>, number: u64 },
+    Merge {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        head: api::Commit,
+        method: super::plans::tables::Method,
+    },
+    Enqueue {
+        id: Box<[u8]>,
+        head: api::Commit,
+    },
+    PullGraphql {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+    },
     App,
     HookConfig,
-    SetHook { url: Box<[u8]> },
-    Uninstall { id: u64 },
-    Conversion { code: Box<[u8]> },
-    BotUser { slug: Box<[u8]> },
-    Repository { id: u64 },
-    Locate { owner: Box<[u8]>, name: Box<[u8]> },
-    Issues { owner: Box<[u8]>, name: Box<[u8]>, since: Wall, page: u32, per_page: u32 },
-    Issue { owner: Box<[u8]>, name: Box<[u8]>, number: u64 },
-    Comments { owner: Box<[u8]>, name: Box<[u8]>, number: u64, page: u32, per_page: u32 },
-    Pull { owner: Box<[u8]>, name: Box<[u8]>, number: u64 },
-    PullsFor { owner: Box<[u8]>, name: Box<[u8]>, head: Box<[u8]>, base: Box<[u8]>, open: bool },
-    Reviews { owner: Box<[u8]>, name: Box<[u8]>, number: u64, page: u32, per_page: u32 },
-    ReviewComments { owner: Box<[u8]>, name: Box<[u8]>, number: u64, review: u64, page: u32, per_page: u32 },
-    CombinedStatus { owner: Box<[u8]>, name: Box<[u8]>, commit: api::Commit, page: u32, per_page: u32 },
-    CheckRuns { owner: Box<[u8]>, name: Box<[u8]>, commit: api::Commit, page: u32, per_page: u32 },
-    Job { owner: Box<[u8]>, name: Box<[u8]>, id: u64 },
-    Followed { target: Box<[u8]> },
-    JobLog { owner: Box<[u8]>, name: Box<[u8]>, id: u64 },
-    Branch { owner: Box<[u8]>, name: Box<[u8]>, branch: Box<[u8]> },
-    Branches { owner: Box<[u8]>, name: Box<[u8]>, page: u32, per_page: u32 },
-    PullFiles { owner: Box<[u8]>, name: Box<[u8]>, number: u64, page: u32, per_page: u32 },
-    Compare { owner: Box<[u8]>, name: Box<[u8]>, before: api::Commit, after: api::Commit, per_page: u32 },
-    Raw { owner: Box<[u8]>, name: Box<[u8]>, path: Box<[u8]>, commit: api::Commit },
-    RulesForBranch { owner: Box<[u8]>, name: Box<[u8]>, branch: Box<[u8]>, page: u32 },
-    Ruleset { owner: Box<[u8]>, name: Box<[u8]>, id: u64 },
-    ClassicProtection { owner: Box<[u8]>, name: Box<[u8]>, branch: Box<[u8]> },
-    Collaborators { owner: Box<[u8]>, name: Box<[u8]>, page: u32, per_page: u32 },
-    Permission { owner: Box<[u8]>, name: Box<[u8]>, login: Box<[u8]> },
-    User { id: u64 },
-    Reopen { owner: Box<[u8]>, name: Box<[u8]>, number: u64 },
-    Edit { owner: Box<[u8]>, name: Box<[u8]>, number: u64, title: Option<Box<[u8]>>, body: Option<Box<[u8]>> },
-    Status { owner: Box<[u8]>, name: Box<[u8]>, commit: api::Commit, context: Box<[u8]>, check: api::Check },
-    CreateBranch { owner: Box<[u8]>, name: Box<[u8]>, branch: Box<[u8]>, commit: api::Commit },
-    Reviewers { owner: Box<[u8]>, name: Box<[u8]>, number: u64, add: bool, logins: Box<[Box<[u8]>]> },
-    Update { owner: Box<[u8]>, name: Box<[u8]>, number: u64, head: api::Commit },
-    Review { owner: Box<[u8]>, name: Box<[u8]>, number: u64, verdict: api::Verdict, body: Box<[u8]> },
-    Post { owner: Box<[u8]>, name: Box<[u8]>, number: u64, body: Box<[u8]> },
-    CreateIssue { owner: Box<[u8]>, name: Box<[u8]>, title: Box<[u8]>, body: Box<[u8]> },
-    OpenPull { owner: Box<[u8]>, name: Box<[u8]>, title: Box<[u8]>, body: Box<[u8]>, head: Box<[u8]>, base: Box<[u8]> },
-    Close { owner: Box<[u8]>, name: Box<[u8]>, number: u64 },
-    DeleteBranch { owner: Box<[u8]>, name: Box<[u8]>, branch: Box<[u8]> },
+    SetHook {
+        url: Box<[u8]>,
+    },
+    Uninstall {
+        id: u64,
+    },
+    Conversion {
+        code: Box<[u8]>,
+    },
+    BotUser {
+        slug: Box<[u8]>,
+    },
+    Repository {
+        id: u64,
+    },
+    Locate {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+    },
+    Issues {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        since: Wall,
+        page: u32,
+        per_page: u32,
+    },
+    Issue {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+    },
+    Comments {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        page: u32,
+        per_page: u32,
+    },
+    Pull {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+    },
+    PullsFor {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        head: Box<[u8]>,
+        base: Box<[u8]>,
+        open: bool,
+    },
+    Reviews {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        page: u32,
+        per_page: u32,
+    },
+    ReviewComments {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        review: u64,
+        page: u32,
+        per_page: u32,
+    },
+    CombinedStatus {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        commit: api::Commit,
+        page: u32,
+        per_page: u32,
+    },
+    CheckRuns {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        commit: api::Commit,
+        page: u32,
+        per_page: u32,
+    },
+    Job {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        id: u64,
+    },
+    Followed {
+        target: Box<[u8]>,
+    },
+    JobLog {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        id: u64,
+    },
+    Branch {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        branch: Box<[u8]>,
+    },
+    Branches {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        page: u32,
+        per_page: u32,
+    },
+    PullFiles {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        page: u32,
+        per_page: u32,
+    },
+    Compare {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        before: api::Commit,
+        after: api::Commit,
+        per_page: u32,
+    },
+    Raw {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        path: Box<[u8]>,
+        commit: api::Commit,
+    },
+    RulesForBranch {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        branch: Box<[u8]>,
+        page: u32,
+    },
+    Ruleset {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        id: u64,
+    },
+    ClassicProtection {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        branch: Box<[u8]>,
+    },
+    Collaborators {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        page: u32,
+        per_page: u32,
+    },
+    Permission {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        login: Box<[u8]>,
+    },
+    User {
+        id: u64,
+    },
+    Reopen {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+    },
+    Edit {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        title: Option<Box<[u8]>>,
+        body: Option<Box<[u8]>>,
+    },
+    Status {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        commit: api::Commit,
+        context: Box<[u8]>,
+        check: api::Check,
+        description: Box<[u8]>,
+        link: Box<[u8]>,
+    },
+    CreateBranch {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        branch: Box<[u8]>,
+        commit: api::Commit,
+    },
+    Reviewers {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        add: bool,
+        logins: Box<[Box<[u8]>]>,
+    },
+    Update {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        head: api::Commit,
+    },
+    Review {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        verdict: api::Verdict,
+        body: Box<[u8]>,
+    },
+    Post {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+        body: Box<[u8]>,
+    },
+    CreateIssue {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        title: Box<[u8]>,
+        body: Box<[u8]>,
+    },
+    OpenPull {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        title: Box<[u8]>,
+        body: Box<[u8]>,
+        head: Box<[u8]>,
+        base: Box<[u8]>,
+    },
+    Close {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        number: u64,
+    },
+    DeleteBranch {
+        owner: Box<[u8]>,
+        name: Box<[u8]>,
+        branch: Box<[u8]>,
+    },
 }
 /// The permissions requested from an installation's mint.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -775,7 +993,15 @@ fn body_json(request: &Request, json: &mut skein_json::writer::Encoder) -> Resul
             json.string(&id::write_commit(commit).ok_or(Refusal::Text)?);
         }
 
-        Request::Status { context, check, .. } => {
+        Request::Status { context, check, description, link, .. } => {
+            if !description.is_empty() {
+                json.key(b"description");
+                json.string(description);
+            }
+            if !link.is_empty() {
+                json.key(b"target_url");
+                json.string(link);
+            }
             json.key(b"state");
             json.string(match check {
                 api::Check::Pending => b"pending",
@@ -1006,7 +1232,11 @@ fn bounded_fields(request: &Request, limits: &Limits) -> Result<(), Refusal> {
             bounded(base, limits.string_bytes)?;
         }
         Request::CreateBranch { branch, .. } => bounded(branch, limits.string_bytes)?,
-        Request::Status { context, .. } => bounded(context, limits.string_bytes)?,
+        Request::Status { context, description, link, .. } => {
+            bounded(context, limits.string_bytes)?;
+            bounded(description, limits.string_bytes)?;
+            bounded(link, limits.string_bytes)?;
+        }
         Request::Edit { title, body, .. } => {
             if let Some(title) = title {
                 bounded(title, limits.string_bytes)?;

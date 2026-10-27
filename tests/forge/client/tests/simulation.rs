@@ -231,7 +231,11 @@ fn a_conditional_merge_lands_once_within_its_attempt_lifetime() {
         task: 7,
         repository: REPO,
         effect: Effect {
-            write: api::Write::Merge { number: pull, head: skein_forge_client_world::translate::commit(head) },
+            write: api::Write::Merge {
+                number: pull,
+                head: skein_forge_client_world::translate::commit(head),
+                how: skein_forge::api::MergeHow::Style,
+            },
             condition: Condition::Merge { base: Box::from(&b"main"[..]) },
         },
         start: None,
@@ -271,7 +275,13 @@ fn a_late_set_reaches_its_final_state() {
         task: 7,
         repository: REPO,
         effect: Effect {
-            write: api::Write::Status { commit: head, context: Box::from(&b"build"[..]), check: api::Check::Passed },
+            write: api::Write::Status {
+                commit: head,
+                context: Box::from(&b"build"[..]),
+                check: api::Check::Passed,
+                description: Box::new([]),
+                link: Box::new([]),
+            },
             condition: Condition::None,
         },
         start: None,
@@ -473,6 +483,9 @@ fn adoption_reads_history_and_preserves_foreign_or_copied_marker_news() {
                 }
             }
             api::Answer::Items { .. }
+            | api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
             | api::Answer::Located { .. }
             | api::Answer::Pull(_)
             | api::Answer::Reviews { .. }
@@ -539,6 +552,9 @@ fn comment_ids(world: &World) -> skein_lib::List<u64> {
                 }
             }
             api::Answer::Items { .. }
+            | api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
             | api::Answer::Located { .. }
             | api::Answer::Pull(_)
             | api::Answer::Reviews { .. }
@@ -595,6 +611,9 @@ fn review_page_recovery_keeps_old_pending_submissions_without_duplicate_news() {
                 }
             }
             api::Answer::Items { .. }
+            | api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
             | api::Answer::Located { .. }
             | api::Answer::Item { .. }
             | api::Answer::Pull(_)
@@ -708,6 +727,9 @@ fn review_count(world: &World) -> u32 {
                 count = count.saturating_add(u32::try_from(reviews.len()).expect("bounded review rows"));
             }
             api::Answer::Items { .. }
+            | api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
             | api::Answer::Located { .. }
             | api::Answer::Item { .. }
             | api::Answer::Pull(_)

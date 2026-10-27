@@ -86,7 +86,8 @@ pub(super) fn step(commit: &mut Option<ObjectId>, movement: Move) -> Step {
         Move::Scalar { value: Value::Id(id), .. } => *commit = id,
         Move::Scalar {
             key,
-            value: Value::Number(_) | Value::Text(_) | Value::Boolean(_) | Value::Body(_) | Value::Time(_),
+            value:
+                Value::Input(_) | Value::Number(_) | Value::Text(_) | Value::Boolean(_) | Value::Body(_) | Value::Time(_),
             ..
         } => return Step::Malformed(Malformed::Shape { field: key }),
         Move::End(_) => (),
