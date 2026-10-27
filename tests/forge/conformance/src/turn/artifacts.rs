@@ -109,6 +109,11 @@ pub(super) fn record(p: &mut Probe<'_>) -> Result<()> {
         "the upload job did not complete with both named artifacts; see actions-artifact job log",
     );
     if !observed.root().get("status").is("success") {
+        let server = std::fs::read(p.recorder.f.instance.scratch().join("server.log"))?;
+        crate::write::check("artifact-server.log", b"", &server, p.recorder.secrets)?;
+        let server = p.recorder.mask.bytes(&server);
+        crate::write::check("artifact-server.log", b"", &server, p.recorder.secrets)?;
+        std::fs::write(p.recorder.out.join("artifact-server.log"), server)?;
         return Err(
             "artifact upload failed: recorded actions-artifact-run, actions-artifact-jobs and its job log".into()
         );
