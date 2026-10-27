@@ -2,7 +2,64 @@
 use super::{Probe, REPO, Result, actions, number, rows};
 use skein_throwaway_forgejo::Exchange;
 
-const WORKFLOW: &str = "name: artifact-dispatch\non:\n  workflow_dispatch:\njobs:\n  upload:\n    runs-on: kit-host\n    timeout-minutes: 1\n    steps:\n      - run: printf 'a\\nb\\n' > failed.txt\n      - uses: https://code.forgejo.org/actions/upload-artifact@v3\n        with:\n          name: tests\n          path: failed.txt\n      - uses: https://code.forgejo.org/actions/upload-artifact@v3\n        with:\n          name: other\n          path: failed.txt\n";
+const WORKFLOW: &str = r#"name: artifact-dispatch
+on:
+  workflow_dispatch:
+jobs:
+  upload:
+    runs-on: kit-host
+    timeout-minutes: 1
+    steps:
+      - shell: bash
+        run: |
+          set -eu
+          set +x
+          if [ -z "${ACTIONS_RUNTIME_URL:-}" ] || [ -z "${ACTIONS_RUNTIME_TOKEN:-}" ] || [ -z "${GITHUB_RUN_ID:-}" ]; then
+            printf 'ARTIFACT_PROTOCOL: run step has no runtime URL, token, or run id\n'
+            exit 1
+          fi
+          show() {
+            local text
+            text=$(cat "$1")
+            printf '%s\n' "${text//"$ACTIONS_RUNTIME_TOKEN"/MASKED}"
+          }
+          exchange() {
+            local label method target status
+            label=$1; method=$2; target=$3; shift 3
+            printf 'ARTIFACT_PROTOCOL_BEGIN %s\n' "$label"
+            if status=$(curl --silent --show-error --verbose --stderr curl.trace --max-time 20 \
+              --request "$method" --header "Authorization: Bearer $ACTIONS_RUNTIME_TOKEN" \
+              --output response.json --write-out '%{http_code}' "$@" "$target"); then
+              show curl.trace
+              show response.json
+              printf 'ARTIFACT_PROTOCOL_END %s HTTP %s\n' "$label" "$status"
+              case "$status" in 2??) ;; *) return 1 ;; esac
+            else
+              show curl.trace
+              printf 'ARTIFACT_PROTOCOL_END %s transport failure\n' "$label"
+              return 1
+            fi
+          }
+          printf 'a\nb\n' > failed.txt
+          endpoint="${ACTIONS_RUNTIME_URL%/}/_apis/pipelines/workflows/$GITHUB_RUN_ID/artifacts"
+          for name in tests other; do
+            exchange "create-$name" POST "$endpoint?api-version=6.0-preview" \
+              --header 'Content-Type: application/json' \
+              --data "{\"Type\":\"actions_storage\",\"Name\":\"$name\"}"
+            container=$(sed -n 's/.*"fileContainerResourceUrl"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' response.json)
+            if [ -z "$container" ]; then
+              printf 'ARTIFACT_PROTOCOL: create returned no fileContainerResourceUrl\n'
+              exit 1
+            fi
+            case "$container" in *\?*) separator='&' ;; *) separator='?' ;; esac
+            exchange "upload-$name" PUT "$container${separator}itemPath=$name/failed.txt" \
+              --header 'Content-Type: application/octet-stream' \
+              --header 'Content-Range: bytes 0-3/4' --header 'x-tfs-filelength: 4' \
+              --data-binary @failed.txt
+            exchange "finalize-$name" PATCH "$endpoint?artifactName=$name&api-version=6.0-preview" \
+              --header 'Content-Type: application/json' --data '{"Size":4}'
+          done
+"#;
 
 pub(super) fn record(p: &mut Probe<'_>) -> Result<()> {
     p.recorder.f.put(REPO, "main", ".forgejo/workflows/artifact.yaml", WORKFLOW)?;
@@ -127,5 +184,64 @@ fn archive_redirects_stay_on_the_fixture_origin() {
         ("/archive#fragment", None),
     ] {
         assert_eq!(redirect_target("http://127.0.0.1:3000", location), expected);
+    }
+}
+
+#[cfg(test)]
+mod upload_tests {
+    use super::WORKFLOW;
+
+    fn script() -> String {
+        WORKFLOW
+            .split_once("        run: |\n")
+            .expect("workflow run step")
+            .1
+            .lines()
+            .map(|line| line.strip_prefix("          ").expect("run step indentation"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn curl_uploads_redact_the_runtime_token_in_headers_and_bodies() {
+        const TOKEN: &str = "synthetic.runtime-token[*]?";
+        let base = skein_scratch::paths::workspace().join("target");
+        let scratch = skein_scratch::Scratch::new_in(&base, "artifact-curl");
+        let fake = r#"curl() {
+            printf '> Authorization: Bearer %s\n' "$ACTIONS_RUNTIME_TOKEN" > curl.trace
+            printf '{"fileContainerResourceUrl":"http://127.0.0.1:3000/container?api-version=6.0-preview","tokenEcho":"%s"}\n' "$ACTIONS_RUNTIME_TOKEN" > response.json
+            printf '200'
+        }"#;
+        let output = std::process::Command::new("bash")
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("ACTIONS_RUNTIME_URL", "http://127.0.0.1:3000/runtime/")
+            .env("ACTIONS_RUNTIME_TOKEN", TOKEN)
+            .env("GITHUB_RUN_ID", "1")
+            .current_dir(scratch.path())
+            .arg("-c")
+            .arg(format!("{fake}\n{}", script()))
+            .output()
+            .expect("run the upload script with a synthetic curl");
+        assert!(output.status.success(), "{:?}", output.stderr);
+        let text = String::from_utf8(output.stdout).expect("text diagnostics");
+        assert!(!text.contains(TOKEN));
+        assert!(text.contains("Authorization: Bearer MASKED"));
+        assert!(text.contains("\"tokenEcho\":\"MASKED\""));
+        assert_eq!(text.matches("ARTIFACT_PROTOCOL_END").count(), 6);
+        assert_eq!(std::fs::read(scratch.path().join("failed.txt")).expect("uploaded file"), b"a\nb\n");
+    }
+
+    #[test]
+    fn a_run_step_without_runtime_credentials_fails_before_uploading() {
+        let output = std::process::Command::new("bash")
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .arg("-c")
+            .arg(script())
+            .output()
+            .expect("run the upload script without runtime credentials");
+        assert!(!output.status.success());
+        assert_eq!(output.stdout, b"ARTIFACT_PROTOCOL: run step has no runtime URL, token, or run id\n");
     }
 }
