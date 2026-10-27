@@ -81,7 +81,7 @@ pub(super) fn finish(
                 user,
                 repository,
                 Stage::Merge { number },
-                a::Op::Write(a::Write::Merge { number, head: pull.commit }),
+                a::Op::Write(a::Write::Merge { number, head: pull.commit, how: a::MergeHow::Style }),
                 reply_to,
             )
         }
