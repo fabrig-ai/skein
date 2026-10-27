@@ -161,8 +161,9 @@ fn run_with(
     );
     facts::add(&mut facts, NAMES[5], response.status == 206, &format!("HTTP {}", response.status));
     facts.extend(job_steps(f, out, mask, secrets, &jobs, &whole)?);
-    if out.is_some() {
+    if let Some(out) = out {
         facts.push(crate::job_clone::fact(f)?);
+        facts.extend(crate::turn::record(f, out, mask, secrets)?);
     }
     Ok((version, facts))
 }
