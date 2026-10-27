@@ -598,6 +598,7 @@ fn decoded(
     server.followed = false;
     if let Request::Merge { style, .. } = &request
         && *style != document::MergeStyle::Squash
+        && *style != document::MergeStyle::FastForwardOnly
     {
         respond(server, response::failure(&env.limits, errors::refusal(Refusal::MergeStyle)));
         return;

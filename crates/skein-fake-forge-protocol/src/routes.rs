@@ -201,8 +201,23 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
         | Request::UserRepos { .. }
         | Request::RepoSearch { .. }
         | Request::UserSearch { .. } => return Err(a::Error::Refused),
-        Request::Tree { .. } | Request::WorkflowRuns { .. } | Request::Dispatch { .. } | Request::Rerun { .. } => {
-            return Err(a::Error::Refused);
+        Request::Tree { object: id, page: p, .. } => {
+            let (page, limit) = page(config, *p);
+            let object = match commit(id) {
+                Some(commit) => a::TreeOf::Commit(commit),
+                None => a::TreeOf::Tree(tree_id(id).ok_or(missing)?),
+            };
+            Read::GitTree { object, page, limit }
+        }
+        Request::WorkflowRuns { workflow, head_sha, page: p, .. } => {
+            let (page, limit) = page(config, *p);
+            Read::Runs {
+                workflow: Some(workflow.clone()),
+                commit: Some(commit(head_sha).ok_or(missing)?),
+                number: None,
+                page,
+                limit,
+            }
         }
         Request::RepositoryById { .. } | Request::Repository { .. } => Read::Settings,
         Request::Issues { state, kind, since, sort, page: p, .. } => {
@@ -272,7 +287,9 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
         Request::Job { job, .. } => Read::Job { job: *job },
         Request::Jobs { run, .. } => Read::Jobs { run: *run },
         Request::JobLog { job, attempt, step, .. } => Read::Log { job: *job, attempt: *attempt, step: *step },
-        Request::CreateIssue { .. }
+        Request::Dispatch { .. }
+        | Request::Rerun { .. }
+        | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
         | Request::PostReview { .. }
@@ -294,6 +311,18 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
 fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
     let missing = a::Error::Missing(a::What::Commit);
     match request {
+        Request::Dispatch { workflow, branch, inputs, .. } => {
+            let mut values = List::with_capacity(u32::try_from(inputs.len()).expect("bounded inputs"));
+            for input in inputs {
+                values.push((input.name.clone(), input.value.clone())).expect("input capacity");
+            }
+            Ok(Op::Write(Write::Dispatch {
+                workflow: workflow.clone(),
+                branch: branch.clone(),
+                inputs: values.into_boxed(),
+            }))
+        }
+        Request::Rerun { job, .. } => Ok(Op::Write(Write::Rerun { job: *job })),
         Request::CreateIssue { title, body, .. } => {
             Ok(Op::Write(Write::CreateIssue { title: title.clone(), body: body.clone(), labels: Box::from([]) }))
         }
@@ -329,20 +358,29 @@ fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
             reviewers: reviewers(config, names).ok_or(a::Error::Missing(a::What::Review))?,
         })),
         Request::Merge { number, style, head, .. } => {
-            if *style != d::MergeStyle::Squash {
-                return Err(a::Error::Refused);
-            }
-            Ok(Op::Write(Write::Merge { number: *number, head: commit(head).ok_or(missing)?, how: a::MergeHow::Style }))
+            let how = match style {
+                d::MergeStyle::Squash => a::MergeHow::Style,
+                d::MergeStyle::FastForwardOnly => a::MergeHow::FastForwardOnly,
+                d::MergeStyle::Merge
+                | d::MergeStyle::Rebase
+                | d::MergeStyle::RebaseMerge
+                | d::MergeStyle::ManuallyMerged => return Err(a::Error::Refused),
+            };
+            Ok(Op::Write(Write::Merge { number: *number, head: commit(head).ok_or(missing)?, how }))
         }
-        Request::Update { number, .. } => {
-            Ok(Op::Write(Write::Update { number: *number, style: a::UpdateStyle::Merge }))
+        Request::Update { number, style, .. } => {
+            let style = match style {
+                None | Some(r::UpdateStyle::Merge) => a::UpdateStyle::Merge,
+                Some(r::UpdateStyle::Rebase) => a::UpdateStyle::Rebase,
+            };
+            Ok(Op::Write(Write::Update { number: *number, style }))
         }
-        Request::PostStatus { commit: id, context, state, .. } => Ok(Op::Write(Write::Status {
+        Request::PostStatus { commit: id, context, state, description, link, .. } => Ok(Op::Write(Write::Status {
             commit: commit(id).ok_or(missing)?,
             context: context.clone(),
             state: check(*state),
-            description: Box::new([]),
-            link: Box::new([]),
+            description: description.clone(),
+            link: link.clone(),
         })),
         Request::CreateBranch { branch, from, .. } => {
             Ok(Op::Write(Write::CreateBranch { branch: branch.clone(), commit: commit(from).ok_or(missing)? }))
@@ -398,8 +436,6 @@ fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
         | Request::Raw { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }
-        | Request::Dispatch { .. }
-        | Request::Rerun { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -425,4 +461,29 @@ fn verdict(event: r::ReviewEvent) -> a::Verdict {
         r::ReviewEvent::RequestChanges => a::Verdict::RequestChanges,
         r::ReviewEvent::Comment => a::Verdict::Comment,
     }
+}
+
+/// The domain's tree and blob ids occupy the SHA-1 document's twenty bytes.
+#[must_use]
+pub fn tree_object(id: [u8; 20]) -> ObjectId {
+    let mut bytes = [0; 32];
+    for (out, byte) in bytes.iter_mut().zip(id) {
+        *out = byte;
+    }
+    ObjectId { format: ObjectFormat::Sha1, bytes }
+}
+fn tree_id(id: &ObjectId) -> Option<[u8; 20]> {
+    if id.format != ObjectFormat::Sha1 {
+        return None;
+    }
+    for byte in id.bytes.get(20..)? {
+        if *byte != 0 {
+            return None;
+        }
+    }
+    let mut bytes = [0; 20];
+    for (out, byte) in bytes.iter_mut().zip(id.bytes) {
+        *out = byte;
+    }
+    Some(bytes)
 }
