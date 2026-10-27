@@ -230,6 +230,10 @@ fn pull_answer(config: &Config, setup: &Store, request: &Request, value: &a::Pul
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -318,6 +322,10 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -410,25 +418,23 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
         a::Answer::Runs(values) => {
             let mut out = List::with_capacity(u32::try_from(values.len()).expect("domain bound"));
             for value in values {
-                out.push(d::Run {
-                    id: value.id,
-                    index_in_repo: value.number,
-                    commit_sha: routes::object(value.commit),
-                })
-                .expect("sized runs");
+                out.push(action_run(value)).expect("sized runs");
             }
             Ok(Answer::Runs { total_count: u64::try_from(values.len()).expect("domain bound"), runs: out.into_boxed() })
         }
-        a::Answer::Run(value) => Ok(Answer::Run(d::Run {
-            id: value.id,
-            index_in_repo: value.number,
-            commit_sha: routes::object(value.commit),
-        })),
+        a::Answer::Run(value) => Ok(Answer::Run(action_run(value))),
         a::Answer::Job { job, steps } => Ok(job_answer(*job, steps)),
         a::Answer::Jobs(values) => {
             let mut out = List::with_capacity(u32::try_from(values.len()).expect("domain bound"));
             for value in values {
-                out.push(d::Job { id: value.id, run_id: value.run, attempt: value.attempt }).expect("sized jobs");
+                out.push(d::Job {
+                    id: value.id,
+                    run_id: value.run,
+                    attempt: value.attempt,
+                    name: Box::new([]),
+                    status: d::StepStatus::Unknown,
+                })
+                .expect("sized jobs");
             }
             Ok(Answer::Jobs(out.into_boxed()))
         }
@@ -515,6 +521,10 @@ fn collaborators(
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -587,5 +597,28 @@ fn job_answer(job: a::Job, steps: &[a::Step]) -> Answer {
         out.push(d::Step { number: value.number, name: value.name.clone(), status: step(value.status) })
             .expect("sized steps");
     }
-    Answer::Job { job: d::Job { id: job.id, run_id: job.run, attempt: job.attempt }, steps: out.into_boxed() }
+    Answer::Job {
+        job: d::Job {
+            id: job.id,
+            run_id: job.run,
+            attempt: job.attempt,
+            name: Box::new([]),
+            status: d::StepStatus::Unknown,
+        },
+        steps: out.into_boxed(),
+    }
+}
+
+fn action_run(value: &a::Run) -> d::Run {
+    d::Run {
+        id: value.id,
+        index_in_repo: value.number,
+        commit_sha: routes::object(value.commit),
+        workflow: Box::new([]),
+        event: Box::new([]),
+        trigger_actor: 0,
+        status: d::StepStatus::Unknown,
+        html_url: Box::new([]),
+        created_at: Wall::EPOCH,
+    }
 }

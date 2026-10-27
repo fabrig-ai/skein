@@ -54,6 +54,8 @@ fn readback_rows() -> [(Request, a::Answer, a::Read, Select); 7] {
                 commit: routes::object(7),
                 context: boxed(b"ci"),
                 state: d::StatusState::Failure,
+                description: Box::new([]),
+                link: Box::new([]),
             },
             a::Answer::Done,
             a::Read::Checks { commit: 7 },

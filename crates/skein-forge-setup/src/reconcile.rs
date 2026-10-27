@@ -333,6 +333,7 @@ pub(crate) fn account(event: Event) -> Result<skein_forge::forgejo::document::Us
                 | Document::Protection(_)
                 | Document::Permission(_)
                 | Document::Compare(_)
+                | Document::Tree { .. }
                 | Document::Runs { .. }
                 | Document::Run(_)
                 | Document::Job(_)

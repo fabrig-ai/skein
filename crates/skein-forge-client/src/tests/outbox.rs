@@ -11,8 +11,8 @@ fn recovery_classes_follow_forgejo_guarantees() {
         recovery(&Write::CreateIssue { key: Box::from(&b"marker"[..]), title: Box::new([]), body: Box::new([]) }),
         Recovery::Unrecoverable,
     );
-    assert_eq!(recovery(&Write::Update { number: 9 }), Recovery::Unrecoverable);
-    assert_eq!(recovery(&Write::Merge { number: 9, head: [1; 32] }), Recovery::Conditional);
+    assert_eq!(recovery(&Write::Update { number: 9, style: api::UpdateStyle::Merge }), Recovery::Unrecoverable);
+    assert_eq!(recovery(&Write::Merge { number: 9, head: [1; 32], how: api::MergeHow::Style }), Recovery::Conditional);
     assert_eq!(
         recovery(&Write::OpenPull {
             title: Box::new([]),
@@ -164,7 +164,11 @@ fn lane_order_and_cancellation_hold_while_a_capture_call_is_out() {
 #[test]
 fn a_retargeted_merge_fails_before_any_write() {
     let mut h = Harness::new();
-    h.make(1, Write::Merge { number: 9, head: [1; 32] }, Condition::Merge { base: Box::from(&b"other"[..]) });
+    h.make(
+        1,
+        Write::Merge { number: 9, head: [1; 32], how: api::MergeHow::Style },
+        Condition::Merge { base: Box::from(&b"other"[..]) },
+    );
     h.clock();
     let check = h.one();
     assert_eq!(check.op, Op::Read(Read::Pull { number: 9 }));
@@ -175,7 +179,11 @@ fn a_retargeted_merge_fails_before_any_write() {
 #[test]
 fn update_recovery_proves_the_requested_base_is_an_ancestor() {
     let mut h = Harness::new();
-    h.make(1, Write::Update { number: 9 }, Condition::Update { head: [1; 32], base: [2; 32] });
+    h.make(
+        1,
+        Write::Update { number: 9, style: api::UpdateStyle::Merge },
+        Condition::Update { head: [1; 32], base: [2; 32] },
+    );
     h.clock();
     let check = h.one();
     h.answer(check, Ok(Answer::Pull(pull([1; 32]))));
@@ -201,7 +209,11 @@ fn update_recovery_proves_the_requested_base_is_an_ancestor() {
 #[test]
 fn accepted_merge_requires_post_result_base_and_head_verification() {
     let mut h = Harness::new();
-    h.make(1, Write::Merge { number: 9, head: [1; 32] }, Condition::Merge { base: Box::from(&b"main"[..]) });
+    h.make(
+        1,
+        Write::Merge { number: 9, head: [1; 32], how: api::MergeHow::Style },
+        Condition::Merge { base: Box::from(&b"main"[..]) },
+    );
     h.clock();
     let check = h.one();
     h.answer(check, Ok(Answer::Pull(pull([1; 32]))));
@@ -218,7 +230,11 @@ fn accepted_merge_requires_post_result_base_and_head_verification() {
 #[test]
 fn a_retarget_between_precheck_and_merge_is_explicitly_a_raced_effect() {
     let mut h = Harness::new();
-    h.make(1, Write::Merge { number: 9, head: [1; 32] }, Condition::Merge { base: Box::from(&b"main"[..]) });
+    h.make(
+        1,
+        Write::Merge { number: 9, head: [1; 32], how: api::MergeHow::Style },
+        Condition::Merge { base: Box::from(&b"main"[..]) },
+    );
     h.clock();
     let check = h.one();
     h.answer(check, Ok(Answer::Pull(pull([1; 32]))));
@@ -235,7 +251,11 @@ fn a_retarget_between_precheck_and_merge_is_explicitly_a_raced_effect() {
 #[test]
 fn accepted_update_cannot_be_reported_as_failed_after_read_faults() {
     let mut h = Harness::new();
-    h.make(1, Write::Update { number: 9 }, Condition::Update { head: [1; 32], base: [2; 32] });
+    h.make(
+        1,
+        Write::Update { number: 9, style: api::UpdateStyle::Merge },
+        Condition::Update { head: [1; 32], base: [2; 32] },
+    );
     h.clock();
     let check = h.one();
     h.answer(check, Ok(Answer::Pull(pull([1; 32]))));
@@ -305,7 +325,11 @@ fn an_uncertain_set_waits_for_its_original_lifetime_without_neighbor_probes() {
 #[test]
 fn comparison_overflow_leaves_update_uncertain_without_another_write() {
     let mut h = Harness::new();
-    h.make(1, Write::Update { number: 9 }, Condition::Update { head: [1; 32], base: [2; 32] });
+    h.make(
+        1,
+        Write::Update { number: 9, style: api::UpdateStyle::Merge },
+        Condition::Update { head: [1; 32], base: [2; 32] },
+    );
     h.clock();
     let check = h.one();
     h.answer(check, Ok(Answer::Pull(pull([1; 32]))));

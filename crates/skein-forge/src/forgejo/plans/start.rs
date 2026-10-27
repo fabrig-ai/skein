@@ -97,6 +97,7 @@ impl Plan {
             | Document::Protection(_)
             | Document::Permission(_)
             | Document::Compare(_)
+            | Document::Tree { .. }
             | Document::Runs { .. }
             | Document::Run(_)
             | Document::Job(_)

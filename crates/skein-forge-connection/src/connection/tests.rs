@@ -53,8 +53,8 @@ fn github_exchange_handoff_fits_on_every_connection_at_peak() {
         heap += size_of_val(exchange);
     }
     // Request payloads already have the per-connection body/target term. The
-    // new allocation is one 120-byte exchange envelope per connection.
-    assert_eq!(heap, usize::try_from(count).expect("connections") * 120);
+    // allocation is one 136-byte exchange envelope per connection.
+    assert_eq!(heap, usize::try_from(count).expect("connections") * 136);
     let bound = limits::worst_case(&f::limits(), &f::shared(), limits::Forges { forgejo: 0, github: 1 }, 0)
         .expect("complete bound");
     assert!(bound >= u64::try_from(heap).expect("handoff heap"));

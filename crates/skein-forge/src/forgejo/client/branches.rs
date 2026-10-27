@@ -217,6 +217,7 @@ impl Branches {
     }
     fn scalar(&mut self, key: &'static [u8], value: Value) -> Result<(), Malformed> {
         match value {
+            Value::Input(_) => unreachable!("dispatch input table"),
             Value::Number(n) => match key {
                 b"id" => self.user.id = n,
                 b"required_approvals" => {

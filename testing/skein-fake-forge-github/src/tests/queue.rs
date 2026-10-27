@@ -198,7 +198,7 @@ fn drive_merge(
     const EXCHANGES: u32 = 4;
     let mut plan = Plan::new(
         api::Repository { forge: 1, repository: 2 },
-        api::Op::Write(api::Write::Merge { number, head: r::object(head) }),
+        api::Op::Write(api::Write::Merge { number, head: r::object(head), how: api::MergeHow::Style }),
     );
     let mut tables = Tables::new(4, 8);
     let mut step = plan.begin(r::bounds(), b"example-app", &mut tables).unwrap();

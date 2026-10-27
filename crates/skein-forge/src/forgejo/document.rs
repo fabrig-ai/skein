@@ -116,6 +116,7 @@ pub enum Row {
     Pull(PullRequest),
     File(ChangedFile),
     Commit(ObjectId),
+    Entry(Entry),
     Run(Run),
     Job(Job),
     Step(Step),
@@ -154,6 +155,9 @@ pub enum Document {
     Protection(BranchProtection),
     Permission(CollaboratorPermission),
     Compare(Compare),
+    Tree {
+        truncated: bool,
+    },
     Runs {
         total_count: u64,
     },
@@ -387,19 +391,27 @@ pub struct Compare {
 }
 
 /// An Actions run (06.4).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Run {
     pub id: u64,
     pub index_in_repo: u64,
     pub commit_sha: ObjectId,
+    pub workflow: Box<[u8]>,
+    pub event: Box<[u8]>,
+    pub trigger_actor: u64,
+    pub status: StepStatus,
+    pub html_url: Box<[u8]>,
+    pub created_at: Wall,
 }
 
 /// An Actions job of a run (06.4).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Job {
     pub id: u64,
     pub run_id: u64,
     pub attempt: u32,
+    pub name: Box<[u8]>,
+    pub status: StepStatus,
 }
 
 /// One step of a job's latest attempt, delivered as a streaming row.
@@ -527,4 +539,29 @@ pub struct Hook {
     pub url: Box<[u8]>,
     pub events: Box<[Box<[u8]>]>,
     pub active: bool,
+}
+
+/// One nonrecursive git tree entry (forge.md, 5.2).
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Entry {
+    pub path: Box<[u8]>,
+    pub mode: u32,
+    pub kind: crate::api::EntryKind,
+    pub sha: ObjectId,
+}
+pub(crate) fn run() -> Run {
+    Run {
+        id: 0,
+        index_in_repo: 0,
+        commit_sha: ObjectId { format: ObjectFormat::Sha1, bytes: [0; 32] },
+        workflow: Box::new([]),
+        event: Box::new([]),
+        trigger_actor: 0,
+        status: StepStatus::Unknown,
+        html_url: Box::new([]),
+        created_at: Wall::from_nanos(0),
+    }
+}
+pub(crate) fn job() -> Job {
+    Job { id: 0, run_id: 0, attempt: 0, name: Box::new([]), status: StepStatus::Unknown }
 }

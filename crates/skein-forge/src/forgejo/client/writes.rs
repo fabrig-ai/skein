@@ -41,6 +41,17 @@ pub(super) fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refu
 )]
 fn target(request: &Request, out: &mut Target) -> (Method, bool) {
     match request {
+        Request::Dispatch { at, workflow, .. } => {
+            out.repo(at);
+            out.put(b"/actions/workflows/");
+            out.segment(workflow);
+            out.put(b"/dispatches");
+        }
+        Request::Rerun { at, job } => {
+            out.numbered(at, b"/actions/jobs/", *job);
+            out.put(b"/rerun");
+            return (Method::Post, false);
+        }
         Request::CreateIssue { at, .. } => {
             out.repo(at);
             out.put(b"/issues");
@@ -141,6 +152,8 @@ fn target(request: &Request, out: &mut Target) -> (Method, bool) {
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -199,6 +212,16 @@ fn text(json: &mut Encoder, key: &[u8], value: &[u8]) {
 fn write(json: &mut Encoder, request: &Request) {
     json.object_start();
     match request {
+        Request::Dispatch { branch, inputs, .. } => {
+            text(json, b"ref", branch);
+            json.key(b"inputs");
+            json.object_start();
+            for input in inputs {
+                text(json, &input.name, &input.value);
+            }
+            json.object_end();
+        }
+        Request::Rerun { .. } => unreachable!("rerun has no body"),
         Request::CreateIssue { title, body, .. } => {
             text(json, b"title", title);
             text(json, b"body", body);
@@ -237,7 +260,13 @@ fn write(json: &mut Encoder, request: &Request) {
             text(json, b"Do", style(*value));
             text(json, b"head_commit_id", &id::write(head));
         }
-        Request::PostStatus { state: value, context, .. } => {
+        Request::PostStatus { state: value, context, description, link, .. } => {
+            if !description.is_empty() {
+                text(json, b"description", description);
+            }
+            if !link.is_empty() {
+                text(json, b"target_url", link);
+            }
             text(json, b"state", status(*value));
             text(json, b"context", context);
         }
@@ -293,6 +322,8 @@ fn write(json: &mut Encoder, request: &Request) {
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -324,6 +355,7 @@ impl Error {
             Move::Demand(demand) => Step::Demand(demand),
             Move::Scalar { value, .. } => {
                 match value {
+                    Value::Input(_) => unreachable!("dispatch input table"),
                     Value::Body(body) => self.message = body,
                     Value::Number(_) | Value::Text(_) | Value::Boolean(_) | Value::Time(_) | Value::Id(_) => {
                         unreachable!("error field table")

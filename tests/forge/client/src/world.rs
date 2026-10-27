@@ -610,10 +610,10 @@ impl World {
             .entries
             .iter()
             .find_map(|(_, entry)| {
-                if let api::Write::Merge { number: pull, head } = entry.effect.write
+                if let api::Write::Merge { number: pull, head, .. } = entry.effect.write
                     && pull == number
                 {
-                    Some(api::Write::Merge { number, head })
+                    Some(api::Write::Merge { number, head, how: skein_forge::api::MergeHow::Style })
                 } else {
                     None
                 }
@@ -806,6 +806,9 @@ fn inbox_count(answer: &api::Answer) -> u32 {
         api::Answer::Item { comments, .. } => u32::try_from(comments.len()).expect("bounded inbox rows"),
         api::Answer::Reviews { reviews, .. } => u32::try_from(reviews.len()).expect("bounded inbox rows"),
         api::Answer::Items { .. }
+        | api::Answer::Runs { .. }
+        | api::Answer::Run(_)
+        | api::Answer::Tree { .. }
         | api::Answer::Located { .. }
         | api::Answer::Pull(_)
         | api::Answer::Statuses { .. }

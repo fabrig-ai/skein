@@ -117,6 +117,7 @@ fn effects(f: &Fixture, h: &mut Hosted, facts: &mut Vec<Fact>, number: u64, own:
         Write::Merge {
             number: merge_number,
             head: commit(merge.root().get("head").get("sha").str().ok_or("merge head")?)?,
+            how: api::MergeHow::Style,
         }
         .operation(),
     );
@@ -124,7 +125,7 @@ fn effects(f: &Fixture, h: &mut Hosted, facts: &mut Vec<Fact>, number: u64, own:
     facts.push(super::fact("component-write-merge", matches!(result, Ok(Answer::Merged(head)) if got.root().get("merged").bool() == Some(true) && commit(got.root().get("merge_commit_sha").str().unwrap_or_default()).ok() == Some(head)), &result));
     f.ready(R, own, None)?;
     let before = f.get(own_route)?.root().get("head").get("sha").str().ok_or("update head")?.to_owned();
-    let result = h.call(repo, Write::Update { number: own }.operation());
+    let result = h.call(repo, Write::Update { number: own, style: api::UpdateStyle::Merge }.operation());
     if result == Ok(Answer::Done) {
         f.ready(R, own, Some(&before))?;
     }
@@ -136,7 +137,14 @@ fn effects(f: &Fixture, h: &mut Hosted, facts: &mut Vec<Fact>, number: u64, own:
     let head = commit(&f.head)?;
     let result = h.call(
         repo,
-        Write::Status { commit: head, context: bytes("component/test"), check: api::Check::Passed }.operation(),
+        Write::Status {
+            commit: head,
+            context: bytes("component/test"),
+            check: api::Check::Passed,
+            description: Box::new([]),
+            link: Box::new([]),
+        }
+        .operation(),
     );
     let got = f.get(&format!("{R}/commits/{}/status?page=1&limit=50", f.head))?;
     facts.push(super::fact(

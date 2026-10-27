@@ -395,7 +395,13 @@ fn commit() -> api::Commit {
     crate::github::id::commit(super::fixtures::SHA).unwrap()
 }
 fn status(check: api::Check) -> api::Write {
-    api::Write::Status { commit: commit(), context: Box::from(*b"alice"), check }
+    api::Write::Status {
+        commit: commit(),
+        context: Box::from(*b"alice"),
+        check,
+        description: Box::new([]),
+        link: Box::new([]),
+    }
 }
 #[test]
 fn github_status_states_and_request() {
@@ -454,6 +460,8 @@ fn github_status_replay_and_bounds() {
             commit: commit(),
             context,
             check: api::Check::Pending,
+            description: Box::new([]),
+            link: Box::new([]),
         };
         assert_eq!(
             request::encode(&request, &crate::github::limits::Limits { body_bytes: 256, ..limits() }).is_ok(),
@@ -961,7 +969,7 @@ fn github_review_original_key_find() {
 
 const UPDATE_PULL: &[u8] = br#"{"number":9007199254740993,"state":"open","merged":false,"merge_commit_sha":null,"mergeable":true,"head":{"ref":"alice/x","sha":"0123456789abcdef0123456789abcdef01234567"},"base":{"ref":"main","sha":"abcdef0123456789abcdef0123456789abcdef01"},"requested_reviewers":[{"id":9007199254740993}],"unknown":{"nested":[true]}}"#;
 fn update() -> api::Write {
-    api::Write::Update { number: NUMBER }
+    api::Write::Update { number: NUMBER, style: api::UpdateStyle::Merge }
 }
 fn update_pull() -> document::Pull {
     let (_, decoded) = decode(Kind::Pull, UPDATE_PULL, 1, &limits());
@@ -1217,3 +1225,28 @@ fn github_update_202_and_proof() {
 mod reviewers;
 
 mod merge;
+
+#[test]
+fn github_status_description_and_link_round_trip() {
+    let mut tables = cached_tables();
+    let mut plan = write_plan(api::Write::Status {
+        commit: commit(),
+        context: Box::from(*b"alice"),
+        check: api::Check::Passed,
+        description: Box::from(*b"gate passed"),
+        link: Box::from(*b"https://forge/run/7"),
+    });
+    let request = begin(&mut plan, &mut tables);
+    golden(
+        &request,
+        Method::Post,
+        b"/repos/acme/widgets/statuses/0123456789abcdef0123456789abcdef01234567",
+        Some(
+            br#"{"description":"gate passed","target_url":"https://forge/run/7","state":"success","context":"alice"}"#,
+        ),
+        Some(Kind::Done),
+    );
+    roundtrip_body(&request);
+    head(&mut plan, 201, &mut tables);
+    assert_eq!(finish(&mut plan, Body::Document(Document::Done), &mut tables), ended(Ok(api::Answer::Done)));
+}

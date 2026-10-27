@@ -311,6 +311,7 @@ fn decode(request: &Request, status: u16, body: &[u8], limits: &fake::Limits) ->
         | Document::Protection(_)
         | Document::Permission(_)
         | Document::Compare(_)
+        | Document::Tree { .. }
         | Document::Runs { .. }
         | Document::Run(_)
         | Document::Job(_)

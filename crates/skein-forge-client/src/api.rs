@@ -4,6 +4,9 @@ use skein_lib::Time;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum Shape {
+    Runs,
+    Run,
+    Tree,
     Located,
     Items,
     Item,
@@ -32,6 +35,9 @@ enum Shape {
 }
 fn shape(answer: &Answer) -> Shape {
     match answer {
+        Answer::Runs { .. } => Shape::Runs,
+        Answer::Run(_) => Shape::Run,
+        Answer::Tree { .. } => Shape::Tree,
         Answer::Located { .. } => Shape::Located,
         Answer::Items { .. } => Shape::Items,
         Answer::Item { .. } => Shape::Item,
@@ -62,6 +68,9 @@ fn shape(answer: &Answer) -> Shape {
 pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
     let expected = match op {
         Op::Read(read) => match read {
+            Read::Runs { .. } => Shape::Runs,
+            Read::Run { .. } => Shape::Run,
+            Read::Tree { .. } => Shape::Tree,
             Read::Locate { .. } => Shape::Located,
             Read::Items { .. } => Shape::Items,
             Read::Item { .. } => Shape::Item,
@@ -93,6 +102,8 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
             | Write::Close { .. }
             | Write::Reopen { .. }
             | Write::Status { .. }
+            | Write::Dispatch { .. }
+            | Write::Rerun { .. }
             | Write::DeleteBranch { .. } => Shape::Done,
         },
     };
@@ -100,64 +111,108 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
         return false;
     }
     match op {
-        Op::Read(read) => match read {
-            Read::Locate { .. } => skein_forge::locate::accepts(answer),
-            Read::Items { kind, .. } => items_ordered(answer, *kind),
-            Read::Job { attempt, max_bytes } => match answer {
-                Answer::Job { attempt: received, log, .. } => {
-                    received == attempt && log.len() <= usize::try_from(*max_bytes).expect("u32 fits usize")
-                }
-                Answer::Items { .. }
-                | Answer::Located { .. }
-                | Answer::Item { .. }
-                | Answer::Pull(_)
-                | Answer::Reviews { .. }
-                | Answer::Statuses { .. }
-                | Answer::Remarks { .. }
-                | Answer::Commit(_)
-                | Answer::Branches(_)
-                | Answer::PullFiles { .. }
-                | Answer::Compare { .. }
-                | Answer::File { .. }
-                | Answer::Checks(_)
-                | Answer::Protection(_)
-                | Answer::Settings(_)
-                | Answer::Collaborators { .. }
-                | Answer::Permission(_)
-                | Answer::Created(_)
-                | Answer::Commented(_)
-                | Answer::Reviewed(_)
-                | Answer::Merged(_)
-                | Answer::Queued
-                | Answer::Branch(_)
-                | Answer::Done => false,
-            },
-            Read::File { head, path, max_bytes } => file_matches(answer, *head, path, *max_bytes),
-            Read::Checks { commit } => checks_at_head(answer, *commit),
-            Read::PullFiles { head, .. } => observed_head(answer) == Some(*head),
-            Read::Compare { before, after } => compared(answer, *before, *after),
-            Read::Item { number, after } => item_matches(answer, *number, *after),
-            Read::Reviews { .. } => reviews_ordered(answer),
-            Read::Pull { number } => match pull_answer(answer) {
-                Some(pull) => pull.number == *number,
-                None => false,
-            },
-            Read::PullFor { head, base } => match pull_answer(answer) {
-                Some(pull) => pull.head == *head && pull.base == *base,
-                None => false,
-            },
-            Read::Branches { prefix } => branch_names_match(answer, prefix),
-            Read::Statuses { .. }
-            | Read::Remarks { .. }
-            | Read::Branch { .. }
-            | Read::Protection { .. }
-            | Read::Settings
-            | Read::Collaborators { .. }
-            | Read::Permission { .. } => true,
-        },
+        Op::Read(read) => read_accepts(read, answer),
         Op::Write(_) => true,
     }
 }
+fn read_accepts(read: &Read, answer: &Answer) -> bool {
+    match read {
+        Read::Runs { workflow, commit, .. } => {
+            let Answer::Runs { runs, .. } = answer else {
+                return false;
+            };
+            for (index, run) in runs.iter().enumerate() {
+                if run.workflow != *workflow || run.commit != *commit {
+                    return false;
+                }
+                for previous in runs.get(..index).expect("enumerated run") {
+                    if previous.id == run.id {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
+        Read::Run { run } => {
+            let Answer::Run(value) = answer else {
+                return false;
+            };
+            value.id == *run
+        }
+        Read::Tree { .. } => {
+            let Answer::Tree { entries, .. } = answer else {
+                return false;
+            };
+            let mut previous: Option<&[u8]> = None;
+            for entry in entries {
+                if let Some(name) = previous
+                    && name >= entry.name.as_ref()
+                {
+                    return false;
+                }
+                previous = Some(&entry.name);
+            }
+            true
+        }
+        Read::Locate { .. } => skein_forge::locate::accepts(answer),
+        Read::Items { kind, .. } => items_ordered(answer, *kind),
+        Read::Job { attempt, max_bytes } => match answer {
+            Answer::Job { attempt: received, log, .. } => {
+                received == attempt && log.len() <= usize::try_from(*max_bytes).expect("u32 fits usize")
+            }
+            Answer::Items { .. }
+            | Answer::Runs { .. }
+            | Answer::Run(_)
+            | Answer::Tree { .. }
+            | Answer::Located { .. }
+            | Answer::Item { .. }
+            | Answer::Pull(_)
+            | Answer::Reviews { .. }
+            | Answer::Statuses { .. }
+            | Answer::Remarks { .. }
+            | Answer::Commit(_)
+            | Answer::Branches(_)
+            | Answer::PullFiles { .. }
+            | Answer::Compare { .. }
+            | Answer::File { .. }
+            | Answer::Checks(_)
+            | Answer::Protection(_)
+            | Answer::Settings(_)
+            | Answer::Collaborators { .. }
+            | Answer::Permission(_)
+            | Answer::Created(_)
+            | Answer::Commented(_)
+            | Answer::Reviewed(_)
+            | Answer::Merged(_)
+            | Answer::Queued
+            | Answer::Branch(_)
+            | Answer::Done => false,
+        },
+        Read::File { head, path, max_bytes } => file_matches(answer, *head, path, *max_bytes),
+        Read::Checks { commit } => checks_at_head(answer, *commit),
+        Read::PullFiles { head, .. } => observed_head(answer) == Some(*head),
+        Read::Compare { before, after } => compared(answer, *before, *after),
+        Read::Item { number, after } => item_matches(answer, *number, *after),
+        Read::Reviews { .. } => reviews_ordered(answer),
+        Read::Pull { number } => match pull_answer(answer) {
+            Some(pull) => pull.number == *number,
+            None => false,
+        },
+        Read::PullFor { head, base } => match pull_answer(answer) {
+            Some(pull) => pull.head == *head && pull.base == *base,
+            None => false,
+        },
+        Read::Branches { prefix } => branch_names_match(answer, prefix),
+        Read::Statuses { .. }
+        | Read::Remarks { .. }
+        | Read::Branch { .. }
+        | Read::Protection { .. }
+        | Read::Settings
+        | Read::Collaborators { .. }
+        | Read::Permission { .. } => true,
+    }
+}
+
 fn branch_names_match(answer: &Answer, prefix: &[u8]) -> bool {
     let Answer::Branches(names) = answer else {
         return false;
@@ -181,6 +236,9 @@ fn checks_at_head(answer: &Answer, head: Commit) -> bool {
             true
         }
         Answer::Items { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -230,6 +288,9 @@ fn items_ordered(answer: &Answer, kind: Option<Kind>) -> bool {
             true
         }
         Answer::Item { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Pull(_)
         | Answer::Reviews { .. }
@@ -268,6 +329,9 @@ fn reviews_ordered(answer: &Answer) -> bool {
             true
         }
         Answer::Items { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -309,6 +373,9 @@ fn item_matches(answer: &Answer, number: u64, after: u64) -> bool {
             true
         }
         Answer::Items { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Pull(_)
         | Answer::Reviews { .. }
@@ -338,6 +405,9 @@ fn pull_answer(answer: &Answer) -> Option<&Pull> {
     match answer {
         Answer::Pull(pull) => Some(pull),
         Answer::Items { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Reviews { .. }
@@ -367,6 +437,9 @@ fn observed_head(answer: &Answer) -> Option<Commit> {
     match answer {
         Answer::PullFiles { head, .. } => Some(*head),
         Answer::Items { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -398,6 +471,9 @@ fn compared(answer: &Answer, before: Commit, after: Commit) -> bool {
             *observed_before == before && *observed_after == after
         }
         Answer::Items { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -432,6 +508,9 @@ fn file_matches(answer: &Answer, head: Commit, path: &[u8], max_bytes: u32) -> b
                 && bytes.len() <= usize::try_from(max_bytes).expect("u32 fits usize")
         }
         Answer::Items { .. }
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)

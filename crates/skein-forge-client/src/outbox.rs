@@ -63,6 +63,7 @@ enum Phase {
     Make,
     Queued,
     Find { page: u32, after: u64 },
+    DispatchRuns { head: Commit, page: u32 },
     Compare { head: Commit, base: Commit },
     AfterUpdate,
     AfterMerge { merged: Commit },
@@ -141,6 +142,8 @@ fn valid(entry: &Entry, l: &Limits) -> bool {
         | Write::Reopen { .. }
         | Write::Status { .. }
         | Write::CreateBranch { .. }
+        | Write::Dispatch { .. }
+        | Write::Rerun { .. }
         | Write::DeleteBranch { .. } => entry.effect.condition == Condition::None,
     }
 }
@@ -153,11 +156,13 @@ fn lane(entry: &Entry) -> Lane {
         | Write::Close { number }
         | Write::Reopen { number }
         | Write::Merge { number, .. }
-        | Write::Update { number } => Some(number),
+        | Write::Update { number, .. } => Some(number),
         Write::CreateIssue { .. }
         | Write::OpenPull { .. }
         | Write::Status { .. }
         | Write::CreateBranch { .. }
+        | Write::Dispatch { .. }
+        | Write::Rerun { .. }
         | Write::DeleteBranch { .. } => None,
     };
     Lane { repository: entry.repository, number }
@@ -291,6 +296,7 @@ pub(crate) fn pump(d: &mut Domain, env: &Env<Limits>, out: &mut Queue<Request>) 
         | Phase::Check
         | Phase::Queued
         | Phase::Make
+        | Phase::DispatchRuns { .. }
         | Phase::Compare { .. }
         | Phase::AfterUpdate
         | Phase::AfterMerge { .. } => {}
@@ -304,6 +310,7 @@ pub(crate) fn pump(d: &mut Domain, env: &Env<Limits>, out: &mut Queue<Request>) 
         | Phase::Check
         | Phase::Queued
         | Phase::Find { .. }
+        | Phase::DispatchRuns { .. }
         | Phase::Compare { .. }
         | Phase::AfterUpdate
         | Phase::AfterMerge { .. } => Priority::Fresh,
@@ -317,11 +324,19 @@ fn operation(w: &Writing, phase: Phase) -> Op {
         // An empty inclusive listing supplies Date without scanning history.
         Phase::Clock => Read::Items { since: Time::from_nanos(u64::MAX), page: 1, kind: None },
         Phase::Make => return Op::Write(w.entry.effect.write.clone()),
+        Phase::DispatchRuns { head, page } => {
+            let Write::Dispatch { workflow, .. } = &w.entry.effect.write else {
+                unreachable!("dispatch run lookup");
+            };
+            Read::Runs { workflow: workflow.clone(), commit: head, page }
+        }
         Phase::Compare { head, base } => Read::Compare { before: head, after: base },
         Phase::Check | Phase::Queued | Phase::AfterUpdate | Phase::AfterMerge { .. } => {
             Read::Pull { number: w.lane.number.expect("conditional effect names an item") }
         }
         Phase::Find { page, after } => match &w.entry.effect.write {
+            Write::Dispatch { branch, .. } => Read::Branch { branch: branch.clone() },
+            Write::Rerun { job } => Read::Run { run: job.run },
             Write::CreateIssue { .. } => Read::Items {
                 since: w.entry.start.expect("find has saved start").at,
                 page,
@@ -330,7 +345,7 @@ fn operation(w: &Writing, phase: Phase) -> Op {
             Write::OpenPull { head, base, .. } => Read::PullFor { head: head.clone(), base: base.clone() },
             Write::Post { number, .. } => Read::Item { number: *number, after },
             Write::Review { number, .. } => Read::Reviews { number: *number, page },
-            Write::Merge { number, .. } | Write::Update { number } => Read::Pull { number: *number },
+            Write::Merge { number, .. } | Write::Update { number, .. } => Read::Pull { number: *number },
             Write::CreateBranch { branch, .. } | Write::DeleteBranch { branch } => {
                 Read::Branch { branch: branch.clone() }
             }
@@ -370,6 +385,7 @@ pub(crate) fn sent(d: &mut Domain, env: &Env<Limits>, number: u64, out: &mut Que
         | Phase::Check
         | Phase::Queued
         | Phase::Find { .. }
+        | Phase::DispatchRuns { .. }
         | Phase::Compare { .. }
         | Phase::AfterUpdate
         | Phase::AfterMerge { .. } => {}
@@ -427,6 +443,8 @@ fn is_set(write: &Write) -> bool {
         | Write::Merge { .. }
         | Write::Update { .. }
         | Write::CreateBranch { .. }
+        | Write::Dispatch { .. }
+        | Write::Rerun { .. }
         | Write::DeleteBranch { .. } => false,
     }
 }
@@ -442,6 +460,8 @@ fn key(write: &Write) -> Option<&[u8]> {
         | Write::Update { .. }
         | Write::Status { .. }
         | Write::CreateBranch { .. }
+        | Write::Dispatch { .. }
+        | Write::Rerun { .. }
         | Write::DeleteBranch { .. } => None,
     }
 }
@@ -487,6 +507,8 @@ pub(crate) fn echo(d: &Domain, repository: Repository, key: &[u8]) -> bool {
             | Write::Update { .. }
             | Write::Status { .. }
             | Write::CreateBranch { .. }
+            | Write::Dispatch { .. }
+            | Write::Rerun { .. }
             | Write::DeleteBranch { .. } => {}
         }
     }
@@ -507,6 +529,8 @@ fn is_merge(write: &Write) -> bool {
         | Write::Update { .. }
         | Write::Status { .. }
         | Write::CreateBranch { .. }
+        | Write::Dispatch { .. }
+        | Write::Rerun { .. }
         | Write::DeleteBranch { .. } => false,
     }
 }

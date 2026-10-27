@@ -29,6 +29,7 @@ pub(super) fn keep_row(row: &d::Row, forge: u16, tables: &mut Tables) {
         | d::Row::Protection(_)
         | d::Row::File(_)
         | d::Row::Commit(_)
+        | d::Row::Entry(_)
         | d::Row::Run(_)
         | d::Row::Hook(_)
         | d::Row::Team(_)
@@ -64,6 +65,7 @@ pub(crate) fn keep_document(document: &d::Document, forge: u16, tables: &mut Tab
         | d::Document::Branch(_)
         | d::Document::Protection(_)
         | d::Document::Compare(_)
+        | d::Document::Tree { .. }
         | d::Document::Runs { .. }
         | d::Document::Job(_)
         | d::Document::Run(_)
@@ -79,6 +81,8 @@ pub(super) fn page_bound(request: &Request) -> Option<u32> {
         | Request::Collaborators { page, .. }
         | Request::Pulls { page, .. }
         | Request::PullFiles { page, .. }
+        | Request::Tree { page, .. }
+        | Request::WorkflowRuns { page, .. }
         | Request::Runs { page, .. } => page.limit,
         Request::UserSearch { limit, .. } => *limit,
         Request::RepoSearch { .. }
@@ -110,6 +114,8 @@ pub(super) fn page_bound(request: &Request) -> Option<u32> {
         | Request::EditIssue { .. }
         | Request::RequestReviewers { .. }
         | Request::RemoveReviewers { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Merge { .. }
         | Request::Update { .. }
         | Request::PostStatus { .. }
@@ -158,6 +164,7 @@ pub fn long(heard: &Heard) -> bool {
             | d::Row::Pull(_)
             | d::Row::File(_)
             | d::Row::Commit(_)
+            | d::Row::Entry(_)
             | d::Row::Run(_)
             | d::Row::Hook(_)
             | d::Row::Team(_)
@@ -187,6 +194,7 @@ pub fn long(heard: &Heard) -> bool {
             | d::Document::Protection(_)
             | d::Document::Permission(_)
             | d::Document::Compare(_)
+            | d::Document::Tree { .. }
             | d::Document::Runs { .. }
             | d::Document::Job(_)
             | d::Document::Run(_)

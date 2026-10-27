@@ -183,6 +183,9 @@ fn asked(op: &api::Op) -> Asked {
             | api::Read::PullFiles { .. }
             | api::Read::Checks { .. }
             | api::Read::File { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. }
             | api::Read::Protection { .. }
             | api::Read::Settings
@@ -201,6 +204,8 @@ fn asked(op: &api::Op) -> Asked {
             | api::Write::Update { .. }
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. }
             | api::Write::DeleteBranch { .. } => Asked::Done,
         },
     }
