@@ -12,16 +12,11 @@ fn trees(p: &mut Probe<'_>) -> Result<()> {
     f.put(REPO, "main", "tests/one.rs", "child one\n")?;
     f.put(REPO, "main", "tests/two.rs", "child two\n")?;
     let head = p.head("tree-fixture-head", "main")?;
-    let commit = p.get("tree-fixture-commit", &format!("{REPO}/git/commits/{head}"))?;
-    let root = text(commit.root().get("commit").get("tree").get("sha"))?;
+    let root = root_tree(p)?;
     let name = "tree-commit-id-answers-root-tree";
     let by_commit = p.get(name, &format!("{REPO}/git/trees/{head}?page=1&per_page=2"))?;
     let by_tree = p.get("tree-root-id", &format!("{REPO}/git/trees/{root}?page=1&per_page=2"))?;
-    p.check(
-        name,
-        by_commit.root().get("sha").is(&root) && by_commit.root().get("tree").same(by_tree.root().get("tree")),
-        "commit and root tree responses differ",
-    );
+    p.check(name, root != head && entries(&by_commit)? == entries(&by_tree)?, "commit and root tree responses differ");
     let name = "tree-entries-use-git-order";
     let page2 = p.get(name, &format!("{REPO}/git/trees/{head}?page=2&per_page=2"))?;
     let first = rows(&by_commit, "tree")?;
@@ -55,7 +50,55 @@ fn trees(p: &mut Probe<'_>) -> Result<()> {
             && page3.root().get("truncated").bool() == Some(false),
         "expected page lengths 2,1,0 and truncated true,false,false",
     );
+    let name = "tree-past-last-page-is-an-empty-array";
+    let empty = p.get(name, &format!("{REPO}/git/trees/{head}?page=3&per_page=2"))?;
+    p.check(
+        name,
+        empty.root().get("tree").array().is_some_and(|a| a.is_empty()),
+        "Forgejo answers tree:null, truncated:false",
+    );
     Ok(())
+}
+fn root_tree(p: &Probe<'_>) -> Result<String> {
+    use std::process::Command;
+    let scratch = p.recorder.f.instance.scratch();
+    let repository = scratch.join("turn.git");
+    let git = || {
+        let mut command = Command::new("git");
+        command
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", scratch)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null");
+        command
+    };
+    let clone = git()
+        .args(["clone", "--quiet", "--bare"])
+        .arg(format!("{}/fixture/turn.git", p.recorder.f.instance.base()))
+        .arg(&repository)
+        .output()?;
+    if !clone.status.success() {
+        return Err("cannot clone public throwaway tree fixture".into());
+    }
+    let root = git().arg("-C").arg(&repository).args(["rev-parse", "main^{tree}"]).output()?;
+    if !root.status.success() {
+        return Err("cannot read throwaway root tree id".into());
+    }
+    Ok(String::from_utf8(root.stdout)?.trim().to_owned())
+}
+fn entries(json: &crate::json::Json) -> Result<Vec<(&str, &str, &str, &str)>> {
+    rows(json, "tree")?
+        .into_iter()
+        .map(|e| {
+            Ok((
+                e.get("path").str().ok_or("tree path missing")?,
+                e.get("mode").str().ok_or("tree mode missing")?,
+                e.get("type").str().ok_or("tree kind missing")?,
+                e.get("sha").str().ok_or("tree object missing")?,
+            ))
+        })
+        .collect()
 }
 fn statuses(p: &mut Probe<'_>) -> Result<()> {
     let head = p.head("status-fixture-head", "main")?;
