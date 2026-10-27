@@ -834,8 +834,8 @@ fn fail(server: &mut Server, limits: &Limits, status: u16) {
     respond(server, response::failure(limits, errors::Failure { status, message: b"", retry_after: None }));
 }
 fn error_reply(server: &mut Server, env: &Env<Limits>, error: api::Error) {
-    let route = crate::route(server.request.as_ref().expect("decoded request"));
-    respond(server, response::failure(&env.limits, errors::answer(error, route, env.now)));
+    let request = server.request.as_ref().expect("decoded request");
+    respond(server, response::failure(&env.limits, errors::for_request(error, request, env.now)));
 }
 fn respond(server: &mut Server, reply: response::Reply) {
     let mut headers =

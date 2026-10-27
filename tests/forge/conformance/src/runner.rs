@@ -70,7 +70,7 @@ fn run_with(
     secrets: &mut Secrets,
 ) -> Result<(String, Vec<Fact>)> {
     let Some(binary) = binary else {
-        return Ok(("none".into(), unchecked_facts()));
+        return Ok(("none".into(), unchecked_facts(out.is_some())));
     };
     let (_runner, version) = start(f, binary, secrets)?;
     let online = registration::online(f)?;
@@ -167,12 +167,16 @@ fn run_with(
     }
     Ok((version, facts))
 }
-fn unchecked_facts() -> Vec<Fact> {
-    NAMES
+fn unchecked_facts(turn: bool) -> Vec<Fact> {
+    let mut facts: Vec<Fact> = NAMES
         .into_iter()
         .chain(registration::NAMES)
         .map(|name| Fact { name, outcome: Outcome::Unchecked("--runner not supplied".into()) })
-        .collect()
+        .collect();
+    if turn {
+        facts.extend(crate::turn::unchecked());
+    }
+    facts
 }
 fn connection_facts(facts: &mut Vec<Fact>, statuses: &[At<'_>], online: bool) {
     facts::add(
