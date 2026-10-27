@@ -6,11 +6,11 @@ use crate::{
     ci,
     domain::{self, Alarm},
     faults,
-    store::{Repository, Status},
+    store::Repository,
 };
 use alloc::boxed::Box;
 use skein_lib::{
-    Env, Id, List, Map,
+    Env, Id, List,
     bytes::{copy_of, find},
 };
 
@@ -49,20 +49,6 @@ pub(crate) fn dispatch(
     if repository.dispatched.capacity() == 0 {
         return Err(Error::Full);
     }
-    // Check the entire context admission before any run, timer or status changes.
-    let mut contexts = skein_lib::Set::with_capacity(env.limits.limits.contexts);
-    if let Some(statuses) = repository.statuses.get(&commit) {
-        for (name, _) in statuses {
-            contexts.insert(copy_of(name)).expect("retained contexts fit");
-        }
-    }
-    for name in &workflow.jobs {
-        let context = joined(&file, name);
-        if contexts.insert(context).is_err() {
-            return Err(Error::Full);
-        }
-    }
-    ensure_statuses(domain, env, id, commit)?;
     let repository = domain.repositories.get_mut(id).expect("dispatch repository");
     if repository.dispatched.len() == repository.dispatched.capacity() {
         let (&oldest, _) = repository.dispatched.iter().next().expect("a full nonempty run store");
@@ -116,7 +102,7 @@ pub(crate) fn dispatch(
             .get(index)
             .expect("job")
             .id;
-        pending(domain, env, id, run, job)?;
+        pending(domain, env, id, run, job);
     }
     Ok(Answer::Done)
 }
@@ -130,56 +116,12 @@ fn workflow<'a>(repository: &'a Repository, file: &[u8]) -> Result<&'a crate::ap
     Err(Error::Missing(What::File))
 }
 
-fn joined(file: &[u8], name: &[u8]) -> Box<[u8]> {
-    let capacity =
-        file.len().checked_add(3).expect("bounded context").checked_add(name.len()).expect("bounded context");
-    let mut out = List::with_capacity(u32::try_from(capacity).expect("bounded context"));
-    for part in [file, b" / ", name] {
-        for &byte in part {
-            out.push(byte).expect("context capacity");
-        }
-    }
-    out.into_boxed()
-}
-
-fn ensure_statuses(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, commit: u64) -> Result<(), Error> {
-    if domain.repositories.get(id).expect("repository").statuses.contains_key(&commit) {
-        return Ok(());
-    }
-    if !ci::room(domain, id) {
-        return Err(Error::Full);
-    }
-    domain
-        .repositories
-        .get_mut(id)
-        .expect("repository")
-        .statuses
-        .insert(commit, Map::with_capacity(env.limits.limits.contexts))
-        .expect("status room admitted");
-    Ok(())
-}
-
-fn pending(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, run: u64, job: u64) -> Result<(), Error> {
+fn pending(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, run: u64, job: u64) {
     let repository = domain.repositories.get(id).expect("repository");
     let kept = repository.dispatched.get(&run).expect("dispatched run");
-    let (_, job_view) = actions::latest(repository, job)?;
     let file = kept.run.workflow.as_ref().expect("workflow run");
-    let workflow = workflow(repository, file)?;
+    let workflow = workflow(repository, file).expect("configured workflow for retained run");
     let (silent, min, max) = (workflow.silent, workflow.latency_min, workflow.latency_max);
-    let commit = kept.run.commit;
-    let context = actions::context(&kept.run, &job_view);
-    let link = actions::job_link(repository, &kept.run, job);
-    let status = Status {
-        state: Check::Pending,
-        author: env.limits.ci,
-        at: domain::clock(env),
-        rerun: job_view.attempt > 1,
-        description: ci::description(Check::Pending),
-        link,
-        job: Some(crate::api::JobRef { run, job, attempt: job_view.attempt }),
-    };
-    assert!(ci::set(domain, id, commit, &context, status), "pending contexts admitted together");
-    ci::reported(domain, env, id, commit, context, Check::Pending, env.limits.ci);
     if domain.rng.chance(silent) {
         domain.tally.silent = domain.tally.silent.saturating_add(1);
     } else {
@@ -189,7 +131,6 @@ fn pending(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, run: u64,
             .arm(Alarm::Workflow { repository: id, run, job }, env.now.saturating_add(span))
             .expect("one timer per retained dispatched job");
     }
-    Ok(())
 }
 
 pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, run: u64, job: u64) {
@@ -234,37 +175,29 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
     };
     let repository = domain.repositories.get_mut(id).expect("repository");
     let kept = repository.dispatched.get_mut(&run).expect("run");
-    let mut context = None;
+    let mut attempt = None;
     for index in 0..kept.jobs.len() {
         let entry = kept.jobs.get_mut(index).expect("retained job");
         if entry.id == job {
             entry.state = RunState::Completed;
             entry.conclusion = Some(if state == Check::Passed { Conclusion::Success } else { Conclusion::Failure });
             entry.steps = actions::outcome_steps(&entry.name, state, failing);
-            context = Some(actions::context(&kept.run, entry));
+            attempt = Some(entry.attempt);
             break;
         }
     }
     actions::complete(kept);
-    let context = context.expect("timer's retained job");
-    let link = actions::job_link(repository, &actions::run(repository, run).expect("run").run, job);
-    let status = Status {
-        state,
-        author: env.limits.ci,
-        at: domain::clock(env),
-        rerun: true,
-        description: ci::description(state),
-        link,
-        job: Some(crate::api::JobRef { run, job, attempt: actions::latest(repository, job).expect("job").1.attempt }),
-    };
-    // A run outlives status eviction; its own verdict remains readable in that case.
-    if ensure_statuses(domain, env, id, commit).is_ok() && ci::set(domain, id, commit, &context, status) {
-        ci::reported(domain, env, id, commit, context, state, env.limits.ci);
-    } else {
-        domain.tally.unreported = domain.tally.unreported.saturating_add(1);
-    }
+    let attempt = attempt.expect("timer's retained job");
+    crate::hooks::notify(
+        domain,
+        env,
+        id,
+        crate::hooks::Hook::job(
+            crate::api::Ended { job: crate::api::JobRef { run, job, attempt }, commit, state },
+            env.limits.ci,
+        ),
+    );
     domain.tally.verdicts = domain.tally.verdicts.saturating_add(1);
-    crate::queue::verdict(domain, env, id, commit);
 }
 
 pub(crate) fn rerun(
@@ -286,14 +219,6 @@ pub(crate) fn rerun(
         ci::rerun(domain, env, id, commit, entry.index);
         return Ok(Answer::Done);
     }
-    let context = actions::context(&kept.run, &entry);
-    if let Some(statuses) = repository.statuses.get(&commit)
-        && !statuses.contains_key(&*context)
-        && statuses.len() == statuses.capacity()
-    {
-        return Err(Error::Full);
-    }
-    ensure_statuses(domain, env, id, commit)?;
     let repository = domain.repositories.get_mut(id).expect("repository");
     let kept = repository.dispatched.get_mut(&entry.run).expect("dispatched run");
     for index in 0..kept.jobs.len() {
@@ -307,6 +232,6 @@ pub(crate) fn rerun(
         }
     }
     actions::complete(kept);
-    pending(domain, env, id, entry.run, job)?;
+    pending(domain, env, id, entry.run, job);
     Ok(Answer::Done)
 }

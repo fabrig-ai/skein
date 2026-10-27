@@ -81,6 +81,8 @@ fn run(json: &mut Encoder, value: &Run) {
     }
     if !value.event.is_empty() {
         json.key(b"event");
+        json.string(if value.event.as_ref() == b"workflow_dispatch" { b"" } else { &value.event });
+        json.key(b"trigger_event");
         json.string(&value.event);
     }
     if value.trigger_actor != 0 {
