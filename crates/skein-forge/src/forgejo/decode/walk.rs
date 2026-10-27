@@ -442,7 +442,10 @@ impl Walk {
             if let Kind::Delivery(_) = kind {
                 return Err(Malformed::Shape { field: field.key });
             }
-            if field.key == b"statuses" || field.key == b"creator" {
+            if field.key == b"statuses"
+                || field.key == b"creator"
+                || (kind == Kind::File(crate::forgejo::client::files::FileKind::Tree) && field.key == b"tree")
+            {
                 frame.seen |= bit;
             }
             self.want = Want::Key;

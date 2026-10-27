@@ -245,3 +245,15 @@ fn status_sends_description_and_link_only_when_present() {
         plan.assert_bodies(&[Some(body)]);
     }
 }
+
+#[test]
+fn an_empty_tree_page_is_null_on_the_wire_and_an_empty_answer() {
+    let answer = server::Answer::Tree { entries: Box::new([]), truncated: false };
+    let bytes = server_answer(&answer);
+    assert_eq!(&*bytes, br#"{"truncated":false,"tree":null}"#);
+    for body in [bytes.as_ref(), br#"{"tree":[],"truncated":false}"#] {
+        let mut plan = known(Op::Read(Read::Tree { object: HEAD, page: 3 }));
+        round_request(plan.begin());
+        assert_eq!(plan.answer(200, body), Step::Done(Ok(Answer::Tree { entries: Box::new([]), more: false })));
+    }
+}
