@@ -209,15 +209,9 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
             };
             Read::GitTree { object, page, limit }
         }
-        Request::WorkflowRuns { workflow, head_sha, page: p, .. } => {
+        Request::WorkflowRuns { head_sha, page: p, .. } => {
             let (page, limit) = page(config, *p);
-            Read::Runs {
-                workflow: Some(workflow.clone()),
-                commit: Some(commit(head_sha).ok_or(missing)?),
-                number: None,
-                page,
-                limit,
-            }
+            Read::Runs { workflow: None, commit: Some(commit(head_sha).ok_or(missing)?), number: None, page, limit }
         }
         Request::RepositoryById { .. } | Request::Repository { .. } => Read::Settings,
         Request::Issues { state, kind, since, sort, page: p, .. } => {

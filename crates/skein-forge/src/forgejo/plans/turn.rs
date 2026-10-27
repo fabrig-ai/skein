@@ -125,10 +125,15 @@ impl Plan {
                 if self.stage != Stage::Initial {
                     return Err(api::Error::InvalidAnswer);
                 }
-                let Mode::Runs { .. } = self.mode else {
+                let Mode::Runs { workflow, commit, .. } = &self.mode else {
                     return Err(api::Error::InvalidAnswer);
                 };
                 let value = run_value(run, self.row.object_format)?;
+                // Forgejo filters head_sha but ignores workflow (forge.md, 9).
+                if value.workflow.as_ref() != workflow.as_ref() || value.commit != *commit {
+                    self.count = self.count.checked_add(1).ok_or(api::Error::TooLarge)?;
+                    return Ok(());
+                }
                 let size = crate::measure::run(&value)
                     .ok_or(api::Error::TooLarge)?
                     .checked_add(u64::try_from(crate::measure::RUN_BYTES).expect("run width"))
