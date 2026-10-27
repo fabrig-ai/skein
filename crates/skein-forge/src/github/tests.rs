@@ -529,7 +529,7 @@ fn turn_calls_are_refused_without_a_request() {
             branch: Box::from(*b"main"),
             inputs: Box::new([]),
         }),
-        api::Op::Write(api::Write::Rerun { job }),
+        api::Op::Write(api::Write::Rerun { attempt: job }),
         api::Op::Write(api::Write::Merge { number: 1, head, how: api::MergeHow::FastForwardOnly }),
         api::Op::Write(api::Write::Update { number: 1, style: api::UpdateStyle::Rebase }),
     ] {

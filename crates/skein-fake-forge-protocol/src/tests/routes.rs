@@ -347,3 +347,77 @@ fn domain_failures_have_forgejos_status_and_exact_message() {
     }
     assert_eq!(errors::refusal(Refusal::MergeStyle).status, 405);
 }
+
+#[test]
+fn turn_routes_name_the_domain_calls_and_keep_their_fields() {
+    let config = config();
+    let page = r::Page { page: Some(2), limit: Some(1) };
+    let tree = routes::tree_object([17; 20]);
+    for (input, expected) in [
+        (
+            Request::Tree { at: at(), object: routes::object(9), page },
+            Op::Read(Read::GitTree { object: a::TreeOf::Commit(9), page: 2, limit: 1 }),
+        ),
+        (
+            Request::Tree { at: at(), object: tree, page },
+            Op::Read(Read::GitTree { object: a::TreeOf::Tree([17; 20]), page: 2, limit: 1 }),
+        ),
+        (
+            Request::WorkflowRuns { at: at(), workflow: boxed(b"gate.yml"), head_sha: routes::object(9), page },
+            Op::Read(Read::Runs {
+                workflow: Some(boxed(b"gate.yml")),
+                commit: Some(9),
+                number: None,
+                page: 2,
+                limit: 1,
+            }),
+        ),
+        (
+            Request::Dispatch {
+                at: at(),
+                workflow: boxed(b"gate.yml"),
+                branch: boxed(b"main"),
+                inputs: Box::new([skein_forge::api::Input { name: boxed(b"select"), value: boxed(b"all") }]),
+            },
+            Op::Write(Write::Dispatch {
+                workflow: boxed(b"gate.yml"),
+                branch: boxed(b"main"),
+                inputs: Box::new([(boxed(b"select"), boxed(b"all"))]),
+            }),
+        ),
+        (Request::Rerun { at: at(), job: 7 }, Op::Write(Write::Rerun { job: 7 })),
+        (
+            Request::Merge { at: at(), number: 3, head: routes::object(9), style: d::MergeStyle::FastForwardOnly },
+            Op::Write(Write::Merge { number: 3, head: 9, how: a::MergeHow::FastForwardOnly }),
+        ),
+        (
+            Request::Update { at: at(), number: 3, style: Some(r::UpdateStyle::Rebase) },
+            Op::Write(Write::Update { number: 3, style: a::UpdateStyle::Rebase }),
+        ),
+        (
+            Request::PostStatus {
+                at: at(),
+                commit: routes::object(9),
+                context: boxed(b"gate"),
+                state: d::StatusState::Success,
+                description: boxed(b"proved"),
+                link: boxed(b"https://ci/gate"),
+            },
+            Op::Write(Write::Status {
+                commit: 9,
+                context: boxed(b"gate"),
+                state: a::Check::Passed,
+                description: boxed(b"proved"),
+                link: boxed(b"https://ci/gate"),
+            }),
+        ),
+    ] {
+        assert_eq!(routes::op(&config, &input), Ok(expected), "{input:?}");
+    }
+    assert_eq!(&tree.bytes[..20], &[17; 20]);
+    assert_eq!(skein_forge::forgejo::id::write(&tree).as_ref(), b"1111111111111111111111111111111111111111");
+    assert_eq!(errors::answer(a::Error::Refused, Route::Rerun, Time::ZERO).status, 400);
+    assert_eq!(errors::answer(a::Error::Missing(a::What::File), Route::Dispatch, Time::ZERO).status, 404);
+    assert_eq!(errors::answer(a::Error::Missing(a::What::Branch), Route::Dispatch, Time::ZERO).status, 404);
+    assert_eq!(errors::answer(a::Error::Conflict, Route::Update, Time::ZERO).status, 409);
+}

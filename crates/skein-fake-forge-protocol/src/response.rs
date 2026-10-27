@@ -736,11 +736,16 @@ mod bounded {
             }
             Some(())
         }
-        fn rows(&mut self, len: usize) -> Option<()> {
-            for _ in 0..len {
-                self.row(0)?;
-            }
-            Some(())
+        fn run(&mut self, config: &Config, limits: &Limits, run: &a::Run) -> Option<()> {
+            let workflow = match &run.workflow {
+                Some(file) => file.len(),
+                None => 2,
+            };
+            self.row(
+                workflow
+                    .checked_add(config.base.len())?
+                    .checked_add(usize::try_from(limits.documents.target_bytes).ok()?)?,
+            )
         }
         fn steps(&mut self, steps: &[a::Step]) -> Option<()> {
             self.row(0)?;
@@ -757,6 +762,7 @@ mod bounded {
         }
     }
     /// The temporary document's arrays, text and user objects fit one encoded-answer budget.
+    #[expect(clippy::too_many_lines, reason = "each domain answer explicitly prices its temporary document")]
     pub fn answer(config: &Config, limits: &Limits, answer: &a::Answer) -> Option<()> {
         let mut user = 21usize;
         for (_, login) in &config.users {
@@ -810,8 +816,22 @@ mod bounded {
                     budget.row(0)?;
                 }
             }
-            a::Answer::Runs(runs) => budget.rows(runs.len())?,
-            a::Answer::Jobs(jobs) => budget.rows(jobs.len())?,
+            a::Answer::Runs(runs) => {
+                for run in runs {
+                    budget.run(config, limits, run)?;
+                }
+            }
+            a::Answer::Run(run) => budget.run(config, limits, run)?,
+            a::Answer::Jobs(jobs) => {
+                for job in jobs {
+                    budget.row(job.name.len())?;
+                }
+            }
+            a::Answer::GitTree { entries, .. } => {
+                for entry in entries {
+                    budget.row(entry.name.len())?;
+                }
+            }
             a::Answer::Job { steps, .. } => budget.steps(steps)?,
             a::Answer::PullFiles { files, .. } => budget.files(files)?,
             a::Answer::Comparison { files, commits, .. } => {
@@ -833,12 +853,10 @@ mod bounded {
             a::Answer::Protection(None)
             | a::Answer::Located { .. }
             | a::Answer::Permission(_)
-            | a::Answer::Run(_)
             | a::Answer::Statuses(_)
             | a::Answer::Dependencies(_)
             | a::Answer::Labels(_)
             | a::Answer::Commit(_)
-            | a::Answer::GitTree { .. }
             | a::Answer::Tree(_)
             | a::Answer::Pages { .. }
             | a::Answer::Page(_)

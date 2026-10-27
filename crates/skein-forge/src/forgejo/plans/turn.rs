@@ -169,6 +169,7 @@ impl Plan {
                 )?;
                 self.jobs
                     .push(api::RunJob {
+                        steps: 0,
                         id: job.id,
                         name: job.name,
                         attempt: job.attempt,
@@ -183,6 +184,7 @@ impl Plan {
                     return Err(api::Error::InvalidAnswer);
                 }
                 let job = self.jobs.get_mut(self.position).expect("failed job position");
+                job.steps = job.steps.checked_add(1).ok_or(api::Error::TooLarge)?;
                 if step.status == d::StepStatus::Failure && job.step.is_none() {
                     let size = u64::try_from(step.name.len()).expect("step size");
                     job.step = Some(api::Step { number: step.number, name: step.name });

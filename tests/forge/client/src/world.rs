@@ -119,14 +119,21 @@ pub struct World {
 impl World {
     #[must_use]
     pub fn new(settings: Settings) -> World {
+        Self::with_workflows(settings, Box::new([]))
+    }
+    /// Workflows available to dispatch and recovery stories.
+    #[must_use]
+    pub fn with_workflows(settings: Settings, workflows: Box<[raw::Workflow]>) -> World {
         let limits = Limits { facts: settings.facts, ..LIMITS };
-        let config = config(settings.faults);
+        let mut config = config(settings.faults);
+        config.limits.workflows = u32::try_from(workflows.len()).expect("world workflows");
+        config.limits.workflow_runs = if workflows.is_empty() { 0 } else { 4 };
         let mut neighbour = forge::Domain::new(&config, settings.seed);
         forge::repository(
             &mut neighbour,
             &config,
             raw::Setup {
-                workflows: Box::new([]),
+                workflows,
                 id: 2,
                 name: Box::from(&b"org/repo"[..]),
                 default: Box::from(&b"main"[..]),
@@ -254,7 +261,7 @@ impl World {
         self.event(Event::Read { owner: Token::new(number), repository, read });
     }
     pub fn calm(&mut self) {
-        self.forge_env.limits = config(false);
+        self.forge_env.limits = Config { limits: self.forge_env.limits.limits, ..config(false) };
     }
     /// Answer writes as timed out, then apply their delayed copies at `after`.
     pub fn land_writes_late(&mut self, after: Duration) {
@@ -497,6 +504,16 @@ impl World {
                     let result = match result {
                         Ok(answer) => {
                             let mut answer = translate::answer(&pending.op, answer, &self.env.limits);
+                            if let api::Answer::Run(run) = &mut answer {
+                                let raw::Answer::Jobs(jobs) = self
+                                    .forge
+                                    .inspect(&self.forge_env.limits, b"org/repo", &raw::Read::Jobs { run: run.id })
+                                    .expect("read run jobs")
+                                else {
+                                    panic!("run jobs answer")
+                                };
+                                run.jobs = translate::run_jobs(jobs);
+                            }
                             if let api::Answer::Pull(pull) = &mut answer
                                 && let Some(held) = self.queued.get(&pull.number)
                             {
