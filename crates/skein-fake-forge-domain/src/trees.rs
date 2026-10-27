@@ -8,6 +8,11 @@ use crate::{
 use alloc::boxed::Box;
 use skein_lib::{List, Map, bytes::copy_of, sha256::Sha256};
 
+// A prefix is a file's ordered position and the byte after a directory slash.
+// A zero length names the root, including when the tree has no files.
+type Prefix = (u32, u32);
+type Directories = Map<Prefix, [u8; 20]>;
+
 pub(crate) fn read(
     domain: &Domain,
     repository: &Repository,
@@ -29,9 +34,9 @@ pub(crate) fn read(
             for &commit in &repository.has {
                 let tree = &domain.object(commit).expect("retained commit").tree;
                 let directories = directories(tree, limits);
-                for (prefix, id) in &directories {
+                for (&key, id) in &directories {
                     if *id == wanted {
-                        return Ok(paged(entries(tree, &directories, prefix, limits), page, limit, limits));
+                        return Ok(paged(entries(tree, &directories, prefix(tree, key), limits), page, limit, limits));
                     }
                 }
             }
@@ -58,21 +63,27 @@ fn paged(entries: Box<[TreeEntry]>, page: u32, limit: u32, limits: &Limits) -> A
     Answer::GitTree { entries: out.into_boxed(), truncated }
 }
 
-fn directories(tree: &Tree, limits: &Limits) -> Map<Box<[u8]>, [u8; 20]> {
+fn directories(tree: &Tree, limits: &Limits) -> Directories {
     let capacity = limits
         .files
         .checked_mul(limits.name_bytes)
         .expect("directory bound admitted")
         .checked_add(1)
         .expect("root fits");
-    let mut directories: Map<Box<[u8]>, [u8; 20]> = Map::with_capacity(capacity);
-    directories.insert(Box::new([]), [0; 20]).expect("root directory");
-    for (path, _) in tree {
+    let mut directories = Directories::with_capacity(capacity);
+    directories.insert((0, 0), [0; 20]).expect("root directory");
+    for (file, (path, _)) in tree.iter().enumerate() {
         for (index, &byte) in path.iter().enumerate() {
             if byte == b'/' {
                 let end = index.checked_add(1).expect("bounded path");
                 directories
-                    .insert(copy_of(path.get(..end).expect("path prefix")), [0; 20])
+                    .insert(
+                        (
+                            u32::try_from(file).expect("bounded file position"),
+                            u32::try_from(end).expect("bounded prefix"),
+                        ),
+                        [0; 20],
+                    )
                     .expect("one directory per path byte");
             }
         }
@@ -80,22 +91,20 @@ fn directories(tree: &Tree, limits: &Limits) -> Map<Box<[u8]>, [u8; 20]> {
     // Every child prefix is longer than its parent's. Hash deepest first.
     for length in (0..=limits.name_bytes).rev() {
         let mut hashes = List::with_capacity(tree.len().saturating_add(1));
-        for (prefix, _) in &directories {
-            if prefix.len() == usize::try_from(length).expect("bounded path length") {
-                let children = entries(tree, &directories, prefix, limits);
-                hashes
-                    .push((copy_of(prefix), tree_id(&children)))
-                    .expect("at most one prefix of this length per file, and root");
+        for (&key, _) in &directories {
+            if key.1 == length {
+                let children = entries(tree, &directories, prefix(tree, key), limits);
+                hashes.push((key, tree_id(&children))).expect("at most one prefix of this length per file, and root");
             }
         }
-        for (prefix, hash) in hashes.into_boxed() {
-            *directories.get_mut(&*prefix).expect("known directory") = hash;
+        for (key, hash) in hashes.into_boxed() {
+            *directories.get_mut(&key).expect("known directory") = hash;
         }
     }
     directories
 }
 
-fn entries(tree: &Tree, directories: &Map<Box<[u8]>, [u8; 20]>, prefix: &[u8], limits: &Limits) -> Box<[TreeEntry]> {
+fn entries(tree: &Tree, directories: &Directories, prefix: &[u8], limits: &Limits) -> Box<[TreeEntry]> {
     let mut out = Map::with_capacity(limits.files);
     for (path, content) in tree {
         let Some(rest) = path.strip_prefix(prefix) else { continue };
@@ -110,7 +119,7 @@ fn entries(tree: &Tree, directories: &Map<Box<[u8]>, [u8; 20]>, prefix: &[u8], l
             Some(index) => {
                 let end = prefix.len().checked_add(index).expect("bounded path").checked_add(1).expect("slash fits");
                 let name = copy_of(rest.get(..index).expect("entry name"));
-                let hash = *directories.get(path.get(..end).expect("directory prefix")).expect("child directory");
+                let hash = directory_id(tree, directories, path.get(..end).expect("directory prefix"));
                 (name, EntryKind::Tree, 0o040_000, hash)
             }
             None => (copy_of(rest), EntryKind::Blob, 0o100_644, blob_id(content)),
@@ -148,4 +157,20 @@ fn first(hash: [u8; 32]) -> [u8; 20] {
         *out = byte;
     }
     id
+}
+
+fn prefix(tree: &Tree, key: Prefix) -> &[u8] {
+    if key.1 == 0 {
+        return b"";
+    }
+    let (path, _) = tree.iter().nth(usize::try_from(key.0).expect("bounded file position")).expect("indexed file");
+    path.get(..usize::try_from(key.1).expect("bounded prefix")).expect("directory prefix")
+}
+fn directory_id(tree: &Tree, directories: &Directories, wanted: &[u8]) -> [u8; 20] {
+    for (&key, &id) in directories {
+        if prefix(tree, key) == wanted {
+            return id;
+        }
+    }
+    unreachable!("each directory slash is indexed")
 }
