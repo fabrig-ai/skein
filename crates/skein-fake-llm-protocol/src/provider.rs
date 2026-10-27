@@ -7,8 +7,7 @@ use crate::documents;
 
 mod credentials;
 mod failure;
-mod inflate;
-pub use inflate::inflate;
+pub use skein_http::inflate::gzip as inflate;
 pub(crate) mod public;
 pub use credentials::{MAX_CREDENTIALS, Presented, route};
 #[path = "pieces.rs"]

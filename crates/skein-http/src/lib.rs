@@ -27,6 +27,7 @@ mod body;
 pub mod client;
 pub mod gzip;
 mod header;
+pub mod inflate;
 mod message;
 pub mod server;
 pub mod sse;
