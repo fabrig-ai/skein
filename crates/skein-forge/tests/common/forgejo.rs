@@ -412,7 +412,8 @@ pub fn decode_error(body: &[u8]) -> Decoded {
     decode_answer(client::error_decoder(&limits), body, &limits)
 }
 /// JSON transcripts with their request, or none when their status is an error.
-/// Unread write answers also use the error decoder as a bounded JSON shape check.
+/// Unread write answers and probes outside the dialect also use the error
+/// decoder as a bounded JSON shape check.
 #[must_use]
 pub fn json_cases() -> Vec<(String, Option<Request>)> {
     let mut cases = vec![];
@@ -421,9 +422,18 @@ pub fn json_cases() -> Vec<(String, Option<Request>)> {
         if super::json::tokens(&transcript.body).is_none() {
             continue;
         }
-        let probe = ["setup-org-route-orgs-made", "setup-team-edit-nameless"].contains(&case.as_str());
+        let probe = [
+            "setup-org-route-orgs-made",
+            "setup-team-edit-nameless",
+            "status-list-keeps-description-and-target-url",
+            "update-rebase-first-commit",
+            "update-rebase-second-commit",
+        ]
+        .contains(&case.as_str());
         let request = if transcript.status < 300 && !probe {
-            let request = route(&transcript);
+            let request = decode_route(transcript.method, &transcript.target, &transcript.request_body, &limits())
+                .unwrap_or_else(|error| panic!("{case}: transcript request: {error}"))
+                .0;
             if client::decoder(&request, &limits()).is_some() { Some(request) } else { None }
         } else {
             None
