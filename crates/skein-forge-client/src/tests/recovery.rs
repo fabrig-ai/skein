@@ -613,7 +613,7 @@ fn another_actor_an_old_run_or_another_event_cannot_prove_dispatch() {
     let mut other_actor = run.clone();
     other_actor.actor = 2;
     let mut old = run.clone();
-    old.created = at(99);
+    old.created = at(fixture::BEFORE_ATTEMPT);
     let mut pushed = run;
     pushed.event = api::Event::Other;
     for run in [other_actor, old, pushed] {

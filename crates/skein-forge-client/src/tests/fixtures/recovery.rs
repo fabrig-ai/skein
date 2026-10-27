@@ -7,6 +7,8 @@ use skein_lib::{List, Token};
 
 // The default recovery fixture starts at second 100.
 pub(in crate::tests) const START_AT: u64 = 100;
+// A run created one second before the saved attempt cannot prove its dispatch.
+pub(in crate::tests) const BEFORE_ATTEMPT: u64 = START_AT - 1;
 // LIMITS.hinted is one second after the echo lands at START_AT.
 pub(in crate::tests) const HINT_AT: u64 = 101;
 // RateLimited after two seconds from START_AT.
