@@ -53,7 +53,11 @@ fn number(at: At<'_>) -> Result<u64> {
     Ok(at.u64().ok_or("expected number in turn fixture")?)
 }
 fn rows<'a>(json: &'a Json, field: &str) -> Result<Vec<At<'a>>> {
-    Ok(json.root().get(field).array().ok_or("expected rows in turn fixture")?.to_vec())
+    let at = json.root().get(field);
+    if field == "tree" && at.kind() == Some(skein_json::Kind::Null) {
+        return Ok(Vec::new());
+    }
+    json.root().array().or_else(|| at.array()).ok_or_else(|| format!("expected {field} rows in turn fixture").into())
 }
 fn pause() {
     std::thread::sleep(Duration::from_millis(100));
