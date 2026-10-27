@@ -40,12 +40,59 @@ pub struct Bounds {
 }
 #[derive(Debug)]
 pub enum Plan {
+    Refused,
     Read(Box<reads::Plan>),
     Write(Box<writes::Plan>),
 }
 impl Plan {
     #[must_use]
     pub fn new(repository: api::Repository, op: api::Op) -> Self {
+        let refused = match &op {
+            api::Op::Read(read) => match read {
+                api::Read::Runs { .. } | api::Read::Run { .. } | api::Read::Tree { .. } => true,
+                api::Read::Locate { .. }
+                | api::Read::Items { .. }
+                | api::Read::Item { .. }
+                | api::Read::Pull { .. }
+                | api::Read::PullFor { .. }
+                | api::Read::Reviews { .. }
+                | api::Read::Statuses { .. }
+                | api::Read::Remarks { .. }
+                | api::Read::Branch { .. }
+                | api::Read::Branches { .. }
+                | api::Read::PullFiles { .. }
+                | api::Read::Compare { .. }
+                | api::Read::Checks { .. }
+                | api::Read::Job { .. }
+                | api::Read::File { .. }
+                | api::Read::Protection { .. }
+                | api::Read::Settings
+                | api::Read::Collaborators { .. }
+                | api::Read::Permission { .. } => false,
+            },
+            api::Op::Write(write) => match write {
+                api::Write::Dispatch { .. }
+                | api::Write::Rerun { .. }
+                | api::Write::Merge { how: api::MergeHow::FastForwardOnly, .. }
+                | api::Write::Update { style: api::UpdateStyle::Rebase, .. } => true,
+                api::Write::CreateIssue { .. }
+                | api::Write::OpenPull { .. }
+                | api::Write::Post { .. }
+                | api::Write::Review { .. }
+                | api::Write::Edit { .. }
+                | api::Write::SetReviewers { .. }
+                | api::Write::Close { .. }
+                | api::Write::Reopen { .. }
+                | api::Write::Merge { how: api::MergeHow::Style, .. }
+                | api::Write::Update { style: api::UpdateStyle::Merge, .. }
+                | api::Write::Status { .. }
+                | api::Write::CreateBranch { .. }
+                | api::Write::DeleteBranch { .. } => false,
+            },
+        };
+        if refused {
+            return Self::Refused;
+        }
         match op {
             api::Op::Read(read) => Self::Read(Box::new(reads::Plan::new(repository, read))),
             api::Op::Write(write) => Self::Write(Box::new(writes::Plan::new(repository, write))),
@@ -53,6 +100,7 @@ impl Plan {
     }
     pub fn begin(&mut self, bounds: Bounds, word: &[u8], tables: &mut Tables) -> Result<Step, api::Error> {
         match self {
+            Self::Refused => Ok(Step::Done(Err(api::Error::Refused))),
             Self::Read(plan) => plan.begin(bounds, word, tables),
             Self::Write(plan) => plan.begin(bounds, word, tables),
         }
@@ -66,6 +114,7 @@ impl Plan {
         tables: &mut Tables,
     ) -> Result<Option<Step>, api::Error> {
         match self {
+            Self::Refused => Err(api::Error::Refused),
             Self::Read(plan) => plan.heard(heard, bounds, word, tables),
             Self::Write(plan) => plan.heard(heard, bounds, word, tables),
         }
@@ -73,6 +122,7 @@ impl Plan {
     /// Takes the exchange the caller retained with `set_pending`, as in Forgejo.
     pub fn pending(&mut self) -> Option<Exchange> {
         match self {
+            Self::Refused => None,
             Self::Read(plan) => plan.pending(),
             Self::Write(plan) => plan.pending(),
         }
@@ -80,6 +130,7 @@ impl Plan {
     /// The caller retains a sent exchange here if it may need to resend it.
     pub fn set_pending(&mut self, exchange: Exchange) {
         match self {
+            Self::Refused => {}
             Self::Read(plan) => plan.set_pending(exchange),
             Self::Write(plan) => plan.set_pending(exchange),
         }

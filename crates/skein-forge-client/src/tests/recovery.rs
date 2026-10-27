@@ -580,3 +580,93 @@ fn restore_refuses_exact_one_past_cached_bytes() {
     pull.cached.pull = Some(current);
     fixture::bad_live("pull exact one past bytes", pull);
 }
+
+fn lost_turn(write: Write) -> writing::Harness {
+    let mut h = writing::Harness::new();
+    h.make(1, write, Condition::None);
+    h.clock();
+    let sent = h.one();
+    h.answer(sent, Err(Error::Timeout));
+    h
+}
+fn find_dispatch(h: &mut writing::Harness, runs: Box<[api::Run]>, more: bool) {
+    let branch = h.one();
+    assert_eq!(branch.op, Op::Read(Read::Branch { branch: Box::from(*b"work") }));
+    h.answer(branch, Ok(Answer::Commit([1; 32])));
+    let listing = h.one();
+    assert_eq!(listing.op, Op::Read(Read::Runs { workflow: Box::from(*b"ci"), commit: [1; 32], page: 1 }));
+    h.answer(listing, Ok(Answer::Runs { runs, more }));
+}
+fn dispatch_write() -> Write {
+    Write::Dispatch { workflow: Box::from(*b"ci"), branch: Box::from(*b"work"), inputs: Box::new([]) }
+}
+#[test]
+fn a_lost_dispatch_is_found_by_its_run() {
+    let mut h = lost_turn(dispatch_write());
+    find_dispatch(&mut h, Box::new([super::turn::run()]), false);
+    assert_eq!(h.outcomes.as_slice().last(), Some(&(1, Outcome::Made { made: Made::Set, found: true })));
+    assert_eq!(h.writes, 1);
+}
+#[test]
+fn another_actor_an_old_run_or_another_event_cannot_prove_dispatch() {
+    let run = super::turn::run();
+    let mut other_actor = run.clone();
+    other_actor.actor = 2;
+    let mut old = run.clone();
+    old.created = at(99);
+    let mut pushed = run;
+    pushed.event = api::Event::Other;
+    for run in [other_actor, old, pushed] {
+        let mut h = lost_turn(dispatch_write());
+        let deadline = h.store.get(&1).expect("saved attempt").attempt.expect("sent attempt").deadline;
+        find_dispatch(&mut h, Box::new([run.clone()]), false);
+        assert!(h.send().is_none());
+        h.fire(fixture::ATTEMPT_DEADLINE);
+        assert_eq!(h.store.get(&1).expect("saved entry").attempt.expect("saved attempt").deadline, deadline);
+        find_dispatch(&mut h, Box::new([run]), false);
+        assert_eq!(h.outcomes.as_slice().last(), Some(&(1, Outcome::Held)));
+        assert_eq!(h.writes, 1);
+    }
+}
+#[test]
+fn a_lost_rerun_is_found_by_a_later_attempt() {
+    let expected = api::JobAttempt { head: [1; 32], run: 7, job: 10, attempt: 3 };
+    let mut h = lost_turn(Write::Rerun { job: expected });
+    let sent = h.one();
+    assert_eq!(sent.op, Op::Read(Read::Run { run: 7 }));
+    let mut run = super::turn::run();
+    run.jobs = Box::new([api::RunJob {
+        id: 10,
+        name: Box::from(*b"job"),
+        attempt: 4,
+        state: api::RunState::Running,
+        conclusion: None,
+        step: None,
+    }]);
+    h.answer(sent, Ok(Answer::Run(run)));
+    assert_eq!(h.outcomes.as_slice().last(), Some(&(1, Outcome::Made { made: Made::Set, found: true })));
+    assert_eq!(h.writes, 1);
+}
+#[test]
+fn a_rerun_at_the_saved_attempt_is_held_at_the_deadline() {
+    let expected = api::JobAttempt { head: [1; 32], run: 7, job: 10, attempt: 3 };
+    let mut h = lost_turn(Write::Rerun { job: expected });
+    let mut run = super::turn::run();
+    run.jobs = Box::new([api::RunJob {
+        id: 10,
+        name: Box::new([]),
+        attempt: 3,
+        state: api::RunState::Completed,
+        conclusion: Some(api::Conclusion::Failure),
+        step: None,
+    }]);
+    for deadline in [false, true] {
+        if deadline {
+            h.fire(fixture::ATTEMPT_DEADLINE);
+        }
+        let sent = h.one();
+        h.answer(sent, Ok(Answer::Run(run.clone())));
+    }
+    assert_eq!(h.outcomes.as_slice().last(), Some(&(1, Outcome::Held)));
+    assert_eq!(h.writes, 1);
+}

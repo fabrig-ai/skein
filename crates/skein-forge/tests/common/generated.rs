@@ -126,6 +126,7 @@ pub fn documents(seed: u64) -> Vec<Reply> {
         | Answer::Protection(_)
         | Answer::Protections(_)
         | Answer::Collaborators(_)
+        | Answer::Tree { .. }
         | Answer::Permission(_)
         | Answer::CombinedStatus { .. } => false,
     });
@@ -334,7 +335,11 @@ fn vary(answer: &mut Answer, seed: u64) {
                 value.id += seed;
             }
         }
-        Answer::Reachable(_) | Answer::RepoSearch { .. } | Answer::Error(_) | Answer::CreatedFile { .. } => {}
+        Answer::Tree { .. }
+        | Answer::Reachable(_)
+        | Answer::RepoSearch { .. }
+        | Answer::Error(_)
+        | Answer::CreatedFile { .. } => {}
     }
 }
 
@@ -518,6 +523,7 @@ fn shorten(answer: &mut Answer) {
         | Answer::CreatedRepository(_)
         | Answer::CreatedFile { .. }
         | Answer::Team(_)
+        | Answer::Tree { .. }
         | Answer::Error(_) => {}
     }
 }

@@ -4,7 +4,7 @@ use super::fixtures::outbox::{Harness, comment, pull};
 use super::{LIMITS, at, configured};
 use crate::{Condition, Event, Made, Outcome, Request, fire, max_out, step};
 use alloc::boxed::Box;
-use skein_forge::api::{Answer, Error, Op, Read, Write};
+use skein_forge::api::{self, Answer, Error, Op, Read, Write};
 use skein_lib::{Duration, Env, Queue, Time, Wall};
 
 #[test]
@@ -25,7 +25,11 @@ fn settle_with_nothing_sent_is_settled_at_once() {
 
 fn sent_merge() -> (Harness, super::Sent) {
     let mut h = Harness::new();
-    h.make(1, Write::Merge { number: 9, head: [1; 32] }, Condition::Merge { base: Box::from(b"main".as_slice()) });
+    h.make(
+        1,
+        Write::Merge { number: 9, head: [1; 32], how: api::MergeHow::Style },
+        Condition::Merge { base: Box::from(b"main".as_slice()) },
+    );
     h.clock();
     let check = h.one();
     h.answer(check, Ok(Answer::Pull(pull([1; 32]))));
@@ -45,7 +49,7 @@ fn settle_waits_for_a_sent_merge_and_its_proving_read() {
     assert_eq!(verify.op, Op::Read(Read::Pull { number: 9 }));
     let mut current = pull([1; 32]);
     current.merged = Some([4; 32]);
-    current.state = skein_forge::api::State::Closed;
+    current.state = api::State::Closed;
     h.answer(verify, Ok(Answer::Pull(current)));
     assert_eq!(h.outcomes.as_slice(), &[(1, Outcome::Made { made: Made::Merged([4; 32]), found: false })]);
     assert_eq!(h.settled.as_deref(), Some([].as_slice()));
@@ -145,7 +149,7 @@ fn settling_keeps_a_reviews_proving_find_and_an_updates_comparison() {
         Write::Review {
             number: 9,
             key: Box::from(b"\x01\x00\x03kitreview-key".as_slice()),
-            verdict: skein_forge::api::Verdict::Approve,
+            verdict: api::Verdict::Approve,
             body: Box::new([]),
         },
         Condition::Review { head: [1; 32] },
@@ -160,7 +164,7 @@ fn settling_keeps_a_reviews_proving_find_and_an_updates_comparison() {
     review.answer(
         verify,
         Ok(Answer::Reviews {
-            reviews: Box::new([recovered_review(7, skein_forge::api::Provenance::Original, [1; 32])]),
+            reviews: Box::new([recovered_review(7, api::Provenance::Original, [1; 32])]),
             more: false,
         }),
     );
@@ -168,7 +172,11 @@ fn settling_keeps_a_reviews_proving_find_and_an_updates_comparison() {
     assert_eq!(review.outcomes.as_slice(), &[(1, Outcome::Made { made: Made::Reviewed(7), found: true })]);
 
     let mut update = Harness::new();
-    update.make(1, Write::Update { number: 9 }, Condition::Update { head: [1; 32], base: [2; 32] });
+    update.make(
+        1,
+        Write::Update { number: 9, style: api::UpdateStyle::Merge },
+        Condition::Update { head: [1; 32], base: [2; 32] },
+    );
     update.clock();
     let check = update.one();
     update.answer(check, Ok(Answer::Pull(pull([1; 32]))));

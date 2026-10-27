@@ -219,6 +219,10 @@ impl Store {
             | Request::PullFiles { .. }
             | Request::Compare { .. }
             | Request::Raw { .. }
+            | Request::Tree { .. }
+            | Request::WorkflowRuns { .. }
+            | Request::Dispatch { .. }
+            | Request::Rerun { .. }
             | Request::Runs { .. }
             | Request::Run { .. }
             | Request::Jobs { .. }
@@ -288,6 +292,10 @@ impl Store {
             | Request::PullFiles { .. }
             | Request::Compare { .. }
             | Request::Raw { .. }
+            | Request::Tree { .. }
+            | Request::WorkflowRuns { .. }
+            | Request::Dispatch { .. }
+            | Request::Rerun { .. }
             | Request::Runs { .. }
             | Request::Run { .. }
             | Request::Jobs { .. }

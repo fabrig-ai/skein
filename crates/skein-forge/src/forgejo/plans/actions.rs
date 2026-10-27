@@ -46,7 +46,10 @@ impl Plan {
         let (mode, stage) = match read {
             api::Read::Checks { commit } => (Mode::Checks(commit), Stage::Checks),
             api::Read::Job { attempt, max_bytes } => (Mode::Job { attempt, max: max_bytes }, Stage::Run),
-            api::Read::Locate { .. }
+            api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
+            | api::Read::Locate { .. }
             | api::Read::Items { .. }
             | api::Read::Item { .. }
             | api::Read::Pull { .. }
@@ -230,7 +233,8 @@ impl Plan {
                 }
                 Ok(())
             }
-            d::Row::Found(_)
+            d::Row::Entry(_)
+            | d::Row::Found(_)
             | d::Row::Reachable(_)
             | d::Row::Token(_)
             | d::Row::User(_)
@@ -260,7 +264,7 @@ impl Plan {
                 }
                 self.next_check()
             }
-            d::Document::Runs { .. } => {
+            d::Document::Tree { .. } | d::Document::Runs { .. } => {
                 if self.stage != Stage::RunLookup {
                     return Err(api::Error::InvalidAnswer);
                 }

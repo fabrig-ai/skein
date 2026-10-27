@@ -438,3 +438,47 @@ fn vocabulary_app_credential_gives_no_forgejo_authorization() {
 fn vocabulary_app_credential_gives_no_github_authorization() {
     assert_eq!(crate::github::credential::authorization(&vocabulary_app_credential()), None);
 }
+
+#[test]
+fn turn_measures_count_nested_strings_and_list_widths() {
+    use crate::api::{Conclusion, Entry, EntryKind, Event, Input, Run, RunJob, RunState};
+    use skein_lib::Time;
+    let run = Run {
+        id: 1,
+        number: 1,
+        workflow: Box::from(*b"ci"),
+        commit: [0; 32],
+        event: Event::Dispatch,
+        actor: 1,
+        state: RunState::Completed,
+        conclusion: Some(Conclusion::Failure),
+        url: Box::from(*b"url"),
+        created: Time::ZERO,
+        jobs: Box::new([RunJob {
+            id: 2,
+            name: Box::from(*b"job"),
+            attempt: 1,
+            state: RunState::Completed,
+            conclusion: Some(Conclusion::Failure),
+            step: Some(api::Step { number: 1, name: Box::from(*b"step") }),
+        }]),
+    };
+    // Each run holds five string bytes, one 64-byte job and seven job/step bytes.
+    assert_eq!(crate::measure::answer(&Answer::Runs { runs: Box::new([run.clone(), run]), more: false }), Some(408));
+    let entry = Entry { name: Box::from(*b"abc"), mode: 0o100_644, kind: EntryKind::Blob, object: [0; 32] };
+    assert_eq!(
+        crate::measure::answer(&Answer::Tree { entries: Box::new([entry.clone(), entry.clone(), entry]), more: false }),
+        Some(201)
+    );
+    let input = Input { name: Box::from(*b"key"), value: Box::from(*b"receipt") };
+    assert_eq!(
+        crate::measure::op(&api::Op::Write(api::Write::Dispatch {
+            workflow: Box::from(*b"ci"),
+            branch: Box::from(*b"main"),
+            inputs: Box::new([input.clone(), input])
+        })),
+        Some(90)
+    );
+    assert!(size_of::<Run>() <= crate::measure::RUN_BYTES);
+    assert_eq!(crate::measure::RUN_BYTES, 128);
+}

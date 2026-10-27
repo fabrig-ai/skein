@@ -6,7 +6,11 @@ use skein_forge::api::{self, Answer, Change, Error, Op, Read, Write};
 use skein_lib::{Duration, Queue, Time};
 
 fn merge(h: &mut Harness, entry: u64, number: u64) {
-    h.make(entry, Write::Merge { number, head: [1; 32] }, Condition::Merge { base: Box::from(&b"main"[..]) });
+    h.make(
+        entry,
+        Write::Merge { number, head: [1; 32], how: api::MergeHow::Style },
+        Condition::Merge { base: Box::from(&b"main"[..]) },
+    );
 }
 fn submit(h: &mut Harness) -> Sent {
     merge(h, 1, 9);
@@ -14,7 +18,7 @@ fn submit(h: &mut Harness) -> Sent {
     let check = h.one();
     h.answer(check, Ok(Answer::Pull(pull([1; 32]))));
     let sent = h.one();
-    assert_eq!(sent.op, Op::Write(Write::Merge { number: 9, head: [1; 32] }));
+    assert_eq!(sent.op, Op::Write(Write::Merge { number: 9, head: [1; 32], how: api::MergeHow::Style }));
     sent
 }
 fn fire_at(h: &mut Harness, now: Time) {
@@ -278,7 +282,10 @@ fn a_queued_merge_whose_look_fails_backs_off_and_never_fails() {
 }
 #[test]
 fn only_a_merge_may_be_answered_queued() {
-    assert!(crate::api::accepts(&Op::Write(Write::Merge { number: 9, head: [1; 32] }), &Answer::Queued));
+    assert!(crate::api::accepts(
+        &Op::Write(Write::Merge { number: 9, head: [1; 32], how: api::MergeHow::Style }),
+        &Answer::Queued
+    ));
     assert!(!crate::api::accepts(&Op::Write(comment()), &Answer::Queued));
     assert!(!crate::api::accepts(&Op::Read(Read::Pull { number: 9 }), &Answer::Queued));
 }

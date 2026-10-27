@@ -115,6 +115,10 @@ pub fn repository(config: &Config, request: &Request) -> Option<Box<[u8]>> {
         | Request::PullFiles { at, .. }
         | Request::Compare { at, .. }
         | Request::Raw { at, .. }
+        | Request::Tree { at, .. }
+        | Request::WorkflowRuns { at, .. }
+        | Request::Dispatch { at, .. }
+        | Request::Rerun { at, .. }
         | Request::Runs { at, .. }
         | Request::Run { at, .. }
         | Request::Job { at, .. }
@@ -197,6 +201,9 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
         | Request::UserRepos { .. }
         | Request::RepoSearch { .. }
         | Request::UserSearch { .. } => return Err(a::Error::Refused),
+        Request::Tree { .. } | Request::WorkflowRuns { .. } | Request::Dispatch { .. } | Request::Rerun { .. } => {
+            return Err(a::Error::Refused);
+        }
         Request::RepositoryById { .. } | Request::Repository { .. } => Read::Settings,
         Request::Issues { state, kind, since, sort, page: p, .. } => {
             let (page, limit) = page(config, *p);
@@ -381,6 +388,10 @@ fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }

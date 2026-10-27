@@ -17,7 +17,7 @@ fn request(number: u64, head: u64, method: Method) -> Request {
     Request::Merge { owner: f::boxed(b"acme"), name: f::boxed(b"widgets"), number, head: r::object(head), method }
 }
 fn write(number: u64, head: u64) -> api::Write {
-    api::Write::Merge { number, head: r::object(head) }
+    api::Write::Merge { number, head: r::object(head), how: api::MergeHow::Style }
 }
 fn protected(approvals: u32, contexts: &[&[u8]]) -> f::Harness {
     let mut config = r::domain_config();

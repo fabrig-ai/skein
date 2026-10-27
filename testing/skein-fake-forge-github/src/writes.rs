@@ -42,6 +42,8 @@ pub(crate) enum Route {
         commit: skein_forge::api::Commit,
         context: Box<[u8]>,
         check: skein_forge::api::Check,
+        description: Box<[u8]>,
+        link: Box<[u8]>,
     },
     OpenPull {
         owner: Box<[u8]>,
@@ -107,8 +109,8 @@ impl Route {
             Self::Merge { owner, name, number, head, method } => Request::Merge { owner, name, number, head, method },
             Self::CreateBranch { owner, name, branch, commit } => Request::CreateBranch { owner, name, branch, commit },
             Self::DeleteBranch { owner, name, branch } => Request::DeleteBranch { owner, name, branch },
-            Self::Status { owner, name, commit, context, check } => {
-                Request::Status { owner, name, commit, context, check }
+            Self::Status { owner, name, commit, context, check, description, link } => {
+                Request::Status { owner, name, commit, context, check, description, link }
             }
             Self::OpenPull { owner, name, title, body, head, base } => {
                 Request::OpenPull { owner, name, title, body, head, base }

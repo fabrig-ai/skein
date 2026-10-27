@@ -410,7 +410,7 @@ fn a_rate_refusal_does_not_spend_a_fresh_reads_retry_attempt() {
 
 #[test]
 fn confirmed_write_terminals_do_not_invent_update_commits_or_branch_success() {
-    let update = Op::Write(Write::Update { number: 1 });
+    let update = Op::Write(Write::Update { number: 1, style: api::UpdateStyle::Merge });
     assert!(crate::api::accepts(&update, &Answer::Done));
     assert!(!crate::api::accepts(&update, &Answer::Merged([1; 32])));
     let branch = Op::Write(Write::CreateBranch { branch: Box::from(&b"topic"[..]), commit: [1; 32] });
@@ -631,6 +631,8 @@ fn a_zero_settle_window_is_refused() {
 
 #[test]
 fn vocabulary_queued_is_accepted_for_merge() {
-    let merge = Op::Write(Write::Merge { number: 1, head: [1; 32] });
+    let merge = Op::Write(Write::Merge { number: 1, head: [1; 32], how: api::MergeHow::Style });
     assert!(crate::api::accepts(&merge, &Answer::Queued));
 }
+
+mod turn;

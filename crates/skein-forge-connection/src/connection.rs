@@ -1036,6 +1036,10 @@ fn raw_request(request: &request::Request) -> bool {
         | request::Request::Pulls { .. }
         | request::Request::PullFiles { .. }
         | request::Request::Compare { .. }
+        | request::Request::Tree { .. }
+        | request::Request::WorkflowRuns { .. }
+        | request::Request::Dispatch { .. }
+        | request::Request::Rerun { .. }
         | request::Request::Runs { .. }
         | request::Request::Run { .. }
         | request::Request::Job { .. }

@@ -3,6 +3,7 @@ use super::{
     recovery,
 };
 
+#[expect(clippy::too_many_lines, reason = "each refusal class declares recovery for every write phase")]
 pub(super) fn failed(
     d: &mut Domain,
     env: &Env<Limits>,
@@ -28,6 +29,7 @@ pub(super) fn failed(
             | Phase::Check
             | Phase::Queued
             | Phase::Find { .. }
+            | Phase::DispatchRuns { .. }
             | Phase::Compare { .. }
             | Phase::AfterUpdate
             | Phase::AfterMerge { .. } => {
@@ -39,6 +41,7 @@ pub(super) fn failed(
             Phase::Clock | Phase::Check | Phase::Make => super::finish(d, env, number, Outcome::Failed(error), out),
             Phase::Queued
             | Phase::Find { .. }
+            | Phase::DispatchRuns { .. }
             | Phase::Compare { .. }
             | Phase::AfterUpdate
             | Phase::AfterMerge { .. } => {
@@ -50,7 +53,9 @@ pub(super) fn failed(
             match phase {
                 Phase::Find { .. } => match w.entry.effect.write {
                     Write::DeleteBranch { .. } => super::finished(d, env, number, Made::Set, true, out),
-                    Write::CreateBranch { .. }
+                    Write::Dispatch { .. }
+                    | Write::Rerun { .. }
+                    | Write::CreateBranch { .. }
                     | Write::OpenPull { .. }
                     | Write::CreateIssue { .. }
                     | Write::Post { .. }
@@ -65,7 +70,9 @@ pub(super) fn failed(
                 },
                 Phase::Make => match w.entry.effect.write {
                     Write::DeleteBranch { .. } => super::finished(d, env, number, Made::Set, false, out),
-                    Write::CreateIssue { .. }
+                    Write::Dispatch { .. }
+                    | Write::Rerun { .. }
+                    | Write::CreateIssue { .. }
                     | Write::OpenPull { .. }
                     | Write::Post { .. }
                     | Write::Review { .. }
@@ -78,6 +85,7 @@ pub(super) fn failed(
                     | Write::Status { .. }
                     | Write::CreateBranch { .. } => super::finish(d, env, number, Outcome::Failed(error), out),
                 },
+                Phase::DispatchRuns { .. } => not_found(d, env, number, out),
                 Phase::Queued
                 | Phase::Clock
                 | Phase::Check
@@ -208,7 +216,7 @@ fn retain_uncertain(
         // Absence answers creation and deletion recovery lookups. Let
         // `failed` confirm deletion or apply a creation's saved deadline.
         if error == Error::Missing
-            && let Phase::Find { .. } = phase
+            && let Phase::Find { .. } | Phase::DispatchRuns { .. } = phase
         {
             let w = d.outbox.entries.get(&number).expect("find owns entry");
             match w.entry.effect.write {
@@ -219,6 +227,8 @@ fn retain_uncertain(
                 | Write::Review { .. }
                 | Write::Merge { .. }
                 | Write::Update { .. }
+                | Write::Dispatch { .. }
+                | Write::Rerun { .. }
                 | Write::DeleteBranch { .. } => return false,
                 Write::Edit { .. }
                 | Write::SetReviewers { .. }
@@ -237,6 +247,7 @@ fn retain_uncertain(
             | Phase::Queued
             | Phase::Make
             | Phase::Find { .. }
+            | Phase::DispatchRuns { .. }
             | Phase::Compare { .. }
             | Phase::AfterUpdate => {}
         }

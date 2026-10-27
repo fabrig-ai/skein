@@ -180,7 +180,7 @@ fn effect_measure_uses_fixed_widths() {
         ),
         (
             "merge",
-            Write::Merge { number: 1, head: [1; 32] },
+            Write::Merge { number: 1, head: [1; 32], how: api::MergeHow::Style },
             Condition::Merge { base: Box::from(&b"kit"[..]) },
             BRANCH_BYTES,
         ),
