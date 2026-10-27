@@ -27,8 +27,8 @@ pub(crate) fn record(r: &mut Recorder<'_>, admin: &Token) -> Result<()> {
             &[(SecretKind::Password, &password)],
         )?;
     }
-    let alice = setup::scoped(r.f, r.secrets, "alice", "example-app", &["read:user", "write:repository"])?;
-    let bob = setup::scoped(r.f, r.secrets, "bob", "example-app", &["read:user", "write:repository"])?;
+    let alice = setup::scoped(r.f, r.secrets, "alice", "example-app", &["write:user", "write:repository"])?;
+    let bob = setup::scoped(r.f, r.secrets, "bob", "example-app", &["write:user", "write:repository"])?;
     let body = json::object(&[("name", &"widgets"), ("private", &true)])?;
     for token in [&alice, &bob] {
         let response = r.f.exchange("POST", "/api/v1/user/repos", Some(&body), Some(token), None)?;
