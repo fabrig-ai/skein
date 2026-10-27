@@ -54,7 +54,7 @@ fn number(at: At<'_>) -> Result<u64> {
 }
 fn rows<'a>(json: &'a Json, field: &str) -> Result<Vec<At<'a>>> {
     let at = json.root().get(field);
-    if field == "tree" && at.kind() == Some(skein_json::Kind::Null) {
+    if (field == "tree" || field == "statuses") && at.kind() == Some(skein_json::Kind::Null) {
         return Ok(Vec::new());
     }
     json.root().array().or_else(|| at.array()).ok_or_else(|| format!("expected {field} rows in turn fixture").into())
@@ -69,3 +69,41 @@ pub(crate) fn record(f: &Fixture, out: &Path, mask: &mut Mask, secrets: &mut Sec
     actions::record(&mut p)?;
     Ok(p.facts)
 }
+
+pub(crate) fn unchecked() -> Vec<Fact> {
+    NAMES
+        .iter()
+        .map(|name| Fact { name, outcome: crate::facts::Outcome::Unchecked("--runner not supplied".into()) })
+        .collect()
+}
+const NAMES: &[&str] = &[
+    "tree-commit-id-answers-root-tree",
+    "tree-entries-use-git-order",
+    "tree-directory-id-answers-directory",
+    "tree-pages-and-truncated",
+    "tree-past-last-page-is-an-empty-array",
+    "status-combined-keeps-description-and-target-url",
+    "status-list-keeps-description-and-target-url",
+    "merge-fast-forward-only-moves-base-to-head",
+    "merge-fast-forward-only-marks-pull-merged-at-head",
+    "merge-fast-forward-only-refuses-diverged-head",
+    "merge-fast-forward-only-diverged-is-405",
+    "update-rebase-rewrites-onto-base-and-keeps-messages",
+    "update-rebase-containing-base-changes-nothing",
+    "update-rebase-conflict-is-409-and-keeps-head",
+    "actions-dispatch-missing-workflow-is-404",
+    "actions-dispatch-missing-branch-is-404",
+    "actions-dispatch-is-204-with-no-body",
+    "actions-rerun-running-is-400",
+    "actions-dispatch-run-keeps-head-at-dispatch",
+    "actions-dispatch-statuses-land-on-dispatch-head",
+    "actions-dispatch-only-workflow-push-starts-no-run",
+    "actions-rerun-completed-is-204",
+    "actions-rerun-next-attempt-visible-on-job",
+    "actions-dispatch-run-names-event-and-trigger-user",
+    "actions-dispatch-run-names-trigger-event-and-trigger-user",
+    "actions-dispatch-run-jobs-list-both-outcomes",
+    "actions-dispatch-job-steps-setup-first-completion-last",
+    "actions-dispatch-input-reaches-job-log",
+    "actions-runs-filter-workflow-and-head-newest-first",
+];

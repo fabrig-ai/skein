@@ -10,8 +10,12 @@ fixture and removes its instance and scratch directory when it ends.
 heavy --gate scripts/proof-forgejo-conformance.sh \
   --forgejo <absolute path to the pinned Forgejo> \
   --runner <absolute path to the pinned runner> \
-  --scratch target/forgejo-conformance --out tests/forge/conformance
+  --scratch target/forgejo-conformance --out target/conformance-recording
 ```
+
+`heavy --gate` requires the candidate to stay clean. Record into ignored
+`target/` storage, then copy `facts.txt`, `transcripts/` and `deliveries/`
+from that output into this directory after the receipt succeeds.
 
 Scratch must be empty or absent, outside `/tmp`. The binary's first version
 line and SHA-256 are kept in `transcripts/binary.txt`.
@@ -38,7 +42,7 @@ masking. A leak reports the case and secret kind without printing its value.
 
 The same run writes `facts.txt`, with Forgejo and runner provenance followed
 by `holds`, `fails` or `unchecked` lines. Pass `--runner` naming the
-pinned runner for Actions facts and eleven Actions transcripts.
+pinned runner for Actions facts and their transcripts.
 The runner connects through its private token file and executes two inline host
 shell jobs, one succeeding and one failing; no actions or containers are
 downloaded. Without a runner those facts remain unchecked. Webhook deliveries are recorded
@@ -87,3 +91,14 @@ The two focused recording modes write their own facts only. When refreshing the
 shared captures, merge those named facts into `facts.txt`, retaining its binary
 provenance and the other groups. Both use the same pinned throwaway fixture and
 secret masking as the full recording.
+
+The turn group records one named transcript per fact, with supporting captures
+for branch tips, tree pages and rewritten commit parents. Its isolated `turn`
+repository has two dispatch-only workflows to test both run filters, three
+runs across a page, and a branch moved during a dispatched job. Each workflow
+has two inline host-shell jobs: one passes and one fails in a workflow step.
+One input is echoed and read through the passing job's log. The group also
+records rerun attempts, fast-forward-only merges, rebase updates, status words
+and links, and root/directory tree paging in git order. A public bare clone of
+only the throwaway repository supplies an independent root-tree id. Without
+`--runner`, this group's facts are unchecked.
