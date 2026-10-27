@@ -1,0 +1,5 @@
+GET /api/v1/repos/fixture/turn/actions/runs/9999/artifacts?name=tests HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Connection: close
+

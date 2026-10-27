@@ -286,3 +286,10 @@ holds actions-dispatch-input-reaches-job-log
 holds actions-rerun-completed-is-204
 holds actions-rerun-next-attempt-visible-on-job
 fails actions-runs-filter-workflow-and-head-newest-first: head_sha and newest order hold; workflow is ignored: page 2 also contains other.yaml
+holds actions-artifact-run-read-keeps-dispatch-head
+holds actions-artifacts-unknown-run-is-404
+holds actions-artifact-upload-completes
+holds actions-artifacts-name-selects-only-that-artifact
+holds actions-artifacts-absent-name-is-empty
+holds actions-artifact-zip-is-direct
+holds actions-artifact-zip-keeps-one-failed-id-file

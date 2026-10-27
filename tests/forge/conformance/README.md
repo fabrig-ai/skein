@@ -119,3 +119,10 @@ An upload failure stops recording with those supporting captures retained.
 `artifact-curl-attempt/` keeps the failed runtime-protocol upload: container
 creation returned 200, but Forgejo refused the first file chunk with 500,
 `Error save upload chunk`. It contains no populated artifact or archive facts.
+
+The successful artifact recording returns a direct 200 ZIP with one deflated
+`failed.txt`, a signed data descriptor, and no redirect. The named listing
+contains no commit; the run read supplies `commit_sha`. An absent name returns
+200 with an empty array; an unknown run returns 404. The first curl attempt
+failed because it omitted the required chunk MD5 header; its scanned server
+log records `md5 not match`.
