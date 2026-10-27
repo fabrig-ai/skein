@@ -85,7 +85,8 @@ impl Plan {
     fn received(&mut self, row: d::Row, bounds: Bounds) -> Result<(), api::Error> {
         let value = match row {
             d::Row::CommitMessage(value) => value,
-            d::Row::Found(_)
+            d::Row::Artifact(_)
+            | d::Row::Found(_)
             | d::Row::Reachable(_)
             | d::Row::Token(_)
             | d::Row::User(_)

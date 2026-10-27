@@ -14,8 +14,8 @@
 use super::super::forgejo;
 use skein_forge::forgejo::{
     document::{
-        ChangedFile, CombinedStatus, CommitStatus, Compare, Document, FileStatus, Job, Row, Run, StatusState, Step,
-        StepStatus,
+        Artifact, ChangedFile, CombinedStatus, CommitStatus, Compare, Document, FileStatus, Job, Row, Run, StatusState,
+        Step, StepStatus,
     },
     request::Request,
     server::Answer,
@@ -81,7 +81,8 @@ pub fn log() -> Request {
     Request::JobLog { at: forgejo::specimen(), job: 2, attempt: 1, step: None }
 }
 pub fn cases() -> Vec<(&'static str, Request, Option<Answer>, u16)> {
-    vec![
+    let mut rows = artifact_cases();
+    rows.extend([
         (
             "pull-files-page-1",
             Request::PullFiles { at: forgejo::specimen(), number: 1, page: forgejo::page(1, 2) },
@@ -171,10 +172,37 @@ pub fn cases() -> Vec<(&'static str, Request, Option<Answer>, u16)> {
             }),
             200,
         ),
+    ]);
+    rows
+}
+fn artifact_cases() -> Vec<(&'static str, Request, Option<Answer>, u16)> {
+    vec![
+        (
+            "actions-artifacts-all",
+            Request::Artifacts { at: turn(), run: 8, name: None },
+            Some(Answer::Artifacts(Box::new([artifact(2, b"other"), artifact(1, b"tests")]))),
+            200,
+        ),
+        (
+            "actions-artifacts-named",
+            Request::Artifacts { at: turn(), run: 8, name: Some(Box::from(*b"tests")) },
+            Some(Answer::Artifacts(Box::new([artifact(1, b"tests")]))),
+            200,
+        ),
+        (
+            "actions-artifacts-absent",
+            Request::Artifacts { at: turn(), run: 8, name: Some(Box::from(*b"absent")) },
+            Some(Answer::Artifacts(Box::new([]))),
+            200,
+        ),
+        ("actions-artifact-zip", Request::ArtifactZip { at: turn(), id: 1 }, None, 200),
     ]
 }
 pub fn expected(answer: Answer) -> (Document, Vec<Row>) {
     match answer {
+        Answer::Artifacts(v) => {
+            (Document::Listed { skipped: 0 }, v.into_vec().into_iter().map(Row::Artifact).collect())
+        }
         Answer::Files(v) => (Document::Listed { skipped: 0 }, v.into_vec().into_iter().map(Row::File).collect()),
         Answer::Compare { compare, commits, files } => {
             let mut rows = commits.into_vec().into_iter().map(Row::Commit).collect::<Vec<_>>();
@@ -227,4 +255,12 @@ pub fn expected(answer: Answer) -> (Document, Vec<Row>) {
         | Answer::Commits { .. }
         | Answer::Permission(_) => panic!("file family answer"),
     }
+}
+
+fn turn() -> skein_forge::forgejo::request::Repo {
+    skein_forge::forgejo::request::Repo { owner: Box::from(*b"fixture"), name: Box::from(*b"turn") }
+}
+
+fn artifact(id: u64, name: &[u8]) -> Artifact {
+    Artifact { id, name: Box::from(name), run_id: 8, size_in_bytes: 4 }
 }

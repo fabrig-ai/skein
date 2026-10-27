@@ -50,6 +50,7 @@ pub struct Plan {
     request: Option<Exchange>,
     turn: Option<super::turn::Plan>,
     commits: Option<super::commits::Plan>,
+    artifact: Option<super::artifact::Plan>,
     contents: Option<crate::forgejo::plans::contents::Plan>,
     actions: Option<crate::forgejo::plans::actions::Plan>,
     rows: Rows,
@@ -78,6 +79,7 @@ impl Plan {
             request: None,
             turn: None,
             commits: None,
+            artifact: None,
             contents: None,
             actions: None,
             rows: Rows::None,
@@ -169,7 +171,19 @@ impl Plan {
                 return Ok(self.turn(super::turn::Mode::Runs { workflow, commit, page }, bounds));
             }
             api::Read::Run { run } => return Ok(self.turn(super::turn::Mode::Run(run), bounds)),
-            api::Read::Artifact { .. } => return Err(api::Error::Refused),
+            api::Read::Artifact { run, name, max_bytes } => {
+                if name.is_empty() || max_bytes == 0 {
+                    return Err(api::Error::Empty);
+                }
+                if max_bytes > bounds.answer_bytes {
+                    return Err(api::Error::TooLarge);
+                }
+                let plan =
+                    super::artifact::Plan::new(self.row.as_ref().expect("resolved").clone(), run, name, max_bytes);
+                let step = plan.begin();
+                self.artifact = Some(plan);
+                return Ok(step);
+            }
             api::Read::Commits { before, after, page } => {
                 if page == 0 {
                     return Err(api::Error::Empty);
@@ -307,6 +321,9 @@ impl Plan {
         word: &[u8],
         tables: &mut Tables,
     ) -> Result<Option<Step>, api::Error> {
+        if let Some(plan) = &mut self.artifact {
+            return plan.heard(heard, bounds, self.repository, tables);
+        }
         if let Some(plan) = &mut self.commits {
             return plan.heard(heard, bounds, self.repository, tables);
         }
@@ -478,6 +495,7 @@ impl Plan {
             | d::Row::Team(_)
             | d::Row::File(_)
             | d::Row::Commit(_)
+            | d::Row::Artifact(_)
             | d::Row::CommitMessage(_)
             | d::Row::Entry(_)
             | d::Row::Run(_)

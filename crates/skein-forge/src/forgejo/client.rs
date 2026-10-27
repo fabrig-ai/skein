@@ -77,7 +77,9 @@ pub fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refusal> {
         | Request::PostStatus { .. }
         | Request::CreateBranch { .. }
         | Request::DeleteBranch { .. } => writes::encode(request, limits),
-        Request::PullFiles { .. }
+        Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
+        | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Commits { .. }
         | Request::Raw { .. }
@@ -136,6 +138,7 @@ enum DecoderState {
 #[must_use]
 pub fn decoder(request: &Request, limits: &Limits) -> Option<Decoder> {
     let kind = match request {
+        Request::Artifacts { .. } => Kind::Action(ActionKind::Artifacts),
         Request::Commits { .. } => Kind::File(FileKind::Range),
         Request::CreateFile { .. } => Kind::Setup(setup::SetupKind::CreatedFile),
         Request::CreateRepository { .. } => Kind::Setup(setup::SetupKind::CreatedRepository),
@@ -147,7 +150,8 @@ pub fn decoder(request: &Request, limits: &Limits) -> Option<Decoder> {
         | Request::EditOrgHook { .. }
         | Request::CreateRepoHook { .. }
         | Request::EditRepoHook { .. } => Kind::Setup(setup::SetupKind::Hook),
-        Request::DeleteRepoHook { .. }
+        Request::ArtifactZip { .. }
+        | Request::DeleteRepoHook { .. }
         | Request::AddCollaborator { .. }
         | Request::DeleteOrgHook { .. }
         | Request::DeleteToken { .. }

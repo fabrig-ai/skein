@@ -438,6 +438,7 @@ impl Reachable {
                     | Row::Pull(_)
                     | Row::File(_)
                     | Row::Commit(_)
+                    | Row::Artifact(_)
                     | Row::CommitMessage(_)
                     | Row::Entry(_)
                     | Row::Run(_)

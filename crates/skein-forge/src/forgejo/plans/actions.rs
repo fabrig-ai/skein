@@ -258,6 +258,7 @@ impl Plan {
             | d::Row::Hook(_)
             | d::Row::Team(_)
             | d::Row::Commit(_)
+            | d::Row::Artifact(_)
             | d::Row::CommitMessage(_) => Err(api::Error::InvalidAnswer),
         }
     }

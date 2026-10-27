@@ -191,7 +191,8 @@ pub(super) fn write(json: &mut Encoder, answer: &Answer) {
             json.array_end();
             json.object_end();
         }
-        Answer::Error(_)
+        Answer::Artifacts(_)
+        | Answer::Error(_)
         | Answer::Comment(_)
         | Answer::Status(_)
         | Answer::Review(_)

@@ -93,7 +93,8 @@ pub(super) fn write(json: &mut Encoder, answer: &super::Answer) {
             }
             json.array_end();
         }
-        super::Answer::CreatedFile { .. }
+        super::Answer::Artifacts(_)
+        | super::Answer::CreatedFile { .. }
         | super::Answer::CreatedRepository(_)
         | super::Answer::Hook(_)
         | super::Answer::Hooks(_)

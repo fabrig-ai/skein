@@ -263,7 +263,11 @@ pub fn worst_case(limits: &Limits, config: &Config) -> Option<u64> {
                 .checked_mul(u64::from(limits.documents.string_bytes).checked_add(128)?)?,
         )?
         .checked_add(u64::from(limits.documents.target_bytes).checked_mul(2)?)?
-        .checked_add(u64::from(limits.raw_bytes))?
+        // A report's source file, encoded ZIP, and gzip workspace/payload overlap.
+        .checked_add(u64::from(limits.raw_bytes).checked_mul(2)?)?
+        .checked_add(
+            u64::try_from(skein_http::gzip::bound(usize::try_from(limits.raw_bytes).ok()?)?).ok()?.checked_mul(2)?,
+        )?
         .checked_add(listing)?
         .checked_add(crate::git::decoder_worst_case(limits)?)?
         // Object walk: selected ids, parent rows, and two parents per

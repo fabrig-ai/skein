@@ -10,7 +10,7 @@ use crate::{api::Error, forgejo::zip};
 const ARCHIVE_BOUND: u32 = 1024;
 const FILE: &[u8] = b"a\nb\n";
 const FILE_BYTES: u32 = 4;
-fn archive(names: &[&[u8]], deflated: bool, descriptor: Option<bool>) -> Vec<u8> {
+pub(crate) fn archive(names: &[&[u8]], deflated: bool, descriptor: Option<bool>) -> Vec<u8> {
     let payload = if deflated {
         let mut gzip = vec![0; skein_http::gzip::bound(FILE.len()).unwrap()];
         let length = skein_http::gzip::encode(FILE, &mut gzip).unwrap();

@@ -229,6 +229,8 @@ fn pull_answer(config: &Config, setup: &Store, request: &Request, value: &a::Pul
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
         | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
@@ -277,6 +279,7 @@ fn pull_answer(config: &Config, setup: &Store, request: &Request, value: &a::Pul
         | Request::DeleteBranch { .. } => Err(a::Error::Refused),
     }
 }
+#[expect(clippy::too_many_lines, reason = "the combined status projection names every request variant before paging")]
 fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckSummary]) -> Result<Answer, a::Error> {
     let (sha, page) = match request {
         Request::CombinedStatus { commit, page, .. } => (Some(*commit), *page),
@@ -303,6 +306,8 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
         | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
@@ -387,6 +392,24 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
 #[expect(clippy::too_many_lines, reason = "each domain answer has an explicit Forgejo document projection")]
 pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answer) -> Result<Answer, a::Error> {
     match answer {
+        a::Answer::Artifacts(values) => {
+            let Request::Artifacts { run, name, .. } = request else {
+                return Err(a::Error::Refused);
+            };
+            let mut out = List::with_capacity(u32::try_from(values.len()).expect("bounded artifacts"));
+            for value in values {
+                if name.is_none() || name.as_ref() == Some(&value.name) {
+                    out.push(d::Artifact {
+                        id: value.id,
+                        name: value.name.clone(),
+                        run_id: *run,
+                        size_in_bytes: value.size_in_bytes,
+                    })
+                    .expect("artifact subset");
+                }
+            }
+            Ok(Answer::Artifacts(out.into_boxed()))
+        }
         a::Answer::Commits { commits } => {
             let mut out = List::with_capacity(u32::try_from(commits.len()).expect("domain bound"));
             for value in commits.iter().rev() {
@@ -563,6 +586,8 @@ fn collaborators(
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
         | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }

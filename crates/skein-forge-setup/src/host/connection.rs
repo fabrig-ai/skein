@@ -561,6 +561,8 @@ fn forgejo_row_bound(request: &request::Request) -> Option<u32> {
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
         | Request::Commits { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }

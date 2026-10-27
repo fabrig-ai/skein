@@ -740,4 +740,4 @@ fn an_empty_range_over_an_empty_log_reads_as_empty() {
 
 mod tokens;
 
-mod zip;
+pub(crate) mod zip;

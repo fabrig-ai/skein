@@ -12,6 +12,10 @@
 use skein_forge::forgejo::request::Method;
 pub fn answer(name: &str) -> &'static [u8] {
     match name {
+        "actions-artifacts-all" => br#"[{"id":2,"name":"other","size_in_bytes":4,"run_id":8},{"id":1,"name":"tests","size_in_bytes":4,"run_id":8}]"#,
+        "actions-artifacts-named" => br#"[{"id":1,"name":"tests","size_in_bytes":4,"run_id":8}]"#,
+        "actions-artifacts-absent" => b"[]",
+
         "setup-repository-created" => br#"{"id":1,"full_name":"creation/starter","default_branch":"main","clone_url":"http://127.0.0.1:3000/creation/starter.git","ssh_url":"ssh://free@localhost/creation/starter.git"}"#,
         "user" => br#"{"id":2,"login":"writer","is_admin":false,"full_name":""}"#,
         "settings-api" => br#"{"max_response_items":2,"default_paging_num":30}"#,
@@ -54,6 +58,11 @@ pub fn answer(name: &str) -> &'static [u8] {
 }
 pub fn request(name: &str) -> (Method, &'static [u8], &'static [u8]) {
     match name {
+        "actions-artifacts-all" => (Method::Get, b"/api/v1/repos/fixture/turn/actions/runs/8/artifacts", b""),
+        "actions-artifacts-named" => (Method::Get, b"/api/v1/repos/fixture/turn/actions/runs/8/artifacts?name=tests", b""),
+        "actions-artifacts-absent" => (Method::Get, b"/api/v1/repos/fixture/turn/actions/runs/8/artifacts?name=absent", b""),
+        "actions-artifact-zip" => (Method::Get, b"/api/v1/repos/fixture/turn/actions/artifacts/1/zip", b""),
+
         "setup-repository-created" => (Method::Post, b"/api/v1/orgs/creation/repos", br#"{"name":"starter","private":true,"auto_init":true,"default_branch":"main"}"#),
         "repo-hooks" => (Method::Get, b"/api/v1/repos/acme/widgets/hooks?page=1&limit=2", b""),
         "repo-hook-create" => (Method::Post, b"/api/v1/repos/acme/widgets/hooks", br#"{"type":"forgejo","config":{"url":"https://hooks.example/","content_type":"json","secret":"example-hook"},"events":["push"],"active":true}"#),

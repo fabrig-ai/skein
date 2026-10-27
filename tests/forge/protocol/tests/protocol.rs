@@ -328,3 +328,94 @@ fn runs_ignore_other_workflows_and_page_by_the_raw_forgejo_listing() {
     );
     world.finish();
 }
+
+#[test]
+fn a_completed_dispatch_reads_its_selected_failed_ids_through_http() {
+    const ARTIFACT_REQUESTS: u64 = 3; // Listing, run commit, complete ZIP.
+    const UNKNOWN_RUN: u64 = 9999; // Outside the fixture's four run slots.
+    const FAILED_BYTES: u32 = 2; // b plus its newline.
+    for deflate in [false, true] {
+        let mut workflow = workflow();
+        workflow.passes = 1000;
+        workflow.fails = Box::new([Box::from(*b"a"), Box::from(*b"b")]);
+        workflow.select = Some(Box::from(*b"select"));
+        workflow.report =
+            Some(raw::Report { artifact: Box::from(*b"tests"), format: raw::ReportFormat::Lines, deflate });
+        let mut world = World::turn(61, Box::new([workflow]), Box::new([]));
+        let head = branch(&mut world, b"main");
+        world.write(Write::Dispatch {
+            workflow: Box::from(*b"gate.yml"),
+            branch: Box::from(*b"main"),
+            inputs: Box::new([api::Input { name: Box::from(*b"select"), value: Box::from(*b"b") }]),
+        });
+        let Answer::Runs { runs, .. } = world
+            .read(Read::Runs { workflow: Box::from(*b"gate.yml"), commit: head, page: 1 })
+            .expect("dispatch listing")
+        else {
+            panic!("runs");
+        };
+        let run = completed(&mut world, runs[0].id);
+        let before = world.accounting();
+        assert_eq!(
+            world.read(Read::Artifact { run: run.id, name: Box::from(*b"tests"), max_bytes: FAILED_BYTES }),
+            Ok(Answer::File { head, path: Box::from(*b"failed.txt"), bytes: Box::from(*b"b\n"), truncated: false })
+        );
+        let after = world.accounting();
+        assert_eq!(after.reported - before.reported, ARTIFACT_REQUESTS, "listing, run commit, whole ZIP");
+        assert_eq!(
+            world.read(Read::Artifact { run: run.id, name: Box::from(*b"absent"), max_bytes: FAILED_BYTES }),
+            Err(api::Error::Missing)
+        );
+        assert_eq!(
+            world.read(Read::Artifact { run: UNKNOWN_RUN, name: Box::from(*b"tests"), max_bytes: FAILED_BYTES }),
+            Err(api::Error::Missing)
+        );
+        world.finish();
+    }
+}
+
+#[test]
+fn commit_messages_cross_two_pages_through_the_fakes_http_routes() {
+    const ROOT: u64 = 1; // The fixture's initial main commit.
+    let mut world = World::turn(67, Box::new([]), Box::new([]));
+    let first = world.prepare_commit(ROOT, Box::new([file(b"version", b"one")]), b"first\n\nTrailer: one\n");
+    let second = world.prepare_commit(first, Box::new([file(b"version", b"two")]), b"second\n\nTrailer: two\n");
+    let third = world.prepare_commit(second, Box::new([file(b"version", b"three")]), b"third\n\nTrailer: three\n");
+    world
+        .direct(raw::Op::Git(raw::Git::Push { branch: Box::from(*b"main"), commit: third, expected: None }))
+        .expect("push range");
+    for (page, expected) in [
+        (
+            1,
+            Answer::Commits {
+                commits: Box::new([
+                    api::CommitMessage {
+                        id: commit(first),
+                        parents: Box::new([commit(ROOT)]),
+                        message: Box::from(*b"first\n\nTrailer: one\n"),
+                    },
+                    api::CommitMessage {
+                        id: commit(second),
+                        parents: Box::new([commit(first)]),
+                        message: Box::from(*b"second\n\nTrailer: two\n"),
+                    },
+                ]),
+                more: true,
+            },
+        ),
+        (
+            2,
+            Answer::Commits {
+                commits: Box::new([api::CommitMessage {
+                    id: commit(third),
+                    parents: Box::new([commit(second)]),
+                    message: Box::from(*b"third\n\nTrailer: three\n"),
+                }]),
+                more: false,
+            },
+        ),
+    ] {
+        assert_eq!(world.read(Read::Commits { before: commit(ROOT), after: commit(third), page }), Ok(expected));
+    }
+    world.finish();
+}

@@ -176,6 +176,8 @@ impl Heap for api::Read {
             | Self::Pull { .. }
             | Self::PullFiles { .. }
             | Self::Compare { .. }
+            | Self::Artifacts { .. }
+            | Self::ArtifactById { .. }
             | Self::Commits { .. }
             | Self::Checks { .. }
             | Self::Job { .. }
@@ -240,6 +242,7 @@ impl Heap for api::Git {
 impl Heap for api::Answer {
     fn heap(&self) -> Option<u64> {
         match self {
+            Self::Artifacts(values) => values.heap(),
             Self::Artifact { artifact, .. } => {
                 sum(&[artifact.name.heap(), artifact.path.heap(), artifact.bytes.heap()])
             }
@@ -281,6 +284,11 @@ impl Heap for api::Answer {
             | Self::Pushed(_)
             | Self::Branch(_) => Some(0),
         }
+    }
+}
+impl Heap for api::ArtifactInfo {
+    fn heap(&self) -> Option<u64> {
+        self.name.heap()
     }
 }
 impl Heap for api::CommitMessage {

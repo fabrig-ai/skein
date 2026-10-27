@@ -22,6 +22,12 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
     }
     let at = Repo { owner: owner.clone(), name: name.clone() };
     let request = match tail {
+        [runs, run, artifacts] if &**runs == b"runs" && &**artifacts == b"artifacts" => {
+            Request::Artifacts { at, run: number_value(run)?, name: query_value(&target.query, b"name") }
+        }
+        [artifacts, id, zip] if &**artifacts == b"artifacts" && &**zip == b"zip" => {
+            Request::ArtifactZip { at, id: number_value(id)? }
+        }
         [runs] if &**runs == b"runs" => {
             let head = query_value(&target.query, b"head_sha").ok_or(Unrouted::Malformed)?;
             if let Some(workflow) = query_value(&target.query, b"workflow") {
@@ -108,6 +114,22 @@ fn run(json: &mut Encoder, value: &Run) {
 }
 pub(super) fn write(json: &mut Encoder, answer: &Answer) {
     match answer {
+        Answer::Artifacts(values) => {
+            json.array_start();
+            for value in values {
+                json.object_start();
+                json.key(b"id");
+                json.unsigned(value.id);
+                json.key(b"name");
+                json.string(&value.name);
+                json.key(b"size_in_bytes");
+                json.unsigned(value.size_in_bytes);
+                json.key(b"run_id");
+                json.unsigned(value.run_id);
+                json.object_end();
+            }
+            json.array_end();
+        }
         Answer::Run(value) => run(json, value),
         Answer::Runs { total_count, runs } => {
             json.object_start();

@@ -122,6 +122,18 @@ pub(super) fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refu
 #[expect(clippy::too_many_lines, reason = "exhaustive request selection lists every dialect request")]
 fn target(request: &Request, out: &mut Target) {
     match request {
+        Request::Artifacts { at, run, name } => {
+            out.numbered(at, b"/actions/runs/", *run);
+            out.put(b"/artifacts");
+            if let Some(name) = name {
+                out.put(b"?name=");
+                out.segment(name);
+            }
+        }
+        Request::ArtifactZip { at, id } => {
+            out.numbered(at, b"/actions/artifacts/", *id);
+            out.put(b"/zip");
+        }
         Request::Commits { at, before, after } => {
             out.repo(at);
             out.put(b"/compare/");

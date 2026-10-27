@@ -739,6 +739,9 @@ pub fn worst_case(l: &Limits, s: &Shared, forges: Forges, owned_bytes: u64) -> O
     let connections = l.connections.checked_add(forges.github)?;
     let count = forges.forgejo.checked_add(forges.github)?;
     let docs = documents(l);
+    // Raw growth can hold its old and new buffers. An artifact instead holds
+    // the whole archive and the inflated entry; its path/output share the
+    // call's retained-answer envelope. ZIP reads borrow their compressed data.
     let raw = u64::from(s.answer_bytes).checked_mul(2)?;
     let github = github_forge_heap(l, s, forges.github)?;
     let decoder = decoder_heap(l, forges)?;
@@ -834,7 +837,7 @@ pub fn worst_case(l: &Limits, s: &Shared, forges: Forges, owned_bytes: u64) -> O
 // Forgejo plan boxes, operation staging, kept answer and decoded file/commit/user rows.
 // A range's bounded commit buffer overlaps its output page's native slots;
 // parents and messages share the retained answer's byte envelope.
-fn forgejo_call_heap(l: &Limits, s: &Shared) -> Option<u64> {
+pub(crate) fn forgejo_call_heap(l: &Limits, s: &Shared) -> Option<u64> {
     use skein_lib::List;
     u64::try_from(size_of::<skein_forge::forgejo::plans::reads::Plan>())
         .ok()?
