@@ -116,6 +116,7 @@ impl Writer {
             | Observation::Removed { .. }
             | Observation::Reviewed { .. }
             | Observation::Reported { .. }
+            | Observation::Rebased { .. }
             | Observation::Merged { .. }
             | Observation::Enqueued { .. }
             | Observation::Group { .. }

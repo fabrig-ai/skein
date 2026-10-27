@@ -42,6 +42,20 @@ fn observation_lines_round_trip() {
             r#"{"observation":"moved","repository":"org/repo","branch":"work","from":3,"to":7,"by":2,"forward":true}"#,
         ),
         (
+            "Rebased",
+            Recorded::Observed {
+                observation: Observation::Rebased {
+                    repository: boxed(b"org/repo"),
+                    branch: boxed(b"work"),
+                    from: 3,
+                    to: 7,
+                    by: 2,
+                },
+                forward: None,
+            },
+            r#"{"observation":"rebased","repository":"org/repo","branch":"work","from":3,"to":7,"by":2}"#,
+        ),
+        (
             "Deleted",
             Recorded::Observed {
                 observation: Observation::Deleted {
@@ -1803,4 +1817,64 @@ fn decoded_lines(output: &List<u8>) -> List<Recorded> {
     }
     assert_eq!(start, output.as_slice().len(), "every line has its newline");
     records
+}
+
+#[test]
+fn rebase_provenance_reaches_the_judge_across_encoded_checkpoints() {
+    use skein_fake_forge_domain::promises::{Bounds, Breach, Judge, Profile, Promise, Verdict};
+    for caller in [2, 3] {
+        let mut judge = Judge::new(Profile {
+            client: 2,
+            marker: (boxed(b"<key>"), boxed(b"</key>")),
+            owned_branches: Box::new([]),
+            allowed: Box::new([]),
+            bounds: Bounds { objects: 4, decisions: 1 },
+        });
+        for record in [
+            Recorded::Observed {
+                observation: Observation::Moved {
+                    repository: boxed(b"org/repo"),
+                    branch: boxed(b"work"),
+                    from: None,
+                    to: 3,
+                    by: 2,
+                },
+                forward: None,
+            },
+            Recorded::Observed {
+                observation: Observation::Rebased {
+                    repository: boxed(b"org/repo"),
+                    branch: boxed(b"work"),
+                    from: 3,
+                    to: 7,
+                    by: caller,
+                },
+                forward: None,
+            },
+            Recorded::Lost(0),
+            Recorded::Observed {
+                observation: Observation::Moved {
+                    repository: boxed(b"org/repo"),
+                    branch: boxed(b"work"),
+                    from: Some(3),
+                    to: 7,
+                    by: caller,
+                },
+                forward: Some(false),
+            },
+            Recorded::Lost(0),
+        ] {
+            let mut line = List::with_capacity(512);
+            observations::encode(&record, &mut line).unwrap();
+            let decoded = observations::decode(line.as_slice().strip_suffix(b"\n").unwrap()).unwrap();
+            judge.observe(&decoded);
+        }
+        judge.decided();
+        let expected = if caller == 2 {
+            Verdict::Pass
+        } else {
+            Verdict::Fail(Box::new([Breach { promise: Promise::Foreign, subject: boxed(b"org%2Frepo/branch/work") }]))
+        };
+        assert_eq!(judge.verdict(), expected, "caller {caller}");
+    }
 }

@@ -29,6 +29,14 @@ pub enum Observation {
         to: u64,
         by: u64,
     },
+    /// A forge rebase requested by `by`; immediately followed by its branch move.
+    Rebased {
+        repository: Box<[u8]>,
+        branch: Box<[u8]>,
+        from: u64,
+        to: u64,
+        by: u64,
+    },
     /// `branch`, which was at `at`, was deleted.
     Deleted {
         repository: Box<[u8]>,

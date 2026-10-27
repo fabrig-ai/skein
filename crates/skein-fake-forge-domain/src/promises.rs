@@ -1,7 +1,7 @@
 //! A client's promises over decoded observations (fake-forge.md, section 2.5).
 //!
-//! Only the profile's client is judged. Creations establish ownership within
-//! this stream; pre-existing objects have no known owner. The first `Labelled`
+//! The profile's client is judged, including another user rebasing its branch.
+//! Creations establish ownership within this stream; pre-existing objects have no known owner. The first `Labelled`
 //! on an item without an `Opened` or earlier `Labelled` is a baseline and
 //! judges nothing. Decisions may arrive before or after their observations.
 //!
@@ -185,12 +185,14 @@ struct Deletion {
 }
 
 /// The preceding observation can identify a forge-generated branch creation
-/// or base move. Checkpoints do not break observation adjacency.
+/// or base move, or a caller's rebase. Checkpoints do not break observation
+/// adjacency.
 #[derive(Debug)]
 enum Preceding {
     None,
     Merge { repository: Box<[u8]>, branch: Box<[u8]>, commit: u64, by: u64 },
     Group { repository: Box<[u8]>, commit: u64 },
+    Rebase { repository: Box<[u8]>, branch: Box<[u8]>, from: u64, to: u64, by: u64 },
 }
 
 #[derive(Debug)]
@@ -264,6 +266,13 @@ impl Judge {
                         repository: repository.clone(),
                         branch: base.clone(),
                         commit: *commit,
+                        by: *by,
+                    },
+                    Observation::Rebased { repository, branch, from, to, by } => Preceding::Rebase {
+                        repository: repository.clone(),
+                        branch: branch.clone(),
+                        from: *from,
+                        to: *to,
                         by: *by,
                     },
                     Observation::Group { repository, commit, ended: false, .. } => {
@@ -443,6 +452,7 @@ impl Judge {
             | Observation::Removed { .. }
             | Observation::Reviewed { .. }
             | Observation::Reported { .. }
+            | Observation::Rebased { .. }
             | Observation::Merged { .. }
             | Observation::Enqueued { .. }
             | Observation::Group { .. }
@@ -474,7 +484,8 @@ impl Judge {
             | Observation::Merged { repository, .. }
             | Observation::Enqueued { repository, .. }
             | Observation::Rejected { repository, .. } => repository,
-            Observation::Defined { .. }
+            Observation::Rebased { .. }
+            | Observation::Defined { .. }
             | Observation::Reported { .. }
             | Observation::Group { .. }
             | Observation::Dequeued { .. }
@@ -544,12 +555,25 @@ impl Judge {
                 repository.labelled(profile, *number, labels, *by == profile.client, when, &mut self.full);
             }
             Observation::Moved { branch, from, to, by, .. } => {
+                let rebase = match &self.preceding {
+                    Preceding::Rebase { repository, branch: rebased, from: old, to: new, by: caller } => {
+                        repository == name && rebased == branch && Some(*old) == *from && new == to && caller == by
+                    }
+                    Preceding::Merge { .. } | Preceding::Group { .. } | Preceding::None => false,
+                };
+                if rebase && repository.owns_branch(profile, branch) {
+                    if *by != profile.client {
+                        let breach = branch_breach(name, Promise::Foreign, branch);
+                        repository.record(breach, when, None, &mut self.full);
+                    }
+                    return;
+                }
                 let generated = match &self.preceding {
                     Preceding::Merge { repository, branch: base, commit, by: merger } => {
                         repository == name && base == branch && commit == to && merger == by
                     }
                     Preceding::Group { repository, commit } => repository == name && commit == to && from.is_none(),
-                    Preceding::None => false,
+                    Preceding::Rebase { .. } | Preceding::None => false,
                 };
                 if generated {
                     return;
@@ -617,6 +641,7 @@ impl Judge {
                     | Observation::Edited { .. }
                     | Observation::Removed { .. }
                     | Observation::Reported { .. }
+                    | Observation::Rebased { .. }
                     | Observation::Merged { .. }
                     | Observation::Enqueued { .. }
                     | Observation::Group { .. }
@@ -629,7 +654,8 @@ impl Judge {
                     repository.write(profile, *number, write, when, &mut self.full);
                 }
             }
-            Observation::Defined { .. }
+            Observation::Rebased { .. }
+            | Observation::Defined { .. }
             | Observation::Reported { .. }
             | Observation::Group { .. }
             | Observation::Dequeued { .. }
