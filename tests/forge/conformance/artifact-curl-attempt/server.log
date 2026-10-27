@@ -1,0 +1,59 @@
+2026/10/27 15:37:02 cmd/web.go:250:runWeb() [I] Starting Forgejo on PID: 1991749
+2026/10/27 15:37:02 cmd/web.go:114:showWebStartupMessage() [I] Forgejo version: 17.0.0+gitea-1.22.0 built with GNU Make 4.4.1, go1.26.9 : bindata, timetzdata, sqlite, sqlite_unlock_notify
+2026/10/27 15:37:02 cmd/web.go:115:showWebStartupMessage() [I] * RunMode: prod
+2026/10/27 15:37:02 cmd/web.go:116:showWebStartupMessage() [I] * AppPath: /home/free/.local/opt/forgejo-17.0.0/forgejo
+2026/10/27 15:37:02 cmd/web.go:117:showWebStartupMessage() [I] * WorkPath: /home/free/src/rust/tmp/owners/verdicts/k1/target/k1e-diagnostic-forgejo/ordinary
+2026/10/27 15:37:02 cmd/web.go:118:showWebStartupMessage() [I] * CustomPath: /home/free/src/rust/tmp/owners/verdicts/k1/target/k1e-diagnostic-forgejo/ordinary/custom
+2026/10/27 15:37:02 cmd/web.go:119:showWebStartupMessage() [I] * ConfigFile: /home/free/src/rust/tmp/owners/verdicts/k1/target/k1e-diagnostic-forgejo/ordinary/app.ini
+2026/10/27 15:37:02 cmd/web.go:120:showWebStartupMessage() [I] Prepare to run web server
+2026/10/27 15:37:02 routers/init.go:109:InitWebInstalled() [I] Git version: 2.47.3 (home: /home/free/src/rust/tmp/owners/verdicts/k1/target/k1e-diagnostic-forgejo/ordinary/data/home)
+2026/10/27 15:37:18 .../pull/merge_merge.go:16:doMergeStyleMerge() [E] <PullRequest [2]fixture/specimen#0[conflict...main]> Unable to merge tracking into base: Merge Conflict Error: exit status 1: 
+Auto-merging conflict.txt
+CONFLICT (content): Merge conflict in conflict.txt
+Automatic merge failed; fix conflicts and then commit the result.
+2026/10/27 15:37:18 ...pi/v1/repo/branch.go:161:DeleteBranch() [E] DeleteBranch: object does not exist [id: refs/heads/missing, rel_path: ]
+2026/10/27 15:37:50 ...ull/merge_ff_only.go:16:doMergeStyleFastForwardOnly() [E] <PullRequest [12]fixture/turn#2[ff-diverged-base...ff-diverged-head]> Unable to merge tracking into base: Merge DivergingFastForwardOnly Error: exit status 128: hint: Diverging branches can't be fast-forwarded, you need to either:
+hint:
+hint: 	git merge --no-ff
+hint:
+hint: or:
+hint:
+hint: 	git rebase
+hint:
+hint: Disable this message with "git config advice.diverging false"
+fatal: Not possible to fast-forward, aborting.
+
+2026/10/27 15:37:50 .../api/v1/repo/pull.go:1048:MergePullRequest() [E] Merge: Merge DivergingFastForwardOnly Error: exit status 128: hint: Diverging branches can't be fast-forwarded, you need to either:
+hint:
+hint: 	git merge --no-ff
+hint:
+hint: or:
+hint:
+hint: 	git rebase
+hint:
+hint: Disable this message with "git config advice.diverging false"
+fatal: Not possible to fast-forward, aborting.
+
+2026/10/27 15:37:50 ...ull/merge_ff_only.go:16:doMergeStyleFastForwardOnly() [E] <PullRequest [12]fixture/turn#2[ff-diverged-base...ff-diverged-head]> Unable to merge tracking into base: Merge DivergingFastForwardOnly Error: exit status 128: hint: Diverging branches can't be fast-forwarded, you need to either:
+hint:
+hint: 	git merge --no-ff
+hint:
+hint: or:
+hint:
+hint: 	git rebase
+hint:
+hint: Disable this message with "git config advice.diverging false"
+fatal: Not possible to fast-forward, aborting.
+
+2026/10/27 15:37:50 .../api/v1/repo/pull.go:1048:MergePullRequest() [E] Merge: Merge DivergingFastForwardOnly Error: exit status 128: hint: Diverging branches can't be fast-forwarded, you need to either:
+hint:
+hint: 	git merge --no-ff
+hint:
+hint: or:
+hint:
+hint: 	git rebase
+hint:
+hint: Disable this message with "git config advice.diverging false"
+fatal: Not possible to fast-forward, aborting.
+
+2026/10/27 15:38:29 ...actions/artifacts.go:286:uploadArtifact() [E] Error save upload chunk: md5 not match

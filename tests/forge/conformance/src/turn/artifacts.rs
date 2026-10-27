@@ -41,6 +41,7 @@ jobs:
             fi
           }
           printf 'a\nb\n' > failed.txt
+          checksum=$(openssl dgst -md5 -binary failed.txt | base64)
           endpoint="${ACTIONS_RUNTIME_URL%/}/_apis/pipelines/workflows/$GITHUB_RUN_ID/artifacts"
           for name in tests other; do
             exchange "create-$name" POST "$endpoint?api-version=6.0-preview" \
@@ -52,8 +53,9 @@ jobs:
               exit 1
             fi
             case "$container" in *\?*) separator='&' ;; *) separator='?' ;; esac
-            exchange "upload-$name" PUT "$container${separator}itemPath=$name/failed.txt" \
+            exchange "upload-$name" PUT "$container${separator}itemPath=$name%2Ffailed.txt" \
               --header 'Content-Type: application/octet-stream' \
+              --header "x-actions-results-md5: $checksum" \
               --header 'Content-Range: bytes 0-3/4' --header 'x-tfs-filelength: 4' \
               --data-binary @failed.txt
             exchange "finalize-$name" PATCH "$endpoint?artifactName=$name&api-version=6.0-preview" \
@@ -213,6 +215,12 @@ mod upload_tests {
         let base = skein_scratch::paths::workspace().join("target");
         let scratch = skein_scratch::Scratch::new_in(&base, "artifact-curl");
         let fake = r#"curl() {
+            case "$*" in
+                *itemPath=*)
+                    case "$*" in *'x-actions-results-md5: 3YxqOVtd02xW0jJ1Ao9SbA=='*) ;; *) return 1 ;; esac
+                    case "$*" in *'%2Ffailed.txt'*) ;; *) return 1 ;; esac
+                    ;;
+            esac
             printf '> Authorization: Bearer %s\n' "$ACTIONS_RUNTIME_TOKEN" > curl.trace
             printf '{"fileContainerResourceUrl":"http://127.0.0.1:3000/container?api-version=6.0-preview","tokenEcho":"%s"}\n' "$ACTIONS_RUNTIME_TOKEN" > response.json
             printf '200'

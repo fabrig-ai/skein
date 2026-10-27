@@ -110,8 +110,10 @@ all artifacts, the `tests` filter, an absent name and an unknown run; and the ZI
 download, including a redirect target when it stays on the fixture origin.
 The run read records the dispatch commit independently of the artifact listing.
 The upload creates an `actions_storage` container through `ACTIONS_RUNTIME_URL`,
-uploads the file with `Content-Range`, then finalizes its size. Authentication
-uses the step's `ACTIONS_RUNTIME_TOKEN`; captured curl diagnostics redact it.
+uploads the file with `Content-Range`, then finalizes its size. The upload
+also supplies `x-actions-results-md5`, the chunk's binary MD5 encoded as base64,
+as Forgejo 17's v3 handler requires. The item path encodes its slash as `%2F`.
+Authentication uses the step's `ACTIONS_RUNTIME_TOKEN`; captured curl diagnostics redact it.
 An upload failure stops recording with those supporting captures retained.
 
 `artifact-curl-attempt/` keeps the failed runtime-protocol upload: container
