@@ -430,7 +430,7 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
             Ok(Answer::Runs { total_count: u64::try_from(values.len()).expect("domain bound"), runs: out.into_boxed() })
         }
         a::Answer::Run(value) => Ok(Answer::Run(action_run(value))),
-        a::Answer::Job { job, steps } => Ok(job_answer(*job, steps)),
+        a::Answer::Job { job, steps } => Ok(job_answer(job, steps)),
         a::Answer::Jobs(values) => {
             let mut out = List::with_capacity(u32::try_from(values.len()).expect("domain bound"));
             for value in values {
@@ -465,6 +465,7 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
         | a::Answer::Comment { .. }
         | a::Answer::Dependencies(_)
         | a::Answer::Labels(_)
+        | a::Answer::GitTree { .. }
         | a::Answer::Tree(_)
         | a::Answer::File(_)
         | a::Answer::Pages { .. }
@@ -598,7 +599,7 @@ pub fn step(status: a::StepStatus) -> d::StepStatus {
     }
 }
 
-fn job_answer(job: a::Job, steps: &[a::Step]) -> Answer {
+fn job_answer(job: &a::Job, steps: &[a::Step]) -> Answer {
     let mut out = List::with_capacity(u32::try_from(steps.len()).expect("domain bound"));
     for value in steps {
         out.push(d::Step { number: value.number, name: value.name.clone(), status: step(value.status) })

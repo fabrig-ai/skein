@@ -402,7 +402,7 @@ pub(crate) fn finish(
             }
             return dispatch(
                 Pending { user: pending.user, repository: pending.repository, stage: Stage::Updated },
-                Op::Write(Write::Update { number }),
+                Op::Write(Write::Update { number, style: a::UpdateStyle::Merge }),
                 reply_to,
             );
         }

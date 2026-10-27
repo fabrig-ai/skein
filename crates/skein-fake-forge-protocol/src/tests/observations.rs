@@ -1477,6 +1477,7 @@ impl World {
             &mut self.domain,
             &self.env.limits,
             a::Setup {
+                workflows: Box::new([]),
                 id,
                 name: boxed(name),
                 default: boxed(b"main"),
