@@ -411,18 +411,49 @@ fn a_fast_forward_merge_is_judged_at_the_decided_head_and_its_base_move_is_exemp
 }
 
 #[test]
-fn a_rebased_branch_move_is_seen_by_the_forced_promise() {
+fn a_callers_own_rebase_is_exempt_from_forced_and_foreign() {
     let mut h = Harness::new(CALM);
     let head = h.commit(FIRST, &[(b"README", b"work")]);
     h.push(ENGINE, b"work", head).unwrap();
     let number = opened(&mut h, b"work");
     crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"ci", b"base", MAINTAINER).unwrap();
     h.ok(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Rebase }));
+    assert_eq!(judge_changes(&mut h, None), crate::promises::Verdict::Pass);
+}
+
+#[test]
+fn another_users_rebase_of_the_callers_branch_breaches_foreign() {
+    let mut h = Harness::new(CALM);
+    let head = h.commit(FIRST, &[(b"README", b"work")]);
+    h.push(ENGINE, b"work", head).unwrap();
+    let number = opened(&mut h, b"work");
+    crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"ci", b"base", MAINTAINER).unwrap();
+    h.ok(MAINTAINER, write(Write::Update { number, style: crate::api::UpdateStyle::Rebase }));
     assert_eq!(
         judge_changes(&mut h, None),
         crate::promises::Verdict::Fail(Box::new([crate::promises::Breach {
-            promise: crate::promises::Promise::Forced,
-            subject: copy_of(b"ai%2Fkit/work")
+            promise: crate::promises::Promise::Foreign,
+            subject: copy_of(b"ai%2Fkit/branch/work"),
         }]))
+    );
+}
+
+#[test]
+fn a_rebase_request_does_not_grant_the_caller_another_users_branch() {
+    let mut h = Harness::new(CALM);
+    let head = h.commit(FIRST, &[(b"README", b"work")]);
+    h.push(MAINTAINER, b"work", head).unwrap();
+    let number = opened(&mut h, b"work");
+    crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"ci", b"base", MAINTAINER).unwrap();
+    h.ok(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Rebase }));
+    assert_eq!(
+        judge_changes(&mut h, None),
+        crate::promises::Verdict::Fail(Box::new([
+            crate::promises::Breach { promise: crate::promises::Promise::Forced, subject: copy_of(b"ai%2Fkit/work") },
+            crate::promises::Breach {
+                promise: crate::promises::Promise::Foreign,
+                subject: copy_of(b"ai%2Fkit/branch/work")
+            },
+        ]))
     );
 }

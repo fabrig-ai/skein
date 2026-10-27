@@ -111,7 +111,8 @@ pub fn decode_with_limits(line: &[u8], limits: &Limits) -> Result<Recorded, Refu
     let observation = observation(&tokens, &root, variant, limits)?;
     let forward = match &observation {
         Observation::Moved { .. } => boolean(&tokens, root.at(&tokens, b"forward", variant)?, b"forward", variant)?,
-        Observation::Deleted { .. }
+        Observation::Rebased { .. }
+        | Observation::Deleted { .. }
         | Observation::Opened { .. }
         | Observation::Closed { .. }
         | Observation::Reopened { .. }
@@ -391,6 +392,7 @@ fn numbers(tokens: &List<Token>, at: u32, member: &[u8], variant: &[u8], max: u3
 fn observation(tokens: &List<Token>, root: &Object, variant: &[u8], limits: &Limits) -> Result<Observation, Refusal> {
     let fields: &[&[u8]] = match variant {
         b"moved" => &[b"observation".as_slice(), b"repository", b"branch", b"from", b"to", b"by", b"forward"],
+        b"rebased" => &[b"observation".as_slice(), b"repository", b"branch", b"from", b"to", b"by"],
         b"deleted" => &[b"observation".as_slice(), b"repository", b"branch", b"at", b"by"],
         b"opened" => &[
             b"observation".as_slice(),
@@ -436,6 +438,19 @@ fn observation(tokens: &List<Token>, root: &Object, variant: &[u8], limits: &Lim
             )?,
             branch: name(tokens, root.at(tokens, b"branch", variant)?, b"branch", variant, limits.name_bytes)?,
             from: optional_number(tokens, root.at(tokens, b"from", variant)?, b"from", variant)?,
+            to: number(tokens, root.at(tokens, b"to", variant)?, b"to", variant)?,
+            by: number(tokens, root.at(tokens, b"by", variant)?, b"by", variant)?,
+        },
+        b"rebased" => Observation::Rebased {
+            repository: name(
+                tokens,
+                root.at(tokens, b"repository", variant)?,
+                b"repository",
+                variant,
+                limits.name_bytes,
+            )?,
+            branch: name(tokens, root.at(tokens, b"branch", variant)?, b"branch", variant, limits.name_bytes)?,
+            from: number(tokens, root.at(tokens, b"from", variant)?, b"from", variant)?,
             to: number(tokens, root.at(tokens, b"to", variant)?, b"to", variant)?,
             by: number(tokens, root.at(tokens, b"by", variant)?, b"by", variant)?,
         },
