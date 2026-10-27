@@ -25,6 +25,7 @@ const TAIL: usize = 80;
 
 /// Startup descriptors prepared for a spawn before its completion is reaped.
 struct PreparedStartup {
+    dir: Option<Handle>,
     roots: Vec<(Box<[u8]>, Handle)>,
     appends: Vec<(Box<[u8]>, Handle)>,
 }
@@ -429,6 +430,7 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
                         .pending_startup
                         .remove(&(pid, complete.op))
                         .expect("a hosted launch prepared its startup descriptors");
+                    let dir = roots.dir.map(|handle| self.sim.root(child, handle));
                     let appends = roots
                         .appends
                         .into_iter()
@@ -436,7 +438,8 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
                         .collect();
                     let roots =
                         roots.roots.into_iter().map(|(name, handle)| (name, self.sim.root(child, handle))).collect();
-                    let inherited = Inherited { pipes, roots, appends, signal: self.sim.open_signal_source(child) };
+                    let inherited =
+                        Inherited { pipes, roots, appends, dir, signal: self.sim.open_signal_source(child) };
                     self.signals.insert(self.next_host, (child, inherited.signal));
                     let child_at = self.admit(child, Some(program_at), || make(spawn, &inherited));
                     assert!(
@@ -554,6 +557,7 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
             let pending: Vec<_> = self.pending_startup.keys().filter(|(owner, _)| *owner == pid).copied().collect();
             for key in pending {
                 let prepared = self.pending_startup.remove(&key).expect("selected prepared startup");
+                handles.extend(prepared.dir);
                 handles.extend(prepared.roots.into_iter().chain(prepared.appends).map(|(_, handle)| handle));
             }
             self.sim.assert_quiescent(pid);
@@ -592,7 +596,7 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
     fn serve_machine(&mut self) {
         self.sim.calls(&mut self.calls);
         while let Some(call) = self.calls.pop() {
-            if let Ask::Spawn { program, .. } = &call.ask
+            if let Ask::Spawn { program, root, dir, .. } = &call.ask
                 && self.programs.iter().any(|entry| entry.program == *program)
             {
                 let (pid, token, spawn) = self.sim.hosted_spawn(call.ticket);
@@ -615,13 +619,29 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
                         .push(Answer { ticket: call.ticket, result: Err(skein_io::kernel::Error::TooManyOpenFiles) });
                     continue;
                 }
-                let result = match self.open_startup(&declarations, &append_declarations) {
-                    Ok(prepared) => {
-                        self.pending_startup.insert((pid, token), prepared);
-                        Ok(Reply::Program(Program::Service))
+                let result = (|| {
+                    let mut prepared =
+                        self.open_startup(&declarations, &append_declarations).map_err(|(_, error)| error)?;
+                    let path = if dir.is_empty() { b".".as_slice() } else { dir.as_ref() };
+                    match self.machine.open_beneath(*root, path) {
+                        Some(Ok(handle)) => prepared.dir = Some(handle),
+                        Some(Err(error)) => {
+                            self.rollback_startup(prepared);
+                            return Err(error);
+                        }
+                        None => {}
                     }
-                    Err((_, error)) => Err(error),
-                };
+                    if prepared.dir.is_some()
+                        && descriptors.is_none_or(|count| {
+                            count >= usize::try_from(self.sim.config().max_fds).expect("descriptor limit fits")
+                        })
+                    {
+                        self.rollback_startup(prepared);
+                        return Err(skein_io::kernel::Error::TooManyOpenFiles);
+                    }
+                    self.pending_startup.insert((pid, token), prepared);
+                    Ok(Reply::Program(Program::Service))
+                })();
                 self.answers.push(Answer { ticket: call.ticket, result });
             } else {
                 self.machine.step(call, &mut self.answers);

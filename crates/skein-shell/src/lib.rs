@@ -89,7 +89,8 @@ pub use settings::{arguments, environment};
 #[cfg(unix)]
 pub use startup::{
     DirectoryAccess, OutputKind, RootBounds, Roots, RootsRefusal, Trust, Unread, directory_access, effective_user,
-    make_root, open_append, open_root, prepare_output, process_id, read_file, read_private_file, read_trust_roots,
+    make_root, open_append, open_beneath, open_root, prepare_output, process_id, read_file, read_private_file,
+    read_trust_roots,
 };
 #[cfg(unix)]
 pub use system::wait_readable;

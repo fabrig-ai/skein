@@ -37,7 +37,19 @@ impl<P: Host, M: Machine, H: crate::Meter> World<P, M, H> {
         });
         let roots = prepared.roots.into_iter().map(|(name, handle)| (name, self.sim.root(pid, handle))).collect();
         let appends = prepared.appends.into_iter().map(|(name, handle)| (name, self.sim.append(pid, handle))).collect();
-        Inherited { roots, pipes: Vec::new(), appends, signal: self.sim.open_signal_source(pid) }
+        Inherited { roots, dir: None, pipes: Vec::new(), appends, signal: self.sim.open_signal_source(pid) }
+    }
+
+    pub(super) fn rollback_startup(&mut self, prepared: PreparedStartup) {
+        for (_, handle) in prepared.roots {
+            self.machine.close_root(handle);
+        }
+        for (_, handle) in prepared.appends {
+            self.machine.close_append(handle);
+        }
+        if let Some(handle) = prepared.dir {
+            self.machine.close_root(handle);
+        }
     }
 
     pub(super) fn open_startup(
@@ -45,7 +57,7 @@ impl<P: Host, M: Machine, H: crate::Meter> World<P, M, H> {
         declarations: &[StartupRoot],
         append_declarations: &[StartupAppend],
     ) -> Result<PreparedStartup, (String, Error)> {
-        let mut prepared = PreparedStartup { roots: Vec::new(), appends: Vec::new() };
+        let mut prepared = PreparedStartup { dir: None, roots: Vec::new(), appends: Vec::new() };
         let result = (|| {
             for declaration in declarations {
                 let handle = self
@@ -67,12 +79,7 @@ impl<P: Host, M: Machine, H: crate::Meter> World<P, M, H> {
         match result {
             Ok(()) => Ok(prepared),
             Err(error) => {
-                for (_, handle) in prepared.roots {
-                    self.machine.close_root(handle);
-                }
-                for (_, handle) in prepared.appends {
-                    self.machine.close_append(handle);
-                }
+                self.rollback_startup(prepared);
                 Err(error)
             }
         }

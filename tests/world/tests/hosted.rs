@@ -351,3 +351,78 @@ fn a_power_loss_needs_every_roots_factory() {
         assert_eq!(text, message, "{label}");
     }
 }
+
+fn launch_directory(
+    dir: &[u8],
+    max_fds: u32,
+    exchange: bool,
+    program: HostedProgram<Script>,
+) -> skein_world::Outcome<Script, skein_world_tests::launch::LaunchFiles> {
+    use skein_world_tests::launch;
+    let mut machine = launch::LaunchFiles::default();
+    let root = machine.parent_root();
+    let mut world = World::new(7, Config { max_fds, ..Config::calm() }, Judge, Memory::Checked).with_machine(machine);
+    world.host_roots(program, launch::roots);
+    world.spawn_root(root, |fd| launch::parent(fd, b".", dir, exchange));
+    world.run()
+}
+
+#[test]
+fn a_hosted_child_inherits_its_launch_directory() {
+    let mut outcome = launch_directory(b"work", Config::calm().max_fds, true, skein_world_tests::launch::program());
+    assert_eq!(outcome.procs[0].child_exit, Some(Exit::Code(0)));
+    outcome.machine.check_file();
+    outcome.machine.finish();
+}
+
+#[test]
+fn a_launch_directory_beneath_nothing_refuses_the_spawn() {
+    for (dir, error) in [(b"missing".as_slice(), Error::NotFound), (b"..", Error::Escape), (b"/", Error::Escape)] {
+        let mut outcome = launch_directory(dir, Config::calm().max_fds, false, skein_world_tests::launch::program());
+        assert_eq!(outcome.procs.len(), 1, "{dir:?}: no child admitted");
+        assert!(outcome.procs[0].results.contains(&Err(error)), "{dir:?}: the open's error");
+        outcome.machine.finish();
+    }
+}
+
+#[test]
+fn the_launch_directory_counts_toward_the_childs_descriptor_limit() {
+    use skein_world_tests::launch;
+    let mut outcome = launch_directory(b"work", launch::CHILD_DESCRIPTORS - 1, false, launch::program());
+    assert_eq!(outcome.procs.len(), 1);
+    assert!(outcome.procs[0].results.contains(&Err(Error::TooManyOpenFiles)));
+    outcome.machine.finish();
+}
+
+#[test]
+fn a_world_with_no_machine_hands_no_launch_directory() {
+    fn no_directory(_spawn: &Spawn, inherited: &Inherited) -> Script {
+        assert!(inherited.dir.is_none());
+        Script::child(inherited, &[])
+    }
+    let mut world = skein_sim_world::World::new(7, Config::calm());
+    world.host(HostedProgram { program: Box::from(&b"hosted"[..]), make: no_directory, instances: 1, operations: 8 });
+    world.spawn_root(Handle::new(1), |root| Script::parent(root, &[Act::Spawn]));
+    // Observe admission before the synthetic parent root reaches any machine call.
+    while world.processes().len() < 2 {
+        world.step();
+        if !world.busy() {
+            world.advance(world.next_due().expect("spawn completion due"));
+        }
+    }
+    assert_eq!(world.processes().len(), 2);
+}
+
+#[test]
+fn a_launch_directory_fits_at_the_childs_descriptor_limit() {
+    use skein_world_tests::launch;
+    fn closing_child(_spawn: &Spawn, inherited: &Inherited) -> Script {
+        assert!(inherited.dir.is_some());
+        Script::child(inherited, &[Act::Read(0)])
+    }
+    let mut program = launch::program();
+    program.make = closing_child;
+    let mut outcome = launch_directory(b"work", launch::CHILD_DESCRIPTORS, true, program);
+    assert_eq!(outcome.procs[0].child_exit, Some(Exit::Code(0)));
+    outcome.machine.finish();
+}

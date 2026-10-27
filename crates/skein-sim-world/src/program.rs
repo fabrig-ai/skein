@@ -2,7 +2,7 @@
 //! section 6; simulator.md, section 3). A registry keeps factories and their
 //! admission limits, never service state. Factories receive a spawn's exact
 //! arguments and environment, inherited pipes, independently opened startup
-//! roots and a signal source.
+//! roots, a launch directory and a signal source.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -15,6 +15,11 @@ pub struct Inherited {
     /// Requested child descriptor numbers paired with backend descriptors.
     pub pipes: Vec<(u32, Fd)>,
     pub signal: Fd,
+    /// The launch directory: the spawn's `dir` opened beneath its `root`, as a
+    /// kernel makes a child's working directory; owned by this child until
+    /// close or exit. `None` where the world's machine opens no launch
+    /// directory, and for a process the world starts itself.
+    pub dir: Option<Fd>,
     /// Named directory descriptors, each owned by this child until close or exit.
     pub roots: Vec<(Box<[u8]>, Fd)>,
     /// Named append files, each owned by this child until close or exit.
@@ -107,8 +112,19 @@ pub trait Machine {
         Err(skein_io::kernel::Error::NotFound)
     }
 
+    /// Opens a fresh independently owned directory beneath `root`, resolved
+    /// as `openat2` with `RESOLVE_BENEATH`: no escape through `..` or absolute path.
+    /// `None` means this machine opens no launch directories.
+    fn open_beneath(
+        &mut self,
+        _root: skein_sim::Handle,
+        _path: &[u8],
+    ) -> Option<Result<skein_sim::Handle, skein_io::kernel::Error>> {
+        None
+    }
+
     /// Releases a startup handle not admitted because a later open failed.
-    /// Machines that implement `open_root` must also implement this rollback.
+    /// Machines that implement `open_root` or `open_beneath` implement this rollback.
     fn close_root(&mut self, _root: skein_sim::Handle) {
         crate::fail("a machine that opens startup roots implements their rollback");
     }

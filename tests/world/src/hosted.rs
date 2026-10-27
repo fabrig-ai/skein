@@ -31,6 +31,8 @@ pub enum Act {
     Wait,
     /// The script opens a file beneath its independently owned startup root.
     OpenRoot(usize, &'static [u8], OpenHow),
+    /// Opens beneath the launch directory; a directory becomes the parent's spawn root.
+    OpenLaunch(&'static [u8], OpenHow),
     /// The script writes a regular file at offset zero.
     WriteFile(usize, &'static [u8]),
     /// Appends these bytes to an inherited startup file.
@@ -59,6 +61,7 @@ pub struct Script {
     pidfd: Option<Fd>,
     root: Option<Fd>,
     roots: Vec<Fd>,
+    pub dir: Box<[u8]>,
     pub args: Box<[Box<[u8]>]>,
     waiting: bool,
     next: u64,
@@ -90,6 +93,7 @@ impl Script {
             pidfd: None,
             root: None,
             roots: Vec::new(),
+            dir: Box::from(&b"."[..]),
             args: Box::new([Box::from(&b"argument"[..])]),
             waiting: false,
             next: 1,
@@ -124,6 +128,7 @@ impl Script {
         script.fds =
             inherited.pipes.iter().map(|(_, fd)| *fd).chain(inherited.appends.iter().map(|(_, fd)| *fd)).collect();
         script.signal = Some(inherited.signal);
+        script.root = inherited.dir;
         script.roots = inherited.roots.iter().map(|(_, fd)| *fd).collect();
         script
     }
@@ -150,7 +155,7 @@ impl Script {
                     args: self.args.clone(),
                     env: Box::new([Box::from(&b"KEY=value"[..])]),
                     root: self.root.expect("parent root"),
-                    dir: Box::new([]),
+                    dir: self.dir.clone(),
                     pipes: {
                         let mut pipes = vec![
                             Pipe { child: 0, way: Way::In, parent: None },
@@ -179,6 +184,9 @@ impl Script {
             }
             Act::Close(at) => Op::Close { fd: self.fds.remove(at) },
             Act::OpenRoot(index, path, how) => Op::Open { root: self.roots[index], path: Box::from(path), how },
+            Act::OpenLaunch(path, how) => {
+                Op::Open { root: self.root.expect("launch directory"), path: Box::from(path), how }
+            }
             Act::WriteFile(index, bytes) => Op::Write { fd: self.fds[index], bytes: Box::from(bytes), at: 0, from: 0 },
             Act::AppendFile(index, bytes) => Op::Append { fd: self.fds[index], bytes: Box::from(bytes), from: 0 },
             Act::ReadFile(index) => Op::Read { fd: self.fds[index], buf: Box::new([0; 32]), at: 0 },
@@ -246,7 +254,13 @@ impl Host for Script {
                     self.signals.push(signal);
                 }
                 Ok(Done::Exit(exit)) => self.child_exit = Some(exit),
-                Ok(Done::Fd(fd)) => self.fds.push(fd),
+                Ok(Done::Fd(fd)) => {
+                    if matches!(complete.kind, Op::Open { how: OpenHow::Directory, .. }) {
+                        self.roots.extend(self.root.replace(fd));
+                    } else {
+                        self.fds.push(fd);
+                    }
+                }
                 Ok(
                     Done::Signalled(skein_io::kernel::Signalled::WindowChanged)
                     | Done::Window(_)

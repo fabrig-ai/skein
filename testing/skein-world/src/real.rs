@@ -791,6 +791,10 @@ impl<P: Host, R: Referee<P>> Running<P, R> {
         self.ring.submits.push(record);
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "hosted startup opens, rollback and child ownership transfer stay together (world.md, 3)"
+    )]
     fn spawn(&mut self, parent: usize, program: usize, spawn: &mut Spawn) -> Result<Done, Error> {
         let entry = self.world.programs.get(program).expect("a registered program");
         let active = *self.instances.get(program).expect("a count per program");
@@ -837,9 +841,19 @@ impl<P: Host, R: Referee<P>> Running<P, R> {
                 }
             }
         }
+        let path = if spawn.dir.is_empty() { b".".as_slice() } else { spawn.dir.as_ref() };
+        let dir = match skein_shell::open_beneath(spawn.root, path) {
+            Ok(fd) => fd,
+            Err(error) => {
+                for (_, fd) in roots.into_iter().chain(appends) {
+                    self.queue_cleanup(parent, Op::Close { fd });
+                }
+                return Err(error);
+            }
+        };
         match skein_shell::hosted_pipes(spawn) {
             Ok(pipes) => {
-                let inherited = Inherited { pipes: pipes.pipes, roots, appends, signal: pipes.signal };
+                let inherited = Inherited { pipes: pipes.pipes, roots, appends, dir: Some(dir), signal: pipes.signal };
                 let proc = match &mut self.world.heap {
                     Some(heap) => heap.admit(|| make(spawn, &inherited), P::worst_case),
                     None => make(spawn, &inherited),
@@ -860,6 +874,7 @@ impl<P: Host, R: Referee<P>> Running<P, R> {
                         .map(|(_, fd)| *fd)
                         .chain(inherited.roots.iter().map(|(_, fd)| *fd))
                         .chain(inherited.appends.iter().map(|(_, fd)| *fd))
+                        .chain(inherited.dir)
                         .chain([inherited.signal])
                         .collect(),
                     exit: None,
@@ -884,6 +899,7 @@ impl<P: Host, R: Referee<P>> Running<P, R> {
                 Ok(Done::Spawned { pidfd: pipes.pidfd, sender: hosted_sender(child) })
             }
             Err(error) => {
+                self.queue_cleanup(parent, Op::Close { fd: dir });
                 for (_, fd) in roots.into_iter().chain(appends) {
                     self.queue_cleanup(parent, Op::Close { fd });
                 }
