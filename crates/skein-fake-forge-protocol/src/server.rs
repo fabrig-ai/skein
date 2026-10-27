@@ -711,6 +711,10 @@ fn missing_scope(request: &Request, scopes: &Scopes) -> Option<&'static [u8]> {
         | Request::Collaborators { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -779,6 +783,10 @@ fn table(service: &Service, request: &Request, user: u64) -> Option<documents::A
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }

@@ -58,6 +58,8 @@ fn entry_resource(entry: &Entry) -> Option<Resource> {
         | api::Write::Update { .. }
         | api::Write::Status { .. }
         | api::Write::CreateBranch { .. }
+        | api::Write::Dispatch { .. }
+        | api::Write::Rerun { .. }
         | api::Write::DeleteBranch { .. } => return None,
     };
     Some(Resource { repository: entry.repository, what })

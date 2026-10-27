@@ -63,7 +63,17 @@ fn github_fake_status_posts_refuse_installation_and_person_even_with_app_grant()
         for check in [api::Check::Pending, api::Check::Passed, api::Check::Failed] {
             let commit = r::object(h.first);
             assert_eq!(
-                w::write(&mut h, &token, api::Write::Status { commit, context: f::boxed(b"ci"), check }),
+                w::write(
+                    &mut h,
+                    &token,
+                    api::Write::Status {
+                        commit,
+                        context: f::boxed(b"ci"),
+                        check,
+                        description: Box::new([]),
+                        link: Box::new([])
+                    }
+                ),
                 Err(api::Error::Forbidden)
             );
             let response = w::ask(
@@ -75,6 +85,8 @@ fn github_fake_status_posts_refuse_installation_and_person_even_with_app_grant()
                     commit,
                     context: f::boxed(b"ci"),
                     check,
+                    description: Box::new([]),
+                    link: Box::new([]),
                 },
             );
             f::refusal(&h, &response, 403, message);
@@ -99,6 +111,8 @@ fn github_fake_branch_and_status_writes_refuse_outside_installation() {
             commit: r::object(1),
             context: f::boxed(b"example"),
             check: api::Check::Passed,
+            description: Box::new([]),
+            link: Box::new([]),
         },
     ] {
         let response = w::ask(&mut h, &token, &request);

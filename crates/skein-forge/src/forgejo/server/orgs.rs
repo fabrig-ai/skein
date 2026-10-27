@@ -61,6 +61,7 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
             walk: Walk::new(Kind::Write(kind), limits),
             request,
             texts: List::with_capacity(limits.inner),
+            inputs: List::with_capacity(0),
             terminal: false,
             committer: crate::forgejo::request::Author { name: Box::new([]), email: Box::new([]) },
         }),
@@ -128,6 +129,7 @@ pub(super) fn write(json: &mut Encoder, answer: &super::Answer) {
         | super::Answer::Protections(_)
         | super::Answer::Collaborators(_)
         | super::Answer::Permission(_)
+        | super::Answer::Tree { .. }
         | super::Answer::CombinedStatus { .. } => unreachable!("organization answer selection"),
     }
 }

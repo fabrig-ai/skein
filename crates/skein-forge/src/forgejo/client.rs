@@ -70,6 +70,8 @@ pub fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refusal> {
         | Request::EditIssue { .. }
         | Request::RequestReviewers { .. }
         | Request::RemoveReviewers { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Merge { .. }
         | Request::Update { .. }
         | Request::PostStatus { .. }
@@ -78,6 +80,8 @@ pub fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refusal> {
         Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Job { .. }
@@ -150,12 +154,15 @@ pub fn decoder(request: &Request, limits: &Limits) -> Option<Decoder> {
         | Request::JobLog { .. }
         | Request::Update { .. }
         | Request::DeleteBranch { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Merge { .. }
         | Request::RequestReviewers { .. }
         | Request::RemoveReviewers { .. } => return None,
+        Request::Tree { .. } => Kind::File(FileKind::Tree),
         Request::PullFiles { .. } => Kind::File(FileKind::Files),
         Request::Compare { .. } => Kind::File(FileKind::Compare),
-        Request::Runs { .. } => Kind::Action(ActionKind::Listing),
+        Request::WorkflowRuns { .. } | Request::Runs { .. } => Kind::Action(ActionKind::Listing),
         Request::Run { .. } => Kind::Action(ActionKind::Run),
         Request::Job { .. } => Kind::Action(ActionKind::Job),
         Request::Jobs { .. } => Kind::Action(ActionKind::Jobs),

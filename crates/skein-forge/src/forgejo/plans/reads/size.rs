@@ -106,6 +106,21 @@ pub fn answer(answer: &api::Answer, limit: u32) -> Result<u64, api::Error> {
         api::Answer::Collaborators { collaborators, .. } => {
             total = rows(collaborators.len(), crate::measure::COLLABORATOR_BYTES, limit)?;
         }
+        api::Answer::Runs { runs, .. } => {
+            rows(runs.len(), crate::measure::RUN_BYTES, limit)?;
+            for run in runs {
+                rows(run.jobs.len(), crate::measure::RUN_JOB_BYTES, limit)?;
+            }
+            total = crate::measure::answer(answer).ok_or(api::Error::TooLarge)?;
+        }
+        api::Answer::Run(run) => {
+            rows(run.jobs.len(), crate::measure::RUN_JOB_BYTES, limit)?;
+            total = crate::measure::run(run).ok_or(api::Error::TooLarge)?;
+        }
+        api::Answer::Tree { entries, .. } => {
+            rows(entries.len(), crate::measure::ENTRY_BYTES, limit)?;
+            total = crate::measure::answer(answer).ok_or(api::Error::TooLarge)?;
+        }
         api::Answer::Located { .. } | api::Answer::Commit(_) | api::Answer::Permission(_) => {}
         api::Answer::File { path, bytes, .. } => {
             total = length(path).checked_add(length(bytes)).ok_or(api::Error::TooLarge)?;

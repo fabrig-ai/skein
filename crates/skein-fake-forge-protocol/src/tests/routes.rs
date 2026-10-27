@@ -191,6 +191,8 @@ fn write_rows() -> [(Request, Route, Write); 14] {
                 commit: routes::object(9),
                 context: boxed(b"ci"),
                 state: d::StatusState::Failure,
+                description: Box::new([]),
+                link: Box::new([]),
             },
             Route::PostStatus,
             Write::Status { commit: 9, context: boxed(b"ci"), state: a::Check::Failed },

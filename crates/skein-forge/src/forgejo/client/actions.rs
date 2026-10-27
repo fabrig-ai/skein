@@ -4,12 +4,12 @@ use crate::forgejo::{
         walk::{Field, Kind, Move, Read, Value, Walk},
     },
     document::{self, Body, Document, Job, Row, Run, StepStatus},
-    id::{ObjectFormat, ObjectId},
 };
 use alloc::boxed::Box;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ActionKind {
     Run,
+    Actor,
     Runs,
     Listing,
     Job,
@@ -28,6 +28,22 @@ pub(crate) fn fields(kind: ActionKind) -> &'static [Field] {
                     field(b"id", Read::Number),
                     field(b"index_in_repo", Read::Number),
                     field(b"commit_sha", Read::Id { empty: false }),
+                    Field { key: b"workflow_id", read: Read::Text, required: false },
+                    Field { key: b"event", read: Read::Text, required: false },
+                    Field {
+                        key: b"trigger_actor",
+                        read: Read::Object(Kind::Action(ActionKind::Actor)),
+                        required: false,
+                    },
+                    Field {
+                        key: b"trigger_user",
+                        read: Read::Object(Kind::Action(ActionKind::Actor)),
+                        required: false,
+                    },
+                    Field { key: b"created", read: Read::Time, required: false },
+                    Field { key: b"status", read: Read::Text, required: false },
+                    Field { key: b"html_url", read: Read::Text, required: false },
+                    Field { key: b"created_at", read: Read::Time, required: false },
                 ]
             }
         }
@@ -37,6 +53,8 @@ pub(crate) fn fields(kind: ActionKind) -> &'static [Field] {
                     field(b"id", Read::Number),
                     field(b"run_id", Read::Number),
                     field(b"attempt", Read::Number),
+                    Field { key: b"name", read: Read::Text, required: false },
+                    Field { key: b"status", read: Read::Text, required: false },
                     Field { key: b"steps", read: Read::Array(Kind::Action(ActionKind::Steps)), required: false },
                 ]
             }
@@ -52,6 +70,7 @@ pub(crate) fn fields(kind: ActionKind) -> &'static [Field] {
         ActionKind::Step => {
             const { &[field(b"number", Read::Number), field(b"name", Read::Body), field(b"status", Read::Text)] }
         }
+        ActionKind::Actor => const { &[field(b"id", Read::Number)] },
         ActionKind::Runs | ActionKind::Jobs | ActionKind::Steps => &[],
     }
 }
@@ -60,7 +79,7 @@ pub(crate) fn element(kind: ActionKind) -> Option<Kind> {
         ActionKind::Runs => Some(Kind::Action(ActionKind::Run)),
         ActionKind::Jobs => Some(Kind::Action(ActionKind::Job)),
         ActionKind::Steps => Some(Kind::Action(ActionKind::Step)),
-        ActionKind::Run | ActionKind::Job | ActionKind::Step | ActionKind::Listing => None,
+        ActionKind::Actor | ActionKind::Run | ActionKind::Job | ActionKind::Step | ActionKind::Listing => None,
     }
 }
 #[derive(Debug)]
@@ -70,15 +89,19 @@ pub(super) struct Actions {
     job: Job,
     step: document::Step,
     total_count: u64,
+    actor_seen: bool,
+    created_seen: bool,
 }
 impl Actions {
     pub(super) fn new(root: ActionKind) -> Self {
         Self {
             root,
-            run: Run { id: 0, index_in_repo: 0, commit_sha: ObjectId { format: ObjectFormat::Sha1, bytes: [0; 32] } },
-            job: Job { id: 0, run_id: 0, attempt: 0 },
+            run: document::run(),
+            job: document::job(),
             step: document::Step { number: 0, name: Box::from([]), status: StepStatus::Unknown },
             total_count: 0,
+            actor_seen: false,
+            created_seen: false,
         }
     }
     pub(super) fn step(&mut self, movement: Move, walk: &Walk) -> Step {
@@ -87,13 +110,21 @@ impl Actions {
             Move::Scalar { kind, key, value } => self.scalar(kind, key, value),
             Move::End(Kind::Action(ActionKind::Run)) => {
                 if self.root == ActionKind::Listing {
-                    return Step::Row(Row::Run(self.run), skein_json::tokenizer::Request::Next);
+                    self.actor_seen = false;
+                    self.created_seen = false;
+                    return Step::Row(
+                        Row::Run(core::mem::replace(&mut self.run, document::run())),
+                        skein_json::tokenizer::Request::Next,
+                    );
                 }
                 Ok(())
             }
             Move::End(Kind::Action(ActionKind::Job)) => {
                 if self.root == ActionKind::Jobs {
-                    return Step::Row(Row::Job(self.job), skein_json::tokenizer::Request::Next);
+                    return Step::Row(
+                        Row::Job(core::mem::replace(&mut self.job, document::job())),
+                        skein_json::tokenizer::Request::Next,
+                    );
                 }
                 Ok(())
             }
@@ -109,6 +140,14 @@ impl Actions {
             }
             Move::End(Kind::Action(ActionKind::Runs | ActionKind::Jobs | ActionKind::Listing | ActionKind::Steps)) => {
                 Ok(())
+            }
+            Move::End(Kind::Action(ActionKind::Actor)) => {
+                if self.actor_seen {
+                    Err(Malformed::Shape { field: b"trigger_actor" })
+                } else {
+                    self.actor_seen = true;
+                    Ok(())
+                }
             }
             Move::End(
                 Kind::User
@@ -128,11 +167,13 @@ impl Actions {
             ) => unreachable!("action tables"),
             Move::Done => {
                 return Step::Done(match self.root {
-                    ActionKind::Run => Document::Run(self.run),
+                    ActionKind::Run => Document::Run(core::mem::replace(&mut self.run, document::run())),
                     ActionKind::Listing => Document::Runs { total_count: self.total_count },
                     ActionKind::Jobs => Document::Listed { skipped: walk.skipped() },
-                    ActionKind::Job => Document::Job(self.job),
-                    ActionKind::Step | ActionKind::Steps | ActionKind::Runs => unreachable!("action root selection"),
+                    ActionKind::Job => Document::Job(core::mem::replace(&mut self.job, document::job())),
+                    ActionKind::Actor | ActionKind::Step | ActionKind::Steps | ActionKind::Runs => {
+                        unreachable!("action root selection")
+                    }
                 });
             }
         };
@@ -143,9 +184,12 @@ impl Actions {
     }
     fn scalar(&mut self, kind: Kind, key: &'static [u8], value: Value) -> Result<(), Malformed> {
         match value {
+            Value::Input(_) => unreachable!("dispatch input table"),
             Value::Number(n) => match key {
                 b"id" => {
-                    if kind == Kind::Action(ActionKind::Run) {
+                    if kind == Kind::Action(ActionKind::Actor) {
+                        self.run.trigger_actor = n;
+                    } else if kind == Kind::Action(ActionKind::Run) {
                         self.run.id = n;
                     } else {
                         self.job.id = n;
@@ -167,16 +211,37 @@ impl Actions {
                 _ => unreachable!("action number table"),
             },
             Value::Id(id) => self.run.commit_sha = id.expect("required run commit"),
-            Value::Text(text) => {
-                self.step.status = document::step_status(&text).ok_or(Malformed::Value { field: key })?;
-            }
+            Value::Text(text) => match key {
+                b"workflow_id" => self.run.workflow = text,
+                b"event" => self.run.event = text,
+                b"html_url" => self.run.html_url = text,
+                b"name" => self.job.name = text,
+                b"status" => {
+                    let status = document::step_status(&text).ok_or(Malformed::Value { field: key })?;
+                    if kind == Kind::Action(ActionKind::Run) {
+                        self.run.status = status;
+                    } else if kind == Kind::Action(ActionKind::Job) {
+                        self.job.status = status;
+                    } else {
+                        self.step.status = status;
+                    }
+                }
+                _ => unreachable!("action text table"),
+            },
             Value::Body(body) => {
                 self.step.name = match body {
                     Body::Kept(name) => name,
                     Body::Long(_) => Box::from([]),
                 }
             }
-            Value::Time(_) | Value::Boolean(_) => unreachable!("action scalar table"),
+            Value::Time(time) => {
+                if self.created_seen {
+                    return Err(Malformed::Shape { field: key });
+                }
+                self.created_seen = true;
+                self.run.created_at = time;
+            }
+            Value::Boolean(_) => unreachable!("action scalar table"),
         }
         Ok(())
     }

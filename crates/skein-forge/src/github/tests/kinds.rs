@@ -57,16 +57,7 @@ fn github_decode_kind_names_each_documented_answer() {
             Kind::Number,
         ),
         (Request::CreateBranch { owner: owner(), name: name(), branch: Box::from(*b"alice"), commit }, Kind::Done),
-        (
-            Request::Status {
-                owner: owner(),
-                name: name(),
-                commit,
-                context: Box::from(*b"alice"),
-                check: crate::api::Check::Pending,
-            },
-            Kind::Done,
-        ),
+        (status(commit), Kind::Done),
         (Request::Edit { owner: owner(), name: name(), number: 9, title: None, body: None }, Kind::Done),
         (Request::Reopen { owner: owner(), name: name(), number: 9 }, Kind::Done),
         (Request::Close { owner: owner(), name: name(), number: 9 }, Kind::Done),
@@ -142,5 +133,17 @@ fn github_protection_requests_select_their_decoders() {
         ),
     ] {
         assert_eq!(decode::kind(&request), Some(kind));
+    }
+}
+
+fn status(commit: crate::api::Commit) -> Request {
+    Request::Status {
+        owner: owner(),
+        name: name(),
+        commit,
+        context: Box::from(*b"alice"),
+        check: crate::api::Check::Pending,
+        description: Box::new([]),
+        link: Box::new([]),
     }
 }

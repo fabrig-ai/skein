@@ -22,7 +22,19 @@ pub const COLLABORATOR_BYTES: usize = 16;
 pub const STRING_BYTES: usize = 16;
 /// Fixed bytes for one id list element.
 pub const ID_BYTES: usize = 8;
+/// Fixed bytes for one run list element.
+pub const RUN_BYTES: usize = 128;
+/// Fixed bytes for one job list element.
+pub const RUN_JOB_BYTES: usize = 64;
+/// Fixed bytes for one tree entry list element.
+pub const ENTRY_BYTES: usize = 64;
+/// Fixed bytes for one input list element.
+pub const INPUT_BYTES: usize = 32;
 const _: () = {
+    assert!(RUN_BYTES >= size_of::<api::Run>(), "run width covers native storage");
+    assert!(RUN_JOB_BYTES >= size_of::<api::RunJob>(), "job width covers native storage");
+    assert!(ENTRY_BYTES >= size_of::<api::Entry>(), "entry width covers native storage");
+    assert!(INPUT_BYTES >= size_of::<api::Input>(), "input width covers native storage");
     assert!(SUMMARY_BYTES >= size_of::<Summary>(), "summary width covers native storage");
     assert!(REVIEW_BYTES >= size_of::<api::Review>(), "review width covers native storage");
     assert!(STATUS_BYTES >= size_of::<api::Status>(), "status width covers native storage");
@@ -56,12 +68,15 @@ pub fn op(value: &Op) -> Option<u64> {
 }
 fn read(value: &Read) -> Option<u64> {
     match value {
+        Read::Runs { workflow, .. } => bytes(workflow),
         Read::Locate { owner, name } => bytes(owner)?.checked_add(bytes(name)?),
         Read::File { path, .. } => bytes(path),
         Read::Branches { prefix } => bytes(prefix),
         Read::PullFor { head, base } => bytes(head)?.checked_add(bytes(base)?),
         Read::Branch { branch } | Read::Protection { branch } => bytes(branch),
-        Read::Items { .. }
+        Read::Run { .. }
+        | Read::Tree { .. }
+        | Read::Items { .. }
         | Read::Reviews { .. }
         | Read::Statuses { .. }
         | Read::Remarks { .. }
@@ -87,9 +102,23 @@ pub fn write(value: &Write) -> Option<u64> {
         Write::Post { key, body, .. } | Write::Review { key, body, .. } => bytes(key)?.checked_add(bytes(body)?),
         Write::Edit { title, body, .. } => optional(title.as_deref())?.checked_add(optional(body.as_deref())?),
         Write::SetReviewers { reviewers, .. } => rows(reviewers.len(), ID_BYTES),
-        Write::Status { context, .. } => bytes(context),
+        Write::Dispatch { workflow, branch, inputs } => {
+            let mut held =
+                rows(inputs.len(), INPUT_BYTES)?.checked_add(bytes(workflow)?)?.checked_add(bytes(branch)?)?;
+            for input in inputs {
+                held = held.checked_add(bytes(&input.name)?)?.checked_add(bytes(&input.value)?)?;
+            }
+            Some(held)
+        }
+        Write::Status { context, description, link, .. } => {
+            bytes(context)?.checked_add(bytes(description)?)?.checked_add(bytes(link)?)
+        }
         Write::CreateBranch { branch, .. } | Write::DeleteBranch { branch } => bytes(branch),
-        Write::Close { .. } | Write::Reopen { .. } | Write::Update { .. } | Write::Merge { .. } => Some(0),
+        Write::Rerun { .. }
+        | Write::Close { .. }
+        | Write::Reopen { .. }
+        | Write::Update { .. }
+        | Write::Merge { .. } => Some(0),
     }
 }
 /// Count a summary including its nested labels, without a scalar struct width.
@@ -117,6 +146,21 @@ fn files(values: &[File]) -> Option<u64> {
 #[must_use]
 pub fn answer(value: &Answer) -> Option<u64> {
     match value {
+        Answer::Run(value) => run(value),
+        Answer::Runs { runs, .. } => {
+            let mut held = rows(runs.len(), RUN_BYTES)?;
+            for value in runs {
+                held = held.checked_add(run(value)?)?;
+            }
+            Some(held)
+        }
+        Answer::Tree { entries, .. } => {
+            let mut held = rows(entries.len(), ENTRY_BYTES)?;
+            for entry in entries {
+                held = held.checked_add(bytes(&entry.name)?)?;
+            }
+            Some(held)
+        }
         Answer::Items { items, .. } => {
             let mut held = rows(items.len(), SUMMARY_BYTES)?;
             for item in items {
@@ -206,4 +250,18 @@ pub fn pull(value: &Pull) -> Option<u64> {
             Some(reason) => bytes(reason)?,
             None => 0,
         })
+}
+
+/// Count a run's strings and nested jobs, without a scalar struct width.
+#[must_use]
+pub fn run(value: &api::Run) -> Option<u64> {
+    let mut held =
+        bytes(&value.workflow)?.checked_add(bytes(&value.url)?)?.checked_add(rows(value.jobs.len(), RUN_JOB_BYTES)?)?;
+    for job in &value.jobs {
+        held = held.checked_add(bytes(&job.name)?)?;
+        if let Some(step) = &job.step {
+            held = held.checked_add(bytes(&step.name)?)?;
+        }
+    }
+    Some(held)
 }

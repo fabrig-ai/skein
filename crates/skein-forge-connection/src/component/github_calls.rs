@@ -610,6 +610,9 @@ fn admitted(op: &api::Op) -> bool {
     match op {
         api::Op::Read(read) => match read {
             api::Read::Protection { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. }
             | api::Read::Compare { .. }
@@ -632,6 +635,8 @@ fn admitted(op: &api::Op) -> bool {
         api::Op::Write(write) => match write {
             api::Write::SetReviewers { .. }
             | api::Write::Merge { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. }
             | api::Write::DeleteBranch { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }

@@ -10,7 +10,10 @@ pub fn bytes(owner: &[u8], name: &[u8]) -> Option<u64> {
 pub fn accepts(answer: &Answer) -> bool {
     match answer {
         Answer::Located { repository } => *repository != 0,
-        Answer::Items { .. }
+        Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
+        | Answer::Items { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
         | Answer::Reviews { .. }

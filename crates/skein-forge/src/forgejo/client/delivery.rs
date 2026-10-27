@@ -153,6 +153,7 @@ pub fn step(decoder: &mut Decoder, limits: &Limits, event: &tokenizer::Event) ->
 impl Decoder {
     fn scalar(&mut self, kind: Kind, key: &'static [u8], value: Value) -> Result<(), Malformed> {
         match value {
+            Value::Input(_) => unreachable!("dispatch input table"),
             Value::Number(n) => {
                 if kind == Kind::Delivery(DeliveryKind::Repo) {
                     self.repository = n;

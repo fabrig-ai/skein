@@ -56,6 +56,13 @@ pub fn effect(effect: &Effect) -> Option<u64> {
 pub fn answer_rows(value: &Answer, rows: u32) -> bool {
     let rows = usize::try_from(rows).expect("row limit fits");
     match value {
+        Answer::Run(run) => run.jobs.len() <= rows,
+        Answer::Runs { runs, .. } => {
+            if runs.len() > rows { return false; }
+            for run in runs { if run.jobs.len() > rows { return false; } }
+            true
+        }
+        Answer::Tree { entries, .. } => entries.len() <= rows,
         Answer::Items { items, .. } => {
             if items.len() > rows {
                 return false;

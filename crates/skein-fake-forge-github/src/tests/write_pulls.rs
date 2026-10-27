@@ -98,7 +98,10 @@ fn github_fake_update_plan_merges_base_and_checks_expected_head() {
     .unwrap()
     .unwrap();
     r::call(&mut h, a::Op::Git(a::Git::Push { branch: f::boxed(b"trunk"), commit: base, expected: None }));
-    assert_eq!(w::write(&mut h, &token, api::Write::Update { number }), Ok(api::Answer::Done));
+    assert_eq!(
+        w::write(&mut h, &token, api::Write::Update { number, style: api::UpdateStyle::Merge }),
+        Ok(api::Answer::Done)
+    );
     let api::Answer::Pull(pull) = r::read(&mut h, &token, api::Read::Pull { number }).unwrap() else {
         panic!("updated pull")
     };
@@ -134,7 +137,10 @@ fn github_fake_update_plan_refuses_head_moved_after_its_read() {
     .unwrap()
     .unwrap();
     let token = r::token(&mut h);
-    assert_eq!(w::write_after_push(&mut h, &token, api::Write::Update { number }, Some(moved)), Err(api::Error::Stale));
+    assert_eq!(
+        w::write_after_push(&mut h, &token, api::Write::Update { number, style: api::UpdateStyle::Merge }, Some(moved)),
+        Err(api::Error::Stale)
+    );
 }
 #[test]
 fn github_fake_review_and_reviewer_plans_read_back() {
@@ -276,7 +282,10 @@ fn github_fake_update_conflict_preserves_the_pull_head() {
     .unwrap();
     r::call(&mut h, a::Op::Git(a::Git::Push { branch: f::boxed(b"trunk"), commit: base, expected: None }));
     let token = r::token(&mut h);
-    assert_eq!(w::write(&mut h, &token, api::Write::Update { number }), Err(api::Error::Conflict));
+    assert_eq!(
+        w::write(&mut h, &token, api::Write::Update { number, style: api::UpdateStyle::Merge }),
+        Err(api::Error::Conflict)
+    );
     let response = w::ask(
         &mut h,
         &token,
