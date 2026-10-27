@@ -85,7 +85,7 @@ fn signed_deliveries_reach_the_clients_owner() {
 }
 
 use skein_fake_forge_domain::api as raw;
-use skein_forge::api::{self, Conclusion, EntryKind, Error, JobAttempt, MergeHow, RunState, UpdateStyle, Write};
+use skein_forge::api::{self, Conclusion, EntryKind, JobAttempt, MergeHow, RunState, UpdateStyle, Write};
 use skein_forge_client::{Made, Outcome};
 use skein_forge_client_world::translate::commit;
 
@@ -181,6 +181,10 @@ fn a_tree_is_read_by_commit_then_by_directory() {
     };
     assert!(!more);
     assert_eq!((&*entries[0].name, entries[0].kind), (b"src".as_slice(), EntryKind::Tree));
+    assert_eq!(
+        world.read(Read::Tree { object: head, page: 3 }).expect("past last root page"),
+        Answer::Tree { entries: Box::new([]), more: false }
+    );
     let Answer::Tree { entries, more } = world.read(Read::Tree { object: docs, page: 1 }).expect("directory id") else {
         panic!("tree answer")
     };
@@ -258,8 +262,9 @@ fn a_pull_is_rebased_then_merged_fast_forward() {
     world.run_for(Duration::from_secs(3));
     assert_eq!(
         world.write(Write::Merge { number: behind, head: commit(main), how: MergeHow::FastForwardOnly }),
-        Outcome::Failed(Error::Conflict)
+        Outcome::Uncertain
     );
+    assert_eq!(branch(&mut world, b"main"), head, "the 500 refusal leaves the base in place");
     world.finish();
 }
 #[test]

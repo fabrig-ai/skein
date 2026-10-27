@@ -302,3 +302,19 @@ fn a_head_range_over_an_empty_log_answers_200() {
     assert_eq!((reply.status, &*reply.body), (200, b"".as_slice()));
     assert_eq!(header_value(&reply.headers), None);
 }
+
+#[test]
+fn style_refusals_use_the_pinned_status_and_message() {
+    let merge = Request::Merge { at: at(), number: 1, head: routes::object(7), style: d::MergeStyle::FastForwardOnly };
+    let failure = crate::errors::for_request(a::Error::Conflict, &merge, Time::ZERO);
+    assert_eq!(failure.status, 500);
+    assert!(bytes::find(failure.message, b"DivergingFastForwardOnly").is_some());
+    let rebase =
+        Request::Update { at: at(), number: 1, style: Some(skein_forge::forgejo::request::UpdateStyle::Rebase) };
+    let failure = crate::errors::for_request(a::Error::Conflict, &rebase, Time::ZERO);
+    assert_eq!((failure.status, failure.message), (409, b"rebase failed because of conflict".as_slice()));
+    let merge_update =
+        Request::Update { at: at(), number: 1, style: Some(skein_forge::forgejo::request::UpdateStyle::Merge) };
+    let failure = crate::errors::for_request(a::Error::Conflict, &merge_update, Time::ZERO);
+    assert_eq!((failure.status, failure.message), (409, b"merge failed because of conflict".as_slice()));
+}

@@ -168,7 +168,10 @@ fn merges(p: &mut Probe<'_>) -> Result<()> {
     let name = "merge-fast-forward-only-refuses-diverged-head";
     let answer = merge(p, name, pr, &head)?;
     let after = p.head("merge-diverged-base-after", "ff-diverged-base")?;
-    p.fact(name, answer.status == 405 && before == after, &answer);
+    p.fact(name, answer.status == 500 && before == after, &answer);
+    let name = "merge-fast-forward-only-diverged-is-405";
+    let answer = merge(p, name, pr, &head)?;
+    p.fact(name, answer.status == 405, &answer);
     Ok(())
 }
 fn updates(p: &mut Probe<'_>) -> Result<()> {

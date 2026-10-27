@@ -404,15 +404,7 @@ fn a_dispatch_runs_its_workflow_at_the_branch_head() {
     let Answer::Statuses(statuses) = h.inspect(&Read::Statuses { commit: FIRST }).unwrap() else {
         unreachable!("statuses")
     };
-    assert_eq!(statuses.len(), 2);
-    for (status, (name, link)) in statuses.iter().zip([
-        (b"gate.yml / ci".as_slice(), b"/ai/kit/actions/runs/1/jobs/0".as_slice()),
-        (b"gate.yml / fmt".as_slice(), b"/ai/kit/actions/runs/1/jobs/1".as_slice()),
-    ]) {
-        assert_eq!(&*status.context, name);
-        assert_eq!(status.state, Check::Pending);
-        assert_eq!(&*status.link, link);
-    }
+    assert!(statuses.is_empty(), "workflow dispatch publishes no commit status");
     h.settle();
     let run = &workflow_runs(&h)[0];
     assert_eq!((run.state, run.conclusion), (crate::api::RunState::Completed, Some(crate::api::Conclusion::Success)));
@@ -421,10 +413,14 @@ fn a_dispatch_runs_its_workflow_at_the_branch_head() {
         assert_eq!(job.steps.len(), 3);
     }
     let Answer::Checks(checks) = h.inspect(&Read::Checks { commit: FIRST }).unwrap() else { unreachable!("checks") };
-    for check in checks {
-        assert_eq!(check.status.state, Check::Passed);
-        assert!(!check.link.is_empty());
-    }
+    assert!(checks.is_empty(), "completed dispatch jobs publish no status");
+    let job = run_jobs(&h, run.id)[0].id;
+    h.ok(ENGINE, write(Write::Rerun { job }));
+    h.settle();
+    let Answer::Statuses(statuses) = h.inspect(&Read::Statuses { commit: FIRST }).unwrap() else {
+        unreachable!("statuses")
+    };
+    assert!(statuses.is_empty(), "a rerun also publishes no commit status");
 }
 
 #[test]
@@ -612,7 +608,7 @@ fn a_status_keeps_its_description_and_link() {
 }
 
 #[test]
-fn overlapping_dispatches_keep_the_job_identity_of_the_status_that_reported() {
+fn overlapping_dispatches_keep_jobs_separate_without_publishing_statuses() {
     let mut h = dispatch_harness(CALM, &[b"ci"]);
     h.ok(ENGINE, dispatch());
     let first = workflow_runs(&h)[0].id;
@@ -625,9 +621,9 @@ fn overlapping_dispatches_keep_the_job_identity_of_the_status_that_reported() {
     h.ok(ENGINE, dispatch());
     h.settle();
     let Answer::Checks(checks) = h.inspect(&Read::Checks { commit: FIRST }).unwrap() else { unreachable!("checks") };
-    assert_eq!(checks[0].status.state, Check::Failed);
-    assert_eq!(&*checks[0].link, b"/ai/kit/actions/runs/1/jobs/0");
-    assert_eq!(checks[0].job, Some(JobRef { run: first, job: first_job, attempt: 1 }));
+    assert!(checks.is_empty());
+    assert_eq!(run_jobs(&h, first)[0].id, first_job);
+    assert_eq!(run_jobs(&h, first)[0].conclusion, Some(crate::api::Conclusion::Failure));
 }
 
 #[test]
@@ -696,7 +692,7 @@ fn dispatch_runs_and_commit_ci_keep_separate_identities_and_one_numbering() {
     let Answer::Statuses(statuses) = h.inspect(&Read::Statuses { commit: head }).unwrap() else {
         unreachable!("statuses")
     };
-    assert_eq!(statuses.len(), 2);
+    assert_eq!(statuses.len(), 1, "only push CI publishes a status");
 }
 
 #[test]
