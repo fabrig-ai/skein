@@ -97,11 +97,11 @@ pub enum Read {
         page: u32,
         limit: u32,
     },
-    /// Detailed commit statuses: failed CI's description and job link.
+    /// Detailed commit statuses, with their description and job link.
     Checks {
         commit: u64,
     },
-    /// The job at its latest attempt, with its steps; missing unless CI failed it.
+    /// The job at its latest attempt, with its steps; commit CI exposes failed jobs.
     Job {
         job: u64,
     },
@@ -112,10 +112,19 @@ pub enum Read {
         attempt: u32,
         step: Option<u32>,
     },
-    /// Actions routes, bounded by the repository's retained CI history.
+    /// Actions routes, bounded by retained CI and dispatched runs.
     Runs {
-        commit: u64,
-        number: u64,
+        workflow: Option<Box<[u8]>>,
+        commit: Option<u64>,
+        number: Option<u64>,
+        page: u32,
+        limit: u32,
+    },
+    /// One directory, paged from one (fake-forge.md, 2.3).
+    GitTree {
+        object: TreeOf,
+        page: u32,
+        limit: u32,
     },
     Run {
         run: u64,
@@ -298,12 +307,13 @@ pub enum Write {
         review: u64,
         verdict: Verdict,
     },
-    /// Merges the pull request `number` if its head is still `head`, as one
-    /// commit on its base. Answered by [`Answer::Merged`]. Needs write
-    /// permission.
+    /// Merges the pull request `number` if its head is still `head`, in the
+    /// repository's style or by fast-forward only. Answered by [`Answer::Merged`].
+    /// Needs write permission.
     Merge {
         number: u64,
         head: u64,
+        how: MergeHow,
     },
     /// Admits the exact head to the merge queue. Answered by the pull's
     /// updated view; an existing entry is refused as `AlreadyQueued`. Needs write permission.
@@ -311,10 +321,11 @@ pub enum Write {
         number: u64,
         head: u64,
     },
-    /// Merge the current base into the pull's branch, keeping both parents
-    /// and starting CI at the new head. A conflict leaves it unchanged.
+    /// Updates the pull's branch by merging its base or replaying its own
+    /// commits onto the base, starting CI at the new head. A conflict changes nothing.
     Update {
         number: u64,
+        style: UpdateStyle,
     },
     /// Create a repository branch at an existing full commit id through
     /// the API, with the same permissions and protection as git creation.
@@ -342,6 +353,18 @@ pub enum Write {
         commit: u64,
         context: Box<[u8]>,
         state: Check,
+        description: Box<[u8]>,
+        link: Box<[u8]>,
+    },
+    /// Runs the workflow at the branch's current head (fake-forge.md, 2.3).
+    Dispatch {
+        workflow: Box<[u8]>,
+        branch: Box<[u8]>,
+        inputs: Box<[WorkflowInput]>,
+    },
+    /// Runs one completed run's job at its next attempt.
+    Rerun {
+        job: u64,
     },
     /// Creates or replaces the wiki page `name`. Answered by
     /// [`Answer::Revision`]. Needs write permission.
@@ -449,6 +472,10 @@ pub enum Answer {
     /// Where a branch is, or what a fetch fetched.
     Commit(u64),
     Tree(Box<[File]>),
+    GitTree {
+        entries: Box<[TreeEntry]>,
+        truncated: bool,
+    },
     File(Box<[u8]>),
     /// A page of wiki page names, and the last of them if there may be more.
     Pages {
@@ -538,7 +565,35 @@ pub enum What {
     Job,
 }
 
-pub use crate::actions::{Failing, Job, Run, Step, StepStatus, WORKFLOW_STEP};
+pub use crate::actions::{Conclusion, Failing, Job, Run, RunEvent, RunState, Step, StepStatus, WORKFLOW_STEP};
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum MergeHow {
+    Style,
+    FastForwardOnly,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum UpdateStyle {
+    Merge,
+    Rebase,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum TreeOf {
+    Commit(u64),
+    Tree([u8; 20]),
+}
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct TreeEntry {
+    pub name: Box<[u8]>,
+    pub mode: u32,
+    pub kind: EntryKind,
+    pub object: [u8; 20],
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum EntryKind {
+    Blob,
+    Tree,
+}
 
 /// The order of an item listing.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -681,6 +736,8 @@ pub enum Verdict {
 /// A context's status on a commit.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Status {
+    pub description: Box<[u8]>,
+    pub link: Box<[u8]>,
     pub context: Box<[u8]>,
     pub state: Check,
     pub author: u64,
@@ -826,6 +883,7 @@ pub struct Setup {
     pub tree: Box<[File]>,
     pub labels: Box<[Box<[u8]>]>,
     pub checks: Checks,
+    pub workflows: Box<[Workflow]>,
     pub protection: Option<Protection>,
     pub hooked: bool,
 }
@@ -879,3 +937,19 @@ pub struct Protection {
     pub approvals: u32,
     pub dismiss_stale: bool,
 }
+
+/// A workflow run only when dispatched (fake-forge.md, 2.3).
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Workflow {
+    /// Its file under `.forgejo/workflows/`, as a dispatch names it.
+    pub file: Box<[u8]>,
+    pub jobs: Box<[Box<[u8]>]>,
+    pub latency_min: Duration,
+    pub latency_max: Duration,
+    pub silent: u32,
+    pub passes: u32,
+    pub cue: Option<Cue>,
+}
+
+/// One named dispatch input; keys fit a name and values a body (fake-forge.md, 2.3).
+pub type WorkflowInput = (Box<[u8]>, Box<[u8]>);

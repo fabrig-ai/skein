@@ -26,7 +26,7 @@ use crate::store::{Repository, Status, fits};
 
 /// CI starts on `commit`, which became a head in the repository `id`, unless
 /// it ran on it already.
-pub(crate) fn start(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, commit: u64) {
+pub(crate) fn start(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, commit: u64, user: u64) {
     let limits = &env.limits.limits;
     let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
     let Some(first) = repository.checks.contexts.first() else {
@@ -45,14 +45,23 @@ pub(crate) fn start(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, 
         let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
         repository.statuses.insert(commit, Map::with_capacity(limits.contexts)).expect("room was made");
     }
-    crate::actions::start(domain, id, commit);
+    crate::actions::start(domain, env, id, commit, user);
     let repository = domain.repositories.get(id).expect("a repository of the forge");
     let contexts = u32::try_from(repository.checks.contexts.len()).expect("contexts within the limits");
     for context in 0..contexts {
         let Some(name) = name(domain, id, context) else {
             break;
         };
-        let pending = Status { state: Check::Pending, author: env.limits.ci, at: domain::clock(env), rerun: false };
+        let mut pending = Status {
+            state: Check::Pending,
+            author: env.limits.ci,
+            at: domain::clock(env),
+            rerun: false,
+            description: copy_of(b"CI pending"),
+            link: Box::new([]),
+            job: crate::actions::ci_reference(domain.repositories.get(id).expect("CI repository"), commit, &name),
+        };
+        pending.link = crate::actions::link(domain.repositories.get(id).expect("CI repository"), commit, &name);
         if !set(domain, id, commit, &name, pending) {
             domain.tally.unreported = domain.tally.unreported.saturating_add(1);
             return;
@@ -107,7 +116,18 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
         },
         None => false,
     };
-    let status = Status { state, author: env.limits.ci, at: domain::clock(env), rerun };
+    let mut status = Status {
+        state,
+        author: env.limits.ci,
+        at: domain::clock(env),
+        rerun,
+        description: description(state),
+        link: Box::new([]),
+        job: crate::actions::ci_reference(domain.repositories.get(id).expect("CI repository"), commit, &name),
+    };
+    let repository = domain.repositories.get_mut(id).expect("a CI repository");
+    crate::actions::verdict(repository, commit, context, state);
+    status.link = crate::actions::link(domain.repositories.get(id).expect("CI repository"), commit, &name);
     let kept = set(domain, id, commit, &name, status);
     assert!(kept, "a pending status is replaced");
     domain.tally.verdicts = domain.tally.verdicts.saturating_add(1);
@@ -127,7 +147,16 @@ pub(crate) fn rerun(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, 
         unreachable!("a re-run's context is one of its repository's");
     };
     crate::actions::rerun(domain, id, commit, context);
-    let pending = Status { state: Check::Pending, author: env.limits.ci, at: domain::clock(env), rerun: true };
+    let mut pending = Status {
+        state: Check::Pending,
+        author: env.limits.ci,
+        at: domain::clock(env),
+        rerun: true,
+        description: copy_of(b"CI pending"),
+        link: Box::new([]),
+        job: crate::actions::ci_reference(domain.repositories.get(id).expect("CI repository"), commit, &name),
+    };
+    pending.link = crate::actions::link(domain.repositories.get(id).expect("CI repository"), commit, &name);
     let kept = set(domain, id, commit, &name, pending);
     assert!(kept, "a context reported is replaced");
     reported(domain, env, id, commit, name, Check::Pending, env.limits.ci);
@@ -139,6 +168,7 @@ pub(crate) fn rerun(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, 
 }
 
 /// Reports `state` of `context` on `commit`, as `user`.
+#[expect(clippy::too_many_arguments, reason = "a status carries the caller, context, verdict and text")]
 pub(crate) fn status(
     domain: &mut Domain,
     env: &Env<Config>,
@@ -147,11 +177,15 @@ pub(crate) fn status(
     commit: u64,
     context: Box<[u8]>,
     state: Check,
+    description: Box<[u8]>,
+    link: Box<[u8]>,
 ) -> Result<Answer, Error> {
     let limits = &env.limits.limits;
     let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
     repository.require(user, Permission::Write)?;
     fits(&context, limits.name_bytes)?;
+    fits(&description, limits.body_bytes)?;
+    fits(&link, limits.body_bytes.max(limits.name_bytes.saturating_add(51)))?;
     if !repository.has.contains(&commit) {
         return Err(Error::Missing(What::Commit));
     }
@@ -162,7 +196,13 @@ pub(crate) fn status(
         let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
         repository.statuses.insert(commit, Map::with_capacity(limits.contexts)).expect("room was made");
     }
-    if !set(domain, id, commit, &context, Status { state, author: user, at: domain::clock(env), rerun: true }) {
+    if !set(
+        domain,
+        id,
+        commit,
+        &context,
+        Status { state, author: user, at: domain::clock(env), rerun: true, description, link, job: None },
+    ) {
         return Err(Error::Full);
     }
     reported(domain, env, id, commit, context, state, user);
@@ -175,7 +215,7 @@ pub(crate) fn status(
 /// that is no longer any branch's head or any open pull request's, and its
 /// pending checks with them. Forgejo keeps every status; a fake that keeps
 /// a bounded number forgets only what no head shows.
-fn room(domain: &mut Domain, id: Id<Repository>) -> bool {
+pub(crate) fn room(domain: &mut Domain, id: Id<Repository>) -> bool {
     let repository = domain.repositories.get(id).expect("a repository of the forge");
     if repository.statuses.len() < repository.statuses.capacity() {
         return true;
@@ -211,7 +251,7 @@ fn name(domain: &Domain, id: Id<Repository>, context: u32) -> Option<Box<[u8]>> 
 
 /// Sets the status of `context` on `commit`, which has statuses, or says
 /// there is no room for it.
-fn set(domain: &mut Domain, id: Id<Repository>, commit: u64, context: &[u8], status: Status) -> bool {
+pub(crate) fn set(domain: &mut Domain, id: Id<Repository>, commit: u64, context: &[u8], status: Status) -> bool {
     let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
     let statuses = repository.statuses.get_mut(&commit).expect("a commit with statuses");
     if let Some(kept) = statuses.get_mut(context) {
@@ -224,7 +264,7 @@ fn set(domain: &mut Domain, id: Id<Repository>, commit: u64, context: &[u8], sta
 /// `context` on `commit` became `state`: observed and heard. Where the
 /// configuration says so (Forgejo does not), the open pull requests whose
 /// head it is are updated.
-fn reported(
+pub(crate) fn reported(
     domain: &mut Domain,
     env: &Env<Config>,
     id: Id<Repository>,
@@ -254,4 +294,12 @@ fn reported(
     } else {
         domain.observations.push(observation);
     }
+}
+
+pub(crate) fn description(state: Check) -> Box<[u8]> {
+    copy_of(match state {
+        Check::Pending => b"CI pending",
+        Check::Passed => b"CI passed",
+        Check::Failed => b"CI failed",
+    })
 }

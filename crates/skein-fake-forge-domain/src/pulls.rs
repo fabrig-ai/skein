@@ -102,7 +102,7 @@ pub(crate) fn open(
         by: user,
     };
     domain::changed(domain, env, id, observation, Hook::item(Change::Pull, number, user));
-    ci::start(domain, env, id, commit);
+    ci::start(domain, env, id, commit, user);
     Ok(Answer::Created(number))
 }
 
@@ -290,6 +290,7 @@ pub(crate) fn merge(
     user: u64,
     number: u64,
     head: u64,
+    how: crate::api::MergeHow,
 ) -> Result<Answer, Error> {
     let limits = &env.limits.limits;
     let repository = domain.repositories.get(id).expect("a repository of the forge");
@@ -313,15 +314,32 @@ pub(crate) fn merge(
     if !allowed(repository, item, pull, user) {
         return Err(Error::Protected);
     }
-    if git::is_ancestor(domain, head, onto) {
-        return Err(Error::NothingToMerge);
-    }
-    let tree = merged(domain, limits, head, onto)?;
     let base = copy_of(&pull.base);
-    let commit = git::store(
-        domain,
-        Object { parent: Some(onto), merge_parent: None, tree, message: Box::new([]), author: None, committer: None },
-    )?;
+    let commit = match how {
+        crate::api::MergeHow::FastForwardOnly => {
+            if !git::is_ancestor(domain, onto, head) {
+                return Err(Error::Conflict);
+            }
+            head
+        }
+        crate::api::MergeHow::Style => {
+            if git::is_ancestor(domain, head, onto) {
+                return Err(Error::NothingToMerge);
+            }
+            let tree = merged(domain, limits, head, onto)?;
+            git::store(
+                domain,
+                Object {
+                    parent: Some(onto),
+                    merge_parent: None,
+                    tree,
+                    message: Box::new([]),
+                    author: None,
+                    committer: None,
+                },
+            )?
+        }
+    };
     let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
     repository.has.insert(commit).expect("a repository has room for every commit");
     repository.branches.insert(copy_of(&base), commit).expect("the base branch is there");
@@ -407,8 +425,14 @@ pub(crate) fn statuses(repository: &Repository, limits: &Limits, commit: u64) ->
     let mut statuses = List::with_capacity(limits.contexts);
     if let Some(on) = repository.statuses.get(&commit) {
         for (context, status) in on {
-            let view =
-                StatusView { context: copy_of(context), state: status.state, author: status.author, at: status.at };
+            let view = StatusView {
+                context: copy_of(context),
+                state: status.state,
+                author: status.author,
+                at: status.at,
+                description: copy_of(&status.description),
+                link: copy_of(&status.link),
+            };
             statuses.push(view).expect("no more contexts than the limits");
         }
     }
@@ -487,6 +511,10 @@ pub(crate) fn merged(domain: &Domain, limits: &Limits, head: u64, onto: u64) -> 
     };
     let ours = &domain.commits.get(&onto).expect("a commit of the store").tree;
     let theirs = &domain.commits.get(&head).expect("a commit of the store").tree;
+    merge_trees(limits, ancestor, ours, theirs)
+}
+
+pub(crate) fn merge_trees(limits: &Limits, ancestor: &Tree, ours: &Tree, theirs: &Tree) -> Result<Tree, Error> {
     let mut tree = Map::with_capacity(limits.files);
     for side in [ancestor, ours, theirs] {
         for (path, _) in side {

@@ -8,6 +8,7 @@ mod promises;
 mod protection;
 mod queue;
 mod settle;
+mod trees;
 
 use alloc::boxed::Box;
 
@@ -36,6 +37,8 @@ const LIMITS: Limits = Limits {
     files: 4,
     statuses: 8,
     contexts: 2,
+    workflows: 2,
+    workflow_runs: 4,
     pages: 3,
     name_bytes: 16,
     title_bytes: 16,
@@ -66,6 +69,8 @@ const CALM: Config = Config {
     rate_limit: 0,
     rate_window: Duration::from_secs(60),
     ci: CI,
+    setup_faults: 0,
+    lost: 0,
     hook_min: Duration::from_secs(2),
     hook_max: Duration::from_secs(2),
     hooks_late: 0,
@@ -168,6 +173,7 @@ fn setup() -> Setup {
             reruns: 0,
             cue: None,
         },
+        workflows: Box::new([]),
         protection: None,
         hooked: true,
     }
@@ -226,7 +232,7 @@ fn fetch(want: Want) -> Op {
 }
 
 fn merge(number: u64, head: u64) -> Op {
-    write(Write::Merge { number, head })
+    write(Write::Merge { number, head, how: crate::api::MergeHow::Style })
 }
 
 fn review(number: u64, verdict: Verdict) -> Op {
@@ -234,7 +240,7 @@ fn review(number: u64, verdict: Verdict) -> Op {
 }
 
 fn status(commit: u64, context: &[u8], state: Check) -> Op {
-    write(Write::Status { commit, context: copy_of(context), state })
+    write(Write::Status { commit, context: copy_of(context), state, description: Box::new([]), link: Box::new([]) })
 }
 
 fn put(name: &[u8], content: &[u8]) -> Op {

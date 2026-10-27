@@ -439,7 +439,7 @@ pub(crate) fn reopen(
     let observation = Observation::Reopened { repository: copy_of(&repository.name), number, by: user };
     domain::changed(domain, env, id, observation, Hook::item(change, number, user));
     if let Some(head) = head {
-        ci::start(domain, env, id, head);
+        ci::start(domain, env, id, head, user);
     }
     Ok(Answer::Done)
 }
