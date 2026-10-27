@@ -89,3 +89,14 @@ fn a_tree_is_paged_with_truncated() {
         assert_eq!(more, truncated);
     }
 }
+
+#[test]
+fn directories_compare_with_a_trailing_slash() {
+    let mut configured = setup();
+    configured.tree = files(&[(b"tests/unit.rs", b"unit"), (b"tests.rs", b"module")]);
+    let h = Harness::with(CALM, configured);
+    let (entries, more) = tree(&h, TreeOf::Commit(FIRST), 1, 2);
+    assert_eq!(&*entries[0].name, b"tests.rs");
+    assert_eq!((&*entries[1].name, entries[1].kind), (b"tests".as_slice(), EntryKind::Tree));
+    assert!(!more);
+}

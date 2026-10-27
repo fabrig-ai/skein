@@ -105,3 +105,28 @@ fn turn_answers_must_fit_the_call() {
     }
     assert!(crate::api::accepts(&api::Op::Read(listing), &Answer::Runs { runs: Box::new([run()]), more: false }));
 }
+
+fn git_entries() -> [api::Entry; 2] {
+    [
+        api::Entry { name: Box::from(*b"tests.rs"), mode: 0o100_644, kind: api::EntryKind::Blob, object: [1; 32] },
+        api::Entry { name: Box::from(*b"tests"), mode: 0o040_000, kind: api::EntryKind::Tree, object: [2; 32] },
+    ]
+}
+#[test]
+fn a_tree_in_git_order_fits() {
+    let op = api::Op::Read(Read::Tree { object: [1; 32], page: 1 });
+    assert!(crate::api::accepts(&op, &Answer::Tree { entries: Box::new(git_entries()), more: false }));
+}
+#[test]
+fn a_tree_out_of_git_order_does_not_fit() {
+    let mut entries = git_entries();
+    entries.reverse();
+    let mut h = Harness::new(LIMITS);
+    h.step(Event::Read { owner: Token::new(1), repository: REPO, read: Read::Tree { object: [1; 32], page: 1 } });
+    let sent = h.one();
+    terminal(
+        &h.answer(&sent, 1, Ok(Answer::Tree { entries: Box::new(entries), more: false })),
+        1,
+        Error::InvalidAnswer,
+    );
+}

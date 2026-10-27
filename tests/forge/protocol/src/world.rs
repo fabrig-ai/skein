@@ -2,7 +2,7 @@ use crate::driver::Driver;
 use crate::fixtures::{self, LIMITS, Shape};
 use crate::referee::{Accounting, Referee};
 use skein_fake_forge_domain::{
-    Observation,
+    self as fake, Observation,
     api::{self as raw, Kind},
 };
 use skein_forge::api::{Answer, Error, Op, Read, Repository, Write};
@@ -148,6 +148,104 @@ impl World {
         }
         world.event(Event::Restored { clock: RecoveryClock::Monotonic });
         world
+    }
+
+    /// A Forgejo repository with dispatch-only workflows and a seeded tree.
+    #[must_use]
+    pub fn turn(seed: u64, workflows: Box<[raw::Workflow]>, tree: Box<[raw::File]>) -> Self {
+        let mut world = Self::new(seed, 0);
+        let Driver::Forgejo(joint) = &mut world.joint else { unreachable!("Forgejo world") };
+        joint.fake_env.limits.limits.workflows = u32::try_from(workflows.len()).expect("fixture workflows");
+        joint.fake_env.limits.limits.workflow_runs = 4;
+        let mut domain = fake::Domain::new(&joint.fake_env.limits, seed);
+        fake::repository(
+            &mut domain,
+            &joint.fake_env.limits,
+            raw::Setup {
+                id: 2,
+                name: Box::from(b"org/repo".as_slice()),
+                default: Box::from(b"main".as_slice()),
+                tree,
+                workflows,
+                labels: Box::new([]),
+                checks: raw::Checks { contexts: Box::new([]), ..joint::checks(1000) },
+                protection: None,
+                hooked: false,
+            },
+        );
+        fake::grant(&mut domain, b"org/repo", 1, raw::Permission::Admin);
+        fake::grant(&mut domain, b"org/repo", 2, raw::Permission::Write);
+        joint.domain = domain;
+        world
+    }
+    /// A person's fixture call outside the component's HTTP traffic.
+    /// # Errors
+    /// Returns the fake domain's refusal.
+    pub fn direct(&mut self, op: raw::Op) -> Result<raw::Answer, raw::Error> {
+        self.joint.direct(op)
+    }
+    /// A snapshot used by the story's independent expectations.
+    /// # Errors
+    /// Returns the fake domain's refusal of the read.
+    pub fn inspect(&self, read: &raw::Read) -> Result<raw::Answer, raw::Error> {
+        self.joint.domain().inspect(&self.joint.fake_env().limits, self.joint.path(), read)
+    }
+    /// An immutable commit prepared before a person's push.
+    pub fn prepare_commit(&mut self, parent: u64, tree: Box<[raw::File]>, message: &[u8]) -> u64 {
+        let Driver::Forgejo(joint) = &mut self.joint else { unreachable!("Forgejo world") };
+        fake::commit(&mut joint.domain, &joint.fake_env.limits, parent, tree, message)
+            .expect("fixture commit")
+            .expect("changed tree")
+    }
+    /// A durable write through the client's owner and the real dialect.
+    pub fn write(&mut self, write: skein_forge::api::Write) -> Outcome {
+        let condition = match &write {
+            Write::Update { number, .. } | Write::Merge { number, .. } => {
+                let Answer::Pull(pull) = self.read(Read::Pull { number: *number }).expect("write precondition") else {
+                    panic!("pull precondition")
+                };
+                if let Write::Update { .. } = write {
+                    client::Condition::Update { head: pull.commit, base: pull.base_commit.expect("base tip") }
+                } else {
+                    client::Condition::Merge { base: pull.base }
+                }
+            }
+            Write::CreateIssue { .. }
+            | Write::OpenPull { .. }
+            | Write::Post { .. }
+            | Write::Review { .. }
+            | Write::Edit { .. }
+            | Write::SetReviewers { .. }
+            | Write::Close { .. }
+            | Write::Reopen { .. }
+            | Write::Status { .. }
+            | Write::Dispatch { .. }
+            | Write::Rerun { .. }
+            | Write::CreateBranch { .. }
+            | Write::DeleteBranch { .. } => client::Condition::None,
+        };
+        self.owner_sequence += 1;
+        let number = self.owner_sequence;
+        self.event(Event::Make {
+            entry: Entry {
+                number,
+                task: 1,
+                repository: REPO,
+                effect: skein_forge_client::Effect { write, condition },
+                start: None,
+                attempt: None,
+                failures: 0,
+                queued: false,
+            },
+        });
+        let end = self.joint.now().saturating_add(Duration::from_secs(20));
+        for _ in 0..TURNS {
+            if let Some((_, outcome)) = self.outcomes.iter().find(|(entry, _)| *entry == number) {
+                return *outcome;
+            }
+            assert!(self.iterate(end), "write settles within 20 seconds");
+        }
+        panic!("write step budget")
     }
 
     /// One GitHub forge, with its App access handed at runtime.

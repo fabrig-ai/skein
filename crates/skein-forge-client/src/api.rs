@@ -143,14 +143,19 @@ fn read_accepts(read: &Read, answer: &Answer) -> bool {
             let Answer::Tree { entries, .. } = answer else {
                 return false;
             };
-            let mut previous: Option<&[u8]> = None;
+            let mut previous: Option<&skein_forge::api::Entry> = None;
             for entry in entries {
-                if let Some(name) = previous
-                    && name >= entry.name.as_ref()
+                if let Some(last) = previous
+                    && last
+                        .name
+                        .iter()
+                        .chain(tree_suffix(last.kind))
+                        .cmp(entry.name.iter().chain(tree_suffix(entry.kind)))
+                        != core::cmp::Ordering::Less
                 {
                     return false;
                 }
-                previous = Some(&entry.name);
+                previous = Some(entry);
             }
             true
         }
@@ -534,5 +539,12 @@ fn file_matches(answer: &Answer, head: Commit, path: &[u8], max_bytes: u32) -> b
         | Answer::Queued
         | Answer::Branch(_)
         | Answer::Done => false,
+    }
+}
+
+fn tree_suffix(kind: skein_forge::api::EntryKind) -> &'static [u8] {
+    match kind {
+        skein_forge::api::EntryKind::Tree => b"/",
+        skein_forge::api::EntryKind::Blob | skein_forge::api::EntryKind::Commit => b"",
     }
 }
