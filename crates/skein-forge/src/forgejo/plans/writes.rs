@@ -90,7 +90,7 @@ impl Plan {
         let at = self.at();
         let request = match self.write.clone() {
             api::Write::Dispatch { workflow, branch, inputs } => Request::Dispatch { at, workflow, branch, inputs },
-            api::Write::Rerun { job } => Request::Rerun { at, job: job.job },
+            api::Write::Rerun { attempt: job } => Request::Rerun { at, job: job.job },
             api::Write::CreateIssue { key, title, body } => {
                 Request::CreateIssue { at, title, body: marked(word, &key, &body, bounds)? }
             }

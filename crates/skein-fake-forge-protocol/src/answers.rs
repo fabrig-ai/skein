@@ -3,7 +3,7 @@ use crate::{Config, routes, setup::Store};
 use alloc::boxed::Box;
 use skein_fake_forge_domain::api as a;
 use skein_forge::forgejo::{document as d, id::ObjectFormat, request::Request, server::Answer};
-use skein_lib::{List, Wall, Writer, bytes};
+use skein_lib::{Decimal, List, Wall, Writer, bytes};
 
 #[must_use]
 pub fn state(state: a::State) -> d::IssueState {
@@ -382,6 +382,7 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
 }
 
 /// A decoded read reply, naming users from setup and scenario configuration.
+#[expect(clippy::too_many_lines, reason = "each domain answer has an explicit Forgejo document projection")]
 pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answer) -> Result<Answer, a::Error> {
     match answer {
         a::Answer::Settings(settings) => repository(config, request, settings),
@@ -425,11 +426,11 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
         a::Answer::Runs(values) => {
             let mut out = List::with_capacity(u32::try_from(values.len()).expect("domain bound"));
             for value in values {
-                out.push(action_run(value)).expect("sized runs");
+                out.push(action_run(config, request, value)?).expect("sized runs");
             }
             Ok(Answer::Runs { total_count: u64::try_from(values.len()).expect("domain bound"), runs: out.into_boxed() })
         }
-        a::Answer::Run(value) => Ok(Answer::Run(action_run(value))),
+        a::Answer::Run(value) => Ok(Answer::Run(action_run(config, request, value)?)),
         a::Answer::Job { job, steps } => Ok(job_answer(job, steps)),
         a::Answer::Jobs(values) => {
             let mut out = List::with_capacity(u32::try_from(values.len()).expect("domain bound"));
@@ -438,8 +439,8 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
                     id: value.id,
                     run_id: value.run,
                     attempt: value.attempt,
-                    name: Box::new([]),
-                    status: d::StepStatus::Unknown,
+                    name: value.name.clone(),
+                    status: action_status(value.state, value.conclusion),
                 })
                 .expect("sized jobs");
             }
@@ -457,6 +458,22 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
                 files: compared(request, values),
             })
         }
+        a::Answer::GitTree { entries, truncated } => {
+            let mut tree = List::with_capacity(u32::try_from(entries.len()).expect("domain bound"));
+            for entry in entries {
+                tree.push(d::Entry {
+                    path: entry.name.clone(),
+                    mode: entry.mode,
+                    kind: match entry.kind {
+                        a::EntryKind::Blob => skein_forge::api::EntryKind::Blob,
+                        a::EntryKind::Tree => skein_forge::api::EntryKind::Tree,
+                    },
+                    sha: routes::tree_object(entry.object),
+                })
+                .expect("one row per entry");
+            }
+            Ok(Answer::Tree { entries: tree.into_boxed(), truncated: *truncated })
+        }
         a::Answer::Located { .. }
         | a::Answer::Permission(_)
         | a::Answer::Commit(_)
@@ -465,7 +482,6 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
         | a::Answer::Comment { .. }
         | a::Answer::Dependencies(_)
         | a::Answer::Labels(_)
-        | a::Answer::GitTree { .. }
         | a::Answer::Tree(_)
         | a::Answer::File(_)
         | a::Answer::Pages { .. }
@@ -610,23 +626,49 @@ fn job_answer(job: &a::Job, steps: &[a::Step]) -> Answer {
             id: job.id,
             run_id: job.run,
             attempt: job.attempt,
-            name: Box::new([]),
-            status: d::StepStatus::Unknown,
+            name: job.name.clone(),
+            status: action_status(job.state, job.conclusion),
         },
         steps: out.into_boxed(),
     }
 }
 
-fn action_run(value: &a::Run) -> d::Run {
-    d::Run {
+fn action_run(config: &Config, request: &Request, value: &a::Run) -> Result<d::Run, a::Error> {
+    let full = routes::repository(config, request).ok_or(a::Error::Missing(a::What::Repository))?;
+    let number = Decimal::of(value.number);
+    let mut url = Writer::new(
+        config.base.len().saturating_add(full.len()).saturating_add(number.as_bytes().len()).saturating_add(15),
+    );
+    url.put(&config.base).expect("sized run URL");
+    url.put(b"/").expect("sized run URL");
+    url.put(&full).expect("sized run URL");
+    url.put(b"/actions/runs/").expect("sized run URL");
+    url.put(number.as_bytes()).expect("sized run URL");
+    Ok(d::Run {
         id: value.id,
         index_in_repo: value.number,
         commit_sha: routes::object(value.commit),
-        workflow: Box::new([]),
-        event: Box::new([]),
-        trigger_actor: 0,
-        status: d::StepStatus::Unknown,
-        html_url: Box::new([]),
-        created_at: Wall::EPOCH,
+        workflow: match &value.workflow {
+            Some(file) => file.clone(),
+            None => bytes::copy_of(b"ci"),
+        },
+        event: bytes::copy_of(match value.event {
+            a::RunEvent::Push => b"push",
+            a::RunEvent::Dispatch => b"workflow_dispatch",
+        }),
+        trigger_actor: value.user,
+        status: action_status(value.state, value.conclusion),
+        html_url: url.finish(),
+        created_at: Wall::from_nanos(value.created.as_nanos()),
+    })
+}
+fn action_status(state: a::RunState, conclusion: Option<a::Conclusion>) -> d::StepStatus {
+    match state {
+        a::RunState::Running => d::StepStatus::Running,
+        a::RunState::Completed => match conclusion {
+            Some(a::Conclusion::Success) => d::StepStatus::Success,
+            Some(a::Conclusion::Failure) => d::StepStatus::Failure,
+            None => unreachable!("completed domain run or job has a conclusion"),
+        },
     }
 }

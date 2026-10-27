@@ -631,11 +631,12 @@ fn another_actor_an_old_run_or_another_event_cannot_prove_dispatch() {
 #[test]
 fn a_lost_rerun_is_found_by_a_later_attempt() {
     let expected = api::JobAttempt { head: [1; 32], run: 7, job: 10, attempt: 3 };
-    let mut h = lost_turn(Write::Rerun { job: expected });
+    let mut h = lost_turn(Write::Rerun { attempt: expected });
     let sent = h.one();
     assert_eq!(sent.op, Op::Read(Read::Run { run: 7 }));
     let mut run = super::turn::run();
     run.jobs = Box::new([api::RunJob {
+        steps: 0,
         id: 10,
         name: Box::from(*b"job"),
         attempt: 4,
@@ -650,9 +651,10 @@ fn a_lost_rerun_is_found_by_a_later_attempt() {
 #[test]
 fn a_rerun_at_the_saved_attempt_is_held_at_the_deadline() {
     let expected = api::JobAttempt { head: [1; 32], run: 7, job: 10, attempt: 3 };
-    let mut h = lost_turn(Write::Rerun { job: expected });
+    let mut h = lost_turn(Write::Rerun { attempt: expected });
     let mut run = super::turn::run();
     run.jobs = Box::new([api::RunJob {
+        steps: 0,
         id: 10,
         name: Box::new([]),
         attempt: 3,

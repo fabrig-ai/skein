@@ -336,7 +336,7 @@ fn operation(w: &Writing, phase: Phase) -> Op {
         }
         Phase::Find { page, after } => match &w.entry.effect.write {
             Write::Dispatch { branch, .. } => Read::Branch { branch: branch.clone() },
-            Write::Rerun { job } => Read::Run { run: job.run },
+            Write::Rerun { attempt: job } => Read::Run { run: job.run },
             Write::CreateIssue { .. } => Read::Items {
                 since: w.entry.start.expect("find has saved start").at,
                 page,

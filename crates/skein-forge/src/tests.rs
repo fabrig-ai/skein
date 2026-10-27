@@ -455,6 +455,7 @@ fn turn_measures_count_nested_strings_and_list_widths() {
         url: Box::from(*b"url"),
         created: Time::ZERO,
         jobs: Box::new([RunJob {
+            steps: 0,
             id: 2,
             name: Box::from(*b"job"),
             attempt: 1,

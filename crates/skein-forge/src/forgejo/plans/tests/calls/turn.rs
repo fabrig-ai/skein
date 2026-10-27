@@ -155,6 +155,7 @@ fn run_reads_jobs_and_the_first_failed_step() {
     let mut expected = run_value();
     expected.jobs = Box::new([
         api::RunJob {
+            steps: 0,
             id: 9,
             name: Box::from(*b"passed"),
             attempt: 1,
@@ -163,6 +164,7 @@ fn run_reads_jobs_and_the_first_failed_step() {
             step: None,
         },
         api::RunJob {
+            steps: 2,
             id: 10,
             name: Box::from(*b"failed"),
             attempt: 3,
@@ -191,9 +193,9 @@ fn dispatch_and_rerun_have_typed_empty_answers_and_refusals() {
         (dispatch(), 204, Ok(Answer::Done)),
         (dispatch(), 404, Err(Error::Missing)),
         (dispatch(), 403, Err(Error::Forbidden)),
-        (Write::Rerun { job: ATTEMPT }, 204, Ok(Answer::Done)),
-        (Write::Rerun { job: ATTEMPT }, 400, Err(Error::Refused)),
-        (Write::Rerun { job: ATTEMPT }, 403, Err(Error::Forbidden)),
+        (Write::Rerun { attempt: ATTEMPT }, 204, Ok(Answer::Done)),
+        (Write::Rerun { attempt: ATTEMPT }, 400, Err(Error::Refused)),
+        (Write::Rerun { attempt: ATTEMPT }, 403, Err(Error::Forbidden)),
     ] {
         let mut plan = known(Op::Write(write));
         round_request(plan.begin());

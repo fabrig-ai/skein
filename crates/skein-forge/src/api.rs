@@ -173,7 +173,7 @@ pub enum Write {
     /// Runs a workflow, by its file, at a branch's head; the forge keeps no key and answers no run.
     Dispatch { workflow: Box<[u8]>, branch: Box<[u8]>, inputs: Box<[Input]> },
     /// Runs one job again, with the jobs that need it, once its run has completed.
-    Rerun { job: JobAttempt },
+    Rerun { attempt: JobAttempt },
     /// Write create branch.
     CreateBranch { branch: Box<[u8]>, commit: Commit },
     /// Write delete branch.
@@ -557,6 +557,8 @@ pub enum Conclusion {
 /// One job of an Actions run (forge.md, 3.6).
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct RunJob {
+    /// Steps listed for a failed job; zero when its steps were not read.
+    pub steps: u32,
     pub id: u64,
     pub name: Box<[u8]>,
     pub attempt: u32,
