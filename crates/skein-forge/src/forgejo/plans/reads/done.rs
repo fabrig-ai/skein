@@ -319,7 +319,10 @@ impl Plan {
     pub(super) fn pull_checks(&mut self, answer: api::Answer, bounds: Bounds) -> Result<Option<Step>, api::Error> {
         let statuses = match answer {
             api::Answer::Checks(statuses) => statuses,
-            api::Answer::Items { .. }
+            api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
+            | api::Answer::Items { .. }
             | api::Answer::Item { .. }
             | api::Answer::Pull(_)
             | api::Answer::Reviews { .. }

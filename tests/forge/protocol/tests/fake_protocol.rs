@@ -157,6 +157,8 @@ fn pull_with_statuses(states: &[skein_fake_forge_domain::api::Check]) -> (Joint,
                 commit: head,
                 context: context.into_bytes().into_boxed_slice(),
                 state: *state,
+                description: Box::new([]),
+                link: Box::new([]),
             }))
             .expect("status");
     }
