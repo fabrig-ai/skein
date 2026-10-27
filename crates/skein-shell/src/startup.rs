@@ -21,6 +21,20 @@ pub use crate::system::{
     directory_access, effective_user, make_root, open_append, open_root, prepare_output, process_id,
 };
 
+/// Opens an independently owned launch directory beneath `root`, refusing
+/// paths that escape it (world.md, 3). Released by close or process exit.
+pub fn open_beneath(root: kernel::Fd, path: &[u8]) -> Result<kernel::Fd, kernel::Error> {
+    if path.contains(&0) {
+        return Err(kernel::Error::InvalidArgument);
+    }
+    crate::system::files::open(root, path, kernel::OpenHow::Directory).map(kernel::Fd::new).map_err(|errno| {
+        crate::calls::file_error(
+            &kernel::Op::Open { root, path: Box::from(path), how: kernel::OpenHow::Directory },
+            errno,
+        )
+    })
+}
+
 /// How startup adopts a standard output descriptor (io.md, section 5.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OutputKind {
