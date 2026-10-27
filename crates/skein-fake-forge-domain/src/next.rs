@@ -276,6 +276,16 @@ pub(crate) fn update(
         repository.has.insert(commit).expect("repository can retain every commit");
     }
     repository.branches.insert(copy_of(&branch), merged).expect("the head branch exists");
+    match style {
+        crate::api::UpdateStyle::Rebase => domain.observations.push(crate::Observation::Rebased {
+            repository: copy_of(&repository.name),
+            branch: copy_of(&branch),
+            from: head,
+            to: merged,
+            by: user,
+        }),
+        crate::api::UpdateStyle::Merge => {}
+    }
     git::moved(domain, env, id, &branch, Some(head), merged, user);
     Ok(Answer::Done)
 }
