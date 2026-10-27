@@ -30,6 +30,8 @@ const LIMITS: Limits = Limits {
     files: 2,
     statuses: 4,
     contexts: 2,
+    workflows: 0,
+    workflow_runs: 0,
     pages: 2,
     name_bytes: 16,
     title_bytes: 16,
@@ -59,6 +61,8 @@ const CONFIG: Config = Config {
     rate_limit: 1000,
     rate_window: Duration::from_secs(3600),
     ci: 9,
+    setup_faults: 0,
+    lost: 0,
     hook_min: Duration::from_secs(3600),
     hook_max: Duration::from_secs(3600),
     hooks_late: 0,
@@ -115,6 +119,7 @@ fn tree(tag: u8) -> Box<[File]> {
 
 fn setup(index: u64) -> Setup {
     Setup {
+        workflows: Box::new([]),
         id: u32::try_from(index).expect("scenario id fits").checked_add(1).expect("scenario id fits"),
         name: name(b'r', index),
         default: name(b'b', 0),
@@ -331,6 +336,7 @@ fn outcome(result: Result<Answer, Error>) -> Result<Option<u64>, Error> {
         | Answer::Dependencies(_)
         | Answer::Labels(_)
         | Answer::Commit(_)
+        | Answer::GitTree { .. }
         | Answer::Tree(_)
         | Answer::File(_)
         | Answer::Pages { .. }
@@ -436,7 +442,13 @@ fn fill(forge: &mut Measured, index: u64, first: u64) {
     }
     // The default branch's commit has statuses too, of every context.
     for context in 0..u64::from(LIMITS.contexts) {
-        let status = Write::Status { commit: first, context: name(b'c', context), state: Check::Passed };
+        let status = Write::Status {
+            commit: first,
+            context: name(b'c', context),
+            state: Check::Passed,
+            description: Box::new([]),
+            link: Box::new([]),
+        };
         forge.ok(AUTHOR, &repository, Op::Write(status));
     }
 }

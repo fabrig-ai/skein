@@ -149,6 +149,7 @@ impl Github {
             &mut domain,
             &config,
             raw::Setup {
+                workflows: Box::new([]),
                 id: 2,
                 name: Box::from(fixture::PATH),
                 default: Box::from(b"main".as_slice()),

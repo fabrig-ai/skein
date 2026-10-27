@@ -250,6 +250,8 @@ pub fn fake_config() -> skein_fake_forge_domain::Config {
             files: 4,
             statuses: 4,
             contexts: 4,
+            workflows: 0,
+            workflow_runs: 0,
             pages: 1,
             // A merge queue branch, gh-readonly-queue/<base>/pr-<n>-<sha>, is
             // 68 bytes here: the bound leaves it room.
@@ -277,6 +279,8 @@ pub fn fake_config() -> skein_fake_forge_domain::Config {
         rate_limit: 0,
         rate_window: Duration::from_secs(10),
         ci: 3,
+        setup_faults: 0,
+        lost: 0,
         hook_min: Duration::ZERO,
         hook_max: Duration::ZERO,
         hooks_late: 0,
