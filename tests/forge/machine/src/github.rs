@@ -466,6 +466,7 @@ fn fixture_domain(seed: u64, logs: bool) -> (fake::Domain, fake::Config) {
             &mut domain,
             &config,
             a::Setup {
+                workflows: Box::new([]),
                 id,
                 name: Box::from(name),
                 default: Box::from(if id == 4 { b"queue".as_slice() } else { b"main".as_slice() }),
