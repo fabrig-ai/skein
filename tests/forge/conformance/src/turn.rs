@@ -32,12 +32,8 @@ impl Probe<'_> {
     }
     fn fact(&mut self, name: &'static str, holds: bool, response: &Exchange) {
         // The recorder has scanned these bytes before any diagnostic is retained.
-        add(
-            &mut self.facts,
-            name,
-            holds,
-            &format!("HTTP {}: {}", response.status, crate::facts::diagnostic(&response.body)),
-        );
+        let body = self.recorder.mask.bytes(&response.body);
+        add(&mut self.facts, name, holds, &format!("HTTP {}: {}", response.status, crate::facts::diagnostic(&body)));
     }
     fn check(&mut self, name: &'static str, holds: bool, detail: &str) {
         add(&mut self.facts, name, holds, detail);
@@ -82,6 +78,7 @@ const NAMES: &[&str] = &[
     "tree-directory-id-answers-directory",
     "tree-pages-and-truncated",
     "tree-past-last-page-is-an-empty-array",
+    "tree-truncated-stays-true-on-short-last-page",
     "status-combined-keeps-description-and-target-url",
     "status-list-keeps-description-and-target-url",
     "merge-fast-forward-only-moves-base-to-head",
@@ -93,6 +90,7 @@ const NAMES: &[&str] = &[
     "update-rebase-conflict-is-409-and-keeps-head",
     "actions-dispatch-missing-workflow-is-404",
     "actions-dispatch-missing-branch-is-404",
+    "actions-dispatch-missing-branch-is-400",
     "actions-dispatch-is-204-with-no-body",
     "actions-rerun-running-is-400",
     "actions-dispatch-run-keeps-head-at-dispatch",

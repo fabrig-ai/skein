@@ -50,6 +50,9 @@ pub(super) fn record(p: &mut Probe<'_>) -> Result<()> {
         let answer = dispatch(p, name, workflow, branch)?;
         p.fact(name, answer.status == 404, &answer);
     }
+    let name = "actions-dispatch-missing-branch-is-400";
+    let answer = dispatch(p, name, "turn.yaml", "absent")?;
+    p.fact(name, answer.status == 400, &answer);
     let name = "actions-dispatch-is-204-with-no-body";
     let answer = dispatch(p, name, "turn.yaml", "dispatch")?;
     p.fact(name, answer.status == 204 && answer.body.is_empty(), &answer);
