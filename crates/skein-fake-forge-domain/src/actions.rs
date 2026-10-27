@@ -239,17 +239,6 @@ pub(crate) fn ci_reference(repository: &Repository, commit: u64, context: &[u8])
     None
 }
 
-pub(crate) fn context(run: &Run, job: &Job) -> Box<[u8]> {
-    let Some(file) = &run.workflow else { return copy_of(&job.name) };
-    let capacity =
-        file.len().checked_add(3).expect("bounded context").checked_add(job.name.len()).expect("bounded context");
-    let mut out = List::with_capacity(u32::try_from(capacity).expect("bounded context"));
-    append(&mut out, file);
-    append(&mut out, b" / ");
-    append(&mut out, &job.name);
-    out.into_boxed()
-}
-
 pub(crate) fn link(repository: &Repository, commit: u64, context: &[u8]) -> Box<[u8]> {
     let Some(reference) = ci_reference(repository, commit, context) else { return Box::new([]) };
     let kept = run(repository, reference.run).expect("the reference's run");

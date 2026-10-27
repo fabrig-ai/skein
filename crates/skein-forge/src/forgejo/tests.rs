@@ -502,6 +502,7 @@ fn each_refusal_message_reads_back_from_what_the_server_answers() {
         Refusal::MergeStyle,
         Refusal::HeadOutOfDate,
         Refusal::UpdateConflict,
+        Refusal::RebaseConflict,
         Refusal::Empty,
     ] {
         let (status, message) = failure::answer(refusal);

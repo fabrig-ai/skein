@@ -30,6 +30,7 @@ pub(crate) fn fields(kind: ActionKind) -> &'static [Field] {
                     field(b"commit_sha", Read::Id { empty: false }),
                     Field { key: b"workflow_id", read: Read::Text, required: false },
                     Field { key: b"event", read: Read::Text, required: false },
+                    Field { key: b"trigger_event", read: Read::Text, required: false },
                     Field {
                         key: b"trigger_actor",
                         read: Read::Object(Kind::Action(ActionKind::Actor)),
@@ -91,6 +92,7 @@ pub(super) struct Actions {
     total_count: u64,
     actor_seen: bool,
     created_seen: bool,
+    trigger_event_seen: bool,
 }
 impl Actions {
     pub(super) fn new(root: ActionKind) -> Self {
@@ -102,6 +104,7 @@ impl Actions {
             total_count: 0,
             actor_seen: false,
             created_seen: false,
+            trigger_event_seen: false,
         }
     }
     pub(super) fn step(&mut self, movement: Move, walk: &Walk) -> Step {
@@ -112,6 +115,7 @@ impl Actions {
                 if self.root == ActionKind::Listing {
                     self.actor_seen = false;
                     self.created_seen = false;
+                    self.trigger_event_seen = false;
                     return Step::Row(
                         Row::Run(core::mem::replace(&mut self.run, document::run())),
                         skein_json::tokenizer::Request::Next,
@@ -213,7 +217,15 @@ impl Actions {
             Value::Id(id) => self.run.commit_sha = id.expect("required run commit"),
             Value::Text(text) => match key {
                 b"workflow_id" => self.run.workflow = text,
-                b"event" => self.run.event = text,
+                b"event" => {
+                    if !self.trigger_event_seen {
+                        self.run.event = text;
+                    }
+                }
+                b"trigger_event" => {
+                    self.trigger_event_seen = true;
+                    self.run.event = text;
+                }
                 b"html_url" => self.run.html_url = text,
                 b"name" => self.job.name = text,
                 b"status" => {

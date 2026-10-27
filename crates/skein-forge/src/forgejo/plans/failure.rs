@@ -54,10 +54,15 @@ pub fn classify(asked: Asked, status: u16, refusal: Option<Refusal>, retry: Opti
                 drop = Drop::Row;
                 api::Error::Refused
             }
-            Some(Refusal::HeadOutOfDate | Refusal::UpdateConflict | Refusal::Empty) | None => api::Error::Refused,
+            Some(Refusal::HeadOutOfDate | Refusal::UpdateConflict | Refusal::RebaseConflict | Refusal::Empty)
+            | None => api::Error::Refused,
         },
         409 if asked == Asked::Merge && refusal == Some(Refusal::HeadOutOfDate) => api::Error::Stale,
-        409 if asked == Asked::Update && refusal == Some(Refusal::UpdateConflict) => api::Error::Conflict,
+        409 if asked == Asked::Update
+            && (refusal == Some(Refusal::UpdateConflict) || refusal == Some(Refusal::RebaseConflict)) =>
+        {
+            api::Error::Conflict
+        }
         422 if !read && refusal == Some(Refusal::Empty) => api::Error::Empty,
         500..=599 => api::Error::Timeout,
         400..=499 => {

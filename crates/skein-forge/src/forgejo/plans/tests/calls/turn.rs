@@ -257,3 +257,42 @@ fn an_empty_tree_page_is_null_on_the_wire_and_an_empty_answer() {
         assert_eq!(plan.answer(200, body), Step::Done(Ok(Answer::Tree { entries: Box::new([]), more: false })));
     }
 }
+
+#[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "step tests construct and inspect wire fixtures (testing-strategy.md, 4)"
+)]
+fn dispatch_trigger_event_takes_precedence_over_the_empty_payload_event() {
+    for fields in [
+        br#""event":"","trigger_event":"workflow_dispatch""#.as_slice(),
+        br#""trigger_event":"workflow_dispatch","event":"""#.as_slice(),
+    ] {
+        let original = core::str::from_utf8(RUN_DOC).expect("ASCII fixture");
+        let text =
+            original.replace("\"event\":\"workflow_dispatch\"", core::str::from_utf8(fields).expect("ASCII fields"));
+
+        let mut plan = known(Op::Read(Read::Runs { workflow: Box::from(*b"ci.yaml"), commit: HEAD, page: 1 }));
+        round_request(plan.begin());
+        let listing = [b"{\"total_count\":1,\"workflow_runs\":[".as_slice(), text.as_bytes(), b"]}"].concat();
+        assert_eq!(
+            plan.answer(200, &listing),
+            Step::Done(Ok(Answer::Runs { runs: Box::new([run_value()]), more: false }))
+        );
+    }
+    let bytes = server_answer(&server::Answer::Run(wire_run()));
+    assert!(
+        bytes
+            .windows(b"\"event\":\"\",\"trigger_event\":\"workflow_dispatch\"".len())
+            .any(|w| w == b"\"event\":\"\",\"trigger_event\":\"workflow_dispatch\"")
+    );
+}
+
+#[test]
+fn the_pinned_diverging_fast_forward_error_is_an_unknown_write_outcome() {
+    let message = crate::forgejo::failure::DIVERGING_FAST_FORWARD;
+    let body = server_answer(&server::Answer::Error(d::ErrorBody { message: d::Body::Kept(Box::from(message)) }));
+    let mut plan = known(Op::Write(Write::Merge { number: 1, head: HEAD, how: MergeHow::FastForwardOnly }));
+    round_request(plan.begin());
+    assert_eq!(plan.answer(500, &body), Step::Done(Err(Error::Timeout)));
+}

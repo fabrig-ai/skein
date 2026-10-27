@@ -13,10 +13,12 @@ fn dispatch(p: &mut Probe<'_>, name: &str, workflow: &str, branch: &str) -> Resu
         Some(&format!(r#"{{"ref":"{branch}","inputs":{{"word":"KIT_TURN_INPUT"}}}}"#)),
     )
 }
-fn wait_run(p: &mut Probe<'_>, head: &str) -> Result<u64> {
+fn wait_run(p: &mut Probe<'_>, head: &str, previous: u64) -> Result<u64> {
     for _ in 0..300 {
         let read = p.recorder.f.get(&listing(head, "turn.yaml", 1))?;
-        if let Some(id) = rows(&read, "workflow_runs")?.first().and_then(|r| r.get("id").u64()) {
+        if let Some(id) = rows(&read, "workflow_runs")?.first().and_then(|r| r.get("id").u64())
+            && id > previous
+        {
             return Ok(id);
         }
         pause();
@@ -51,7 +53,7 @@ pub(super) fn record(p: &mut Probe<'_>) -> Result<()> {
     let name = "actions-dispatch-is-204-with-no-body";
     let answer = dispatch(p, name, "turn.yaml", "dispatch")?;
     p.fact(name, answer.status == 204 && answer.body.is_empty(), &answer);
-    let run = wait_run(p, &before)?;
+    let run = wait_run(p, &before, 0)?;
     let jobs = p.get("actions-dispatch-jobs-before-rerun", &format!("{REPO}/actions/runs/{run}/jobs"))?;
     let job =
         rows(&jobs, "jobs")?.into_iter().find(|j| j.get("name").is("pass")).ok_or("dispatch passing job missing")?;
@@ -77,7 +79,7 @@ pub(super) fn record(p: &mut Probe<'_>) -> Result<()> {
             && statuses.iter().all(|s| s.get("url").str().is_some_and(|url| url.ends_with(&before)))
             && statuses.iter().any(|s| s.get("status").is("success"))
             && statuses.iter().any(|s| s.get("status").is("failure")),
-        "statuses do not carry both outcomes on dispatch head",
+        "completed dispatch has total_count:0 and statuses:null; no commit statuses",
     );
     let name = "actions-dispatch-only-workflow-push-starts-no-run";
     let read = p.get(name, &listing(&after, "turn.yaml", 1))?;
@@ -115,6 +117,15 @@ fn detail(p: &mut Probe<'_>, run: u64, job: u64, attempt: u64) -> Result<()> {
             && read.root().get("trigger_user").get("id").u64() == Some(p.recorder.f.owner.id)
             && read.root().get("created").str().is_some(),
         "expected event workflow_dispatch, trigger_user.id and created",
+    );
+    let name = "actions-dispatch-run-names-trigger-event-and-trigger-user";
+    let read = p.get(name, &format!("{REPO}/actions/runs/{run}"))?;
+    p.check(
+        name,
+        read.root().get("trigger_event").is("workflow_dispatch")
+            && read.root().get("trigger_user").get("id").u64() == Some(p.recorder.f.owner.id)
+            && read.root().get("created").str().is_some(),
+        "expected trigger_event, trigger_user.id and created",
     );
     let name = "actions-dispatch-run-jobs-list-both-outcomes";
     let read = p.get(name, &format!("{REPO}/actions/runs/{run}/jobs"))?;
@@ -158,7 +169,8 @@ fn filters(p: &mut Probe<'_>, before: &str, after: &str) -> Result<()> {
         if answer.status != 204 {
             return Err("filter fixture dispatch failed".into());
         }
-        ids.push(wait_run(p, after)?);
+        let previous = ids.last().copied().unwrap_or(0);
+        ids.push(wait_run(p, after, previous)?);
     }
     ids.reverse();
     let name = "actions-runs-filter-workflow-and-head-newest-first";
@@ -179,7 +191,7 @@ fn filters(p: &mut Probe<'_>, before: &str, after: &str) -> Result<()> {
             && all.iter().all(|r| {
                 r.get("workflow_id").is("turn.yaml")
                     && r.get("commit_sha").is(after)
-                    && r.get("event").is("workflow_dispatch")
+                    && r.get("trigger_event").is("workflow_dispatch")
                     && r.get("trigger_user").get("id").u64() == Some(p.recorder.f.owner.id)
             })
             && rows(&old, "workflow_runs")?.len() == 1,

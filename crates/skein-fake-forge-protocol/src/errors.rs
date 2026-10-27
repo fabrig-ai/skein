@@ -51,3 +51,21 @@ pub fn answer(error: Error, route: Route, now: Time) -> Failure {
     };
     failure
 }
+
+/// Refusals whose wire form depends on the requested merge or update style.
+#[must_use]
+pub fn for_request(error: Error, request: &skein_forge::forgejo::request::Request, now: Time) -> Failure {
+    use skein_forge::forgejo::{
+        document::MergeStyle,
+        request::{Request, UpdateStyle},
+    };
+    if error == Error::Conflict {
+        if let Request::Merge { style: MergeStyle::FastForwardOnly, .. } = request {
+            return Failure { status: 500, message: failure::DIVERGING_FAST_FORWARD, retry_after: None };
+        }
+        if let Request::Update { style: Some(UpdateStyle::Rebase), .. } = request {
+            return refusal(Refusal::RebaseConflict);
+        }
+    }
+    answer(error, crate::route(request), now)
+}
