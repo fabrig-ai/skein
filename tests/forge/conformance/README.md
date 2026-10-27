@@ -113,3 +113,7 @@ The upload creates an `actions_storage` container through `ACTIONS_RUNTIME_URL`,
 uploads the file with `Content-Range`, then finalizes its size. Authentication
 uses the step's `ACTIONS_RUNTIME_TOKEN`; captured curl diagnostics redact it.
 An upload failure stops recording with those supporting captures retained.
+
+`artifact-curl-attempt/` keeps the failed runtime-protocol upload: container
+creation returned 200, but Forgejo refused the first file chunk with 500,
+`Error save upload chunk`. It contains no populated artifact or archive facts.

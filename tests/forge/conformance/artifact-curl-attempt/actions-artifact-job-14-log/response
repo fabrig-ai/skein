@@ -1,0 +1,66 @@
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Cache-Control: max-age=0, private, must-revalidate
+Content-Type: text/plain; charset=utf-8
+Last-Modified: Wed, 01 Jan 2020 00:00:00 GMT
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+Date: Wed, 01 Jan 2020 00:00:00 GMT
+Connection: close
+Content-Length: 5562
+
+2020-01-01T00:00:51.0000000Z Runner 00000000-0000-0000-0000-000000000003 (version:v13.2.0) received task 15 of job upload, triggered by event: workflow_dispatch
+2020-01-01T00:00:52.0000000Z workflow prepared
+2020-01-01T00:00:53.0000000Z ⭐ Run Main set -eu\nset +x\nif [ -z "${ACTIONS_RUNTIME_URL:-}" ] || [ -z "${ACTIONS_RUNTIME_TOKEN:-}" ] || [ -z "${GITHUB_RUN_ID:-}" ]; then\n  printf 'ARTIFACT_PROTOCOL: run step has no runtime URL, token, or run id\n'\n  exit 1\nfi\nshow() {\n  local text\n  text=$(cat "$1")\n  printf '%s\n' "${text//"$ACTIONS_RUNTIME_TOKEN"/MASKED}"\n}\nexchange() {\n  local label method target status\n  label=$1; method=$2; target=$3; shift 3\n  printf 'ARTIFACT_PROTOCOL_BEGIN %s\n' "$label"\n  if status=$(curl --silent --show-error --verbose --stderr curl.trace --max-time 20 \\n    --request "$method" --header "Authorization: Bearer $ACTIONS_RUNTIME_TOKEN" \\n    --output response.json --write-out '%{http_code}' "$@" "$target"); then\n    show curl.trace\n    show response.json\n    printf 'ARTIFACT_PROTOCOL_END %s HTTP %s\n' "$label" "$status"\n    case "$status" in 2??) ;; *) return 1 ;; esac\n  else\n    show curl.trace\n    printf 'ARTIFACT_PROTOCOL_END %s transport failure\n' "$label"\n    return 1\n  fi\n}\nprintf 'a\nb\n' > failed.txt\nendpoint="${ACTIONS_RUNTIME_URL%/}/_apis/pipelines/workflows/$GITHUB_RUN_ID/artifacts"\nfor name in tests other; do\n  exchange "create-$name" POST "$endpoint?api-version=6.0-preview" \\n    --header 'Content-Type: application/json' \\n    --data "{\"Type\":\"actions_storage\",\"Name\":\"$name\"}"\n  container=$(sed -n 's/.*"fileContainerResourceUrl"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' response.json)\n  if [ -z "$container" ]; then\n    printf 'ARTIFACT_PROTOCOL: create returned no fileContainerResourceUrl\n'\n    exit 1\n  fi\n  case "$container" in *\?*) separator='&' ;; *) separator='?' ;; esac\n  exchange "upload-$name" PUT "$container${separator}itemPath=$name/failed.txt" \\n    --header 'Content-Type: application/octet-stream' \\n    --header 'Content-Range: bytes 0-3/4' --header 'x-tfs-filelength: 4' \\n    --data-binary @failed.txt\n  exchange "finalize-$name" PATCH "$endpoint?artifactName=$name&api-version=6.0-preview" \\n    --header 'Content-Type: application/json' --data '{"Size":4}'\ndone
+2020-01-01T00:00:54.0000000Z ARTIFACT_PROTOCOL_BEGIN create-tests
+2020-01-01T00:00:55.0000000Z *   Trying 127.0.0.1:3000...
+2020-01-01T00:00:56.0000000Z * Connected to 127.0.0.1 (127.0.0.1) port 35437
+2020-01-01T00:00:57.0000000Z * using HTTP/1.x
+2020-01-01T00:00:58.0000000Z > POST /api/actions_pipeline/_apis/pipelines/workflows/8/artifacts?api-version=6.0-preview HTTP/1.1
+2020-01-01T00:00:59.0000000Z > Host: 127.0.0.1:3000
+2020-01-01T00:01:00.0000000Z > User-Agent: curl/8.14.1
+2020-01-01T00:01:01.0000000Z > Accept: */*
+2020-01-01T00:01:02.0000000Z > Authorization: Bearer MASKED
+2020-01-01T00:01:03.0000000Z > Content-Type: application/json
+2020-01-01T00:01:04.0000000Z > Content-Length: 41
+2020-01-01T00:01:05.0000000Z > 
+2020-01-01T00:01:06.0000000Z } [41 bytes data]
+2020-01-01T00:01:07.0000000Z * upload completely sent off: 41 bytes
+2020-01-01T00:01:08.0000000Z < HTTP/1.1 200 OK
+2020-01-01T00:01:09.0000000Z < Content-Type: application/json;charset=utf-8
+2020-01-01T00:01:10.0000000Z < Date: Tue, 27 Oct 2026 10:00:51 GMT
+2020-01-01T00:01:11.0000000Z < Content-Length: 153
+2020-01-01T00:01:12.0000000Z < 
+2020-01-01T00:01:13.0000000Z { [153 bytes data]
+2020-01-01T00:01:14.0000000Z * Connection #0 to host 127.0.0.1 left intact
+2020-01-01T00:01:15.0000000Z {"fileContainerResourceUrl":"http://127.0.0.1:3000/api/actions_pipeline/_apis/pipelines/workflows/8/artifacts/b61a6d542f9036550ba9c401c80f00ef/upload"}
+2020-01-01T00:01:16.0000000Z ARTIFACT_PROTOCOL_END create-tests HTTP 200
+2020-01-01T00:01:17.0000000Z ARTIFACT_PROTOCOL_BEGIN upload-tests
+2020-01-01T00:01:18.0000000Z *   Trying 127.0.0.1:3000...
+2020-01-01T00:01:19.0000000Z * Connected to 127.0.0.1 (127.0.0.1) port 35437
+2020-01-01T00:01:20.0000000Z * using HTTP/1.x
+2020-01-01T00:01:21.0000000Z > PUT /api/actions_pipeline/_apis/pipelines/workflows/8/artifacts/b61a6d542f9036550ba9c401c80f00ef/upload?itemPath=tests/failed.txt HTTP/1.1
+2020-01-01T00:01:22.0000000Z > Host: 127.0.0.1:3000
+2020-01-01T00:01:23.0000000Z > User-Agent: curl/8.14.1
+2020-01-01T00:01:24.0000000Z > Accept: */*
+2020-01-01T00:01:25.0000000Z > Authorization: Bearer MASKED
+2020-01-01T00:01:26.0000000Z > Content-Type: application/octet-stream
+2020-01-01T00:01:27.0000000Z > Content-Range: bytes 0-3/4
+2020-01-01T00:01:28.0000000Z > x-tfs-filelength: 4
+2020-01-01T00:01:29.0000000Z > Content-Length: 4
+2020-01-01T00:01:30.0000000Z > 
+2020-01-01T00:01:31.0000000Z } [4 bytes data]
+2020-01-01T00:01:32.0000000Z * upload completely sent off: 4 bytes
+2020-01-01T00:01:33.0000000Z < HTTP/1.1 500 Internal Server Error
+2020-01-01T00:01:34.0000000Z < Content-Type: text/plain; charset=utf-8
+2020-01-01T00:01:35.0000000Z < X-Content-Type-Options: nosniff
+2020-01-01T00:01:36.0000000Z < Date: Tue, 27 Oct 2026 10:00:51 GMT
+2020-01-01T00:01:37.0000000Z < Content-Length: 24
+2020-01-01T00:01:38.0000000Z < 
+2020-01-01T00:01:39.0000000Z { [24 bytes data]
+2020-01-01T00:01:40.0000000Z * Connection #0 to host 127.0.0.1 left intact
+2020-01-01T00:01:41.0000000Z Error save upload chunk
+2020-01-01T00:01:42.0000000Z ARTIFACT_PROTOCOL_END upload-tests HTTP 500
+2020-01-01T00:01:43.0000000Z ⚙️ [runner]: RUN exit status 1
+2020-01-01T00:01:44.0000000Z 🏁  Job failed
+2020-01-01T00:01:45.0000000Z Job 'upload' failed
