@@ -391,5 +391,5 @@ pub(crate) fn moved(
     for &number in &following {
         hooks::notify(domain, env, id, Hook::item(Change::Pull, number, by));
     }
-    ci::start(domain, env, id, to);
+    ci::start(domain, env, id, to, by);
 }

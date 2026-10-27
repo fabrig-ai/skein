@@ -41,6 +41,8 @@ pub(crate) struct Repository {
     /// The statuses on its commits, by commit and context.
     pub(crate) runs: Map<u64, crate::actions::Kept>,
     pub(crate) run_number: u64,
+    pub(crate) workflows: Box<[crate::api::Workflow]>,
+    pub(crate) dispatched: Map<u64, crate::actions::Kept>,
     pub(crate) statuses: Map<u64, Map<Box<[u8]>, Status>>,
     pub(crate) wiki: Map<Box<[u8]>, Page>,
     /// The last revision given to a wiki page.
@@ -109,12 +111,15 @@ pub(crate) struct Kept {
 }
 
 /// A context's status on a commit, and whether CI ran it again.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct Status {
     pub(crate) state: Check,
     pub(crate) author: u64,
     pub(crate) at: Time,
     pub(crate) rerun: bool,
+    pub(crate) job: Option<crate::api::JobRef>,
+    pub(crate) description: Box<[u8]>,
+    pub(crate) link: Box<[u8]>,
 }
 
 /// A wiki page.
@@ -163,6 +168,8 @@ impl Repository {
             has: Set::with_capacity(limits.commits),
             runs: Map::with_capacity(limits.statuses),
             run_number: 0,
+            workflows: Box::new([]),
+            dispatched: Map::with_capacity(limits.workflow_runs),
             statuses: Map::with_capacity(limits.statuses),
             wiki: Map::with_capacity(limits.pages),
             revisions: 0,

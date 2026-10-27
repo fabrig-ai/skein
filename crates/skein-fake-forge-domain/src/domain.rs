@@ -69,6 +69,10 @@ pub struct Config {
     pub rate_window: Duration,
     /// The user CI reports as.
     pub ci: u64,
+    /// Per mille: a dispatched job fails during set-up.
+    pub setup_faults: u32,
+    /// Per mille per job: its run loses the job, with no failed step.
+    pub lost: u32,
     /// The time to deliver a webhook is drawn from `hook_min..=hook_max`, or,
     /// for the `hooks_late` chance of them, from `late_min..=late_max`; and
     /// the `hooks_lost` chance of them is never delivered.
@@ -208,6 +212,11 @@ pub(crate) enum Alarm {
     },
     /// The webhook is delivered.
     Hook(Id<Delivery>),
+    Workflow {
+        repository: Id<Repository>,
+        run: u64,
+        job: u64,
+    },
     /// A queue admission is processed on the forge clock.
     Queue(Id<Repository>),
 }
@@ -487,6 +496,7 @@ pub fn fire(domain: &mut Domain, env: &Env<Config>, out: &mut Queue<Request>) {
         Alarm::Call(id) => answer(domain, env, id, out),
         Alarm::Check { repository, commit, context } => ci::report(domain, env, repository, commit, context),
         Alarm::Rerun { repository, commit, context } => ci::rerun(domain, env, repository, commit, context),
+        Alarm::Workflow { repository, run, job } => crate::dispatch::report(domain, env, repository, run, job),
         Alarm::Hook(id) => hooks::deliver(domain, id, out),
         Alarm::Queue(id) => crate::queue::process(domain, env, id),
     }
@@ -509,7 +519,7 @@ fn call(
         out.push(Request::Reply { to: reply_to, result: Err(Error::Unavailable) });
         return;
     }
-    // A delayed API branch creation must not retain an unbounded name.
+    // A delayed write retains only admitted names and payloads.
     // Oversized input takes the ordinary refusal path instead.
     let can_land = match &op {
         Op::Write(write) => match write {
@@ -517,8 +527,20 @@ fn call(
                 crate::store::fits(branch, env.limits.limits.name_bytes).is_ok()
                     && crate::store::fits(repository, env.limits.limits.name_bytes).is_ok()
             }
+            Write::Dispatch { workflow, branch, inputs } => {
+                crate::dispatch::fits(&env.limits.limits, workflow, branch, inputs).is_ok()
+                    && crate::store::fits(repository, env.limits.limits.name_bytes).is_ok()
+            }
+            Write::Status { context, description, link, .. } => {
+                let limits = &env.limits.limits;
+                crate::store::fits(repository, limits.name_bytes).is_ok()
+                    && crate::store::fits(context, limits.name_bytes).is_ok()
+                    && crate::store::fits(description, limits.body_bytes).is_ok()
+                    && crate::store::fits(link, limits.body_bytes.max(limits.name_bytes.saturating_add(51))).is_ok()
+            }
             Write::Update { .. } => crate::store::fits(repository, env.limits.limits.name_bytes).is_ok(),
-            Write::SetProtection { .. }
+            Write::Rerun { .. }
+            | Write::SetProtection { .. }
             | Write::CreateIssue { .. }
             | Write::Comment { .. }
             | Write::EditItem { .. }
@@ -540,7 +562,6 @@ fn call(
             | Write::Close { .. }
             | Write::Reopen { .. }
             | Write::DeleteBranch { .. }
-            | Write::Status { .. }
             | Write::PutPage { .. }
             | Write::DeletePage { .. } => true,
         },
@@ -584,46 +605,7 @@ fn execute(domain: &mut Domain, env: &Env<Config>, user: u64, repository: &[u8],
         return Err(Error::Missing(What::Repository));
     };
     match op {
-        Op::Read(read) => {
-            let repository = domain.repositories.get(id).expect("a named repository");
-            if read == Read::ListingPermission {
-                return Ok(Answer::Permission(repository.permission(user)));
-            }
-            repository.require(user, Permission::Read)?;
-            match &read {
-                Read::Protection { .. } => repository.require(user, Permission::Admin)?,
-                Read::ListingPermission
-                | Read::Locate
-                | Read::Items { .. }
-                | Read::Item { .. }
-                | Read::Comment { .. }
-                | Read::Dependencies { .. }
-                | Read::Pull { .. }
-                | Read::PullFiles { .. }
-                | Read::Compare { .. }
-                | Read::Checks { .. }
-                | Read::Runs { .. }
-                | Read::Run { .. }
-                | Read::Jobs { .. }
-                | Read::Comments { .. }
-                | Read::FirstPull { .. }
-                | Read::OpenPulls { .. }
-                | Read::Job { .. }
-                | Read::Log { .. }
-                | Read::PullFor { .. }
-                | Read::Statuses { .. }
-                | Read::Permission { .. }
-                | Read::Branch { .. }
-                | Read::Tree { .. }
-                | Read::File { .. }
-                | Read::Pages { .. }
-                | Read::Page { .. }
-                | Read::Labels
-                | Read::Settings
-                | Read::Collaborators => {}
-            }
-            reads::read(domain, &env.limits, id, &read)
-        }
+        Op::Read(read) => authorized_read(domain, &env.limits, id, user, &read),
         Op::Write(write) => match write {
             Write::SetProtection { protection } => {
                 let limits = &env.limits.limits;
@@ -664,16 +646,70 @@ fn execute(domain: &mut Domain, env: &Env<Config>, user: u64, repository: &[u8],
             Write::Review { number, verdict, body } => pulls::review(domain, env, id, user, number, verdict, body),
             Write::Submit { number, review, verdict } => pulls::submit(domain, env, id, user, number, review, verdict),
             Write::Enqueue { number, head } => pulls::enqueue(domain, env, id, user, number, head),
-            Write::Merge { number, head } => pulls::merge(domain, env, id, user, number, head),
-            Write::Update { number } => crate::next::update(domain, env, id, user, number),
+            Write::Merge { number, head, how } => pulls::merge(domain, env, id, user, number, head, how),
+            Write::Update { number, style } => crate::next::update(domain, env, id, user, number, style),
             Write::CreateBranch { branch, commit } => git::create(domain, env, id, user, &branch, commit),
             Write::DeleteBranch { branch } => git::delete(domain, env, id, user, &branch),
-            Write::Status { commit, context, state } => ci::status(domain, env, id, user, commit, context, state),
+            Write::Status { commit, context, state, description, link } => {
+                ci::status(domain, env, id, user, commit, context, state, description, link)
+            }
+            Write::Dispatch { workflow, branch, inputs } => {
+                crate::dispatch::dispatch(domain, env, id, user, workflow, branch, inputs)
+            }
+            Write::Rerun { job } => crate::dispatch::rerun(domain, env, id, user, job),
             Write::PutPage { name, content } => wiki::put(domain, env, id, user, name, content),
             Write::DeletePage { name } => wiki::delete(domain, env, id, user, &name),
         },
         Op::Git(git) => git::serve(domain, env, id, user, git),
     }
+}
+
+fn authorized_read(
+    domain: &Domain,
+    config: &Config,
+    id: Id<Repository>,
+    user: u64,
+    read: &Read,
+) -> Result<Answer, Error> {
+    let repository = domain.repositories.get(id).expect("a named repository");
+    if *read == Read::ListingPermission {
+        return Ok(Answer::Permission(repository.permission(user)));
+    }
+    repository.require(user, Permission::Read)?;
+    match read {
+        Read::Protection { .. } => repository.require(user, Permission::Admin)?,
+        Read::ListingPermission
+        | Read::Locate
+        | Read::Items { .. }
+        | Read::Item { .. }
+        | Read::Comment { .. }
+        | Read::Dependencies { .. }
+        | Read::Pull { .. }
+        | Read::PullFiles { .. }
+        | Read::Compare { .. }
+        | Read::Checks { .. }
+        | Read::Runs { .. }
+        | Read::Run { .. }
+        | Read::Jobs { .. }
+        | Read::Comments { .. }
+        | Read::FirstPull { .. }
+        | Read::OpenPulls { .. }
+        | Read::Job { .. }
+        | Read::Log { .. }
+        | Read::PullFor { .. }
+        | Read::Statuses { .. }
+        | Read::Permission { .. }
+        | Read::Branch { .. }
+        | Read::GitTree { .. }
+        | Read::Tree { .. }
+        | Read::File { .. }
+        | Read::Pages { .. }
+        | Read::Page { .. }
+        | Read::Labels
+        | Read::Settings
+        | Read::Collaborators => {}
+    }
+    reads::read(domain, config, id, read)
 }
 
 /// A write or a git call on `repository` was refused: observed, if the
