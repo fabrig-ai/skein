@@ -94,7 +94,7 @@ fn read_rows() -> [(Request, Route, Op); 26] {
         (
             Request::Runs { at: at(), head_sha: oid, run_number: 7, page: p },
             Route::Runs,
-            Op::Read(Read::Runs { commit: 9, number: 7 }),
+            Op::Read(Read::Runs { workflow: None, commit: Some(9), number: Some(7), page: 1, limit: 1 }),
         ),
         (Request::Run { at: at(), run: 7 }, Route::Run, Op::Read(Read::Run { run: 7 })),
         (Request::Jobs { at: at(), run: 7 }, Route::Jobs, Op::Read(Read::Jobs { run: 7 })),
@@ -182,9 +182,13 @@ fn write_rows() -> [(Request, Route, Write); 14] {
         (
             Request::Merge { at: at(), number: 3, style: d::MergeStyle::Squash, head: routes::object(9) },
             Route::Merge,
-            Write::Merge { number: 3, head: 9 },
+            Write::Merge { number: 3, head: 9, how: a::MergeHow::Style },
         ),
-        (Request::Update { at: at(), number: 3, style: None }, Route::Update, Write::Update { number: 3 }),
+        (
+            Request::Update { at: at(), number: 3, style: None },
+            Route::Update,
+            Write::Update { number: 3, style: a::UpdateStyle::Merge },
+        ),
         (
             Request::PostStatus {
                 at: at(),
@@ -193,7 +197,13 @@ fn write_rows() -> [(Request, Route, Write); 14] {
                 state: d::StatusState::Failure,
             },
             Route::PostStatus,
-            Write::Status { commit: 9, context: boxed(b"ci"), state: a::Check::Failed },
+            Write::Status {
+                commit: 9,
+                context: boxed(b"ci"),
+                state: a::Check::Failed,
+                description: Box::new([]),
+                link: Box::new([]),
+            },
         ),
         (
             Request::CreateBranch { at: at(), branch: boxed(b"work"), from: routes::object(9) },

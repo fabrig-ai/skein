@@ -254,9 +254,13 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
         Request::Raw { reference, path, .. } => {
             Read::File { commit: commit(reference).ok_or(missing)?, path: path.clone() }
         }
-        Request::Runs { head_sha, run_number, .. } => {
-            Read::Runs { commit: commit(head_sha).ok_or(missing)?, number: *run_number }
-        }
+        Request::Runs { head_sha, run_number, .. } => Read::Runs {
+            workflow: None,
+            commit: Some(commit(head_sha).ok_or(missing)?),
+            number: Some(*run_number),
+            page: 1,
+            limit: 1,
+        },
         Request::Run { run, .. } => Read::Run { run: *run },
         Request::Job { job, .. } => Read::Job { job: *job },
         Request::Jobs { run, .. } => Read::Jobs { run: *run },
@@ -321,13 +325,17 @@ fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
             if *style != d::MergeStyle::Squash {
                 return Err(a::Error::Refused);
             }
-            Ok(Op::Write(Write::Merge { number: *number, head: commit(head).ok_or(missing)? }))
+            Ok(Op::Write(Write::Merge { number: *number, head: commit(head).ok_or(missing)?, how: a::MergeHow::Style }))
         }
-        Request::Update { number, .. } => Ok(Op::Write(Write::Update { number: *number })),
+        Request::Update { number, .. } => {
+            Ok(Op::Write(Write::Update { number: *number, style: a::UpdateStyle::Merge }))
+        }
         Request::PostStatus { commit: id, context, state, .. } => Ok(Op::Write(Write::Status {
             commit: commit(id).ok_or(missing)?,
             context: context.clone(),
             state: check(*state),
+            description: Box::new([]),
+            link: Box::new([]),
         })),
         Request::CreateBranch { branch, from, .. } => {
             Ok(Op::Write(Write::CreateBranch { branch: branch.clone(), commit: commit(from).ok_or(missing)? }))

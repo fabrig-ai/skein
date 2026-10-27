@@ -197,6 +197,7 @@ pub(super) fn down(
             | api::Answer::Comment { .. }
             | api::Answer::Dependencies(_)
             | api::Answer::Labels(_)
+            | api::Answer::GitTree { .. }
             | api::Answer::Tree(_)
             | api::Answer::File(_)
             | api::Answer::Pages { .. }
