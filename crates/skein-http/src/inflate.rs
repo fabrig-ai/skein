@@ -1,10 +1,5 @@
-//! The fake's own inflater (fake-llm.md, section 3.1): a request body sent
-//! with `Content-Encoding: gzip` read back from its gzip member (RFC 1952),
-//! DEFLATE inside (RFC 1951), into the room the server already holds for a
-//! body. Simple over fast: one bit at a time, one symbol's code searched
-//! width by width, and the CRC-32 reckoned bit by bit. A member that is
-//! malformed, carries flags or trailing bytes, fails its CRC or ISIZE, or
-//! inflates past the room is refused as `None`.
+//! Bounded gzip and raw DEFLATE decoding (RFC 1951 and RFC 1952).
+//! Malformed streams and output past the caller's capacity are refused.
 
 use skein_lib::List;
 
@@ -88,17 +83,40 @@ const DISTANCES: [(u16, u8); 30] = [
 /// widths are sent together, and a width code has 19.
 const SYMBOLS: usize = 320;
 
-/// Inflates `member` into `out`, which is cleared first; the worlds read
-/// a sent gzip body back through it too.
-pub fn inflate(member: &[u8], out: &mut List<u8>) -> Option<()> {
+/// Inflates one gzip member into `out`, clearing it first. Flags, trailing
+/// bytes, a bad CRC or size, and output past its capacity return `None`.
+pub fn gzip(member: &[u8], out: &mut List<u8>) -> Option<()> {
     out.clear();
     if member.get(..4)? != MAGIC.as_slice() {
         return None;
     }
-    let mut input = Input { bytes: member.get(HEADER..)?, bit: 0 };
+    let data = member.get(HEADER..)?;
+    let at = blocks(data, out)?;
+    let trailer = data.get(at..)?;
+    let check = <[u8; 4]>::try_from(trailer.get(..4)?).ok()?;
+    let size = <[u8; 4]>::try_from(trailer.get(4..)?).ok()?;
+    if u32::from_le_bytes(check) != crc(out.as_slice()) || u32::from_le_bytes(size) != out.len() {
+        return None;
+    }
+    Some(())
+}
+
+/// Inflates exactly one raw DEFLATE stream, clearing `out` first.
+/// Its fixed capacity is the output limit; no trailing bytes are accepted.
+pub fn deflate(data: &[u8], out: &mut List<u8>) -> Option<()> {
+    out.clear();
+    let end = blocks(data, out)?;
+    if end != data.len() {
+        return None;
+    }
+    Some(())
+}
+
+fn blocks(data: &[u8], out: &mut List<u8>) -> Option<usize> {
+    let mut input = Input { bytes: data, bit: 0 };
     let mut last = false;
-    // Each block takes three bits at least, so the member's bits bound them.
-    for _block in 0..=member.len() {
+    // Each block takes at least three bits.
+    for _block in 0..=data.len() {
         if last {
             break;
         }
@@ -119,14 +137,7 @@ pub fn inflate(member: &[u8], out: &mut List<u8>) -> Option<()> {
     if !last {
         return None;
     }
-    let at = input.align()?;
-    let trailer = input.bytes.get(at..)?;
-    let check = <[u8; 4]>::try_from(trailer.get(..4)?).ok()?;
-    let size = <[u8; 4]>::try_from(trailer.get(4..)?).ok()?;
-    if u32::from_le_bytes(check) != crc(out.as_slice()) || u32::from_le_bytes(size) != out.len() {
-        return None;
-    }
-    Some(())
+    input.align()
 }
 
 /// A member's DEFLATE data read bit by bit, each byte's lowest bit first
@@ -318,9 +329,10 @@ fn codes(input: &mut Input<'_>, out: &mut List<u8>, literals: &Code, distances: 
     None
 }
 
-/// The CRC-32 of the inflated body (RFC 1952, 8), bit by bit with the
+/// The CRC-32 of the body (RFC 1952, 8), bit by bit with the
 /// reflected polynomial: the encoder's table is not consulted.
-fn crc(body: &[u8]) -> u32 {
+#[must_use]
+pub fn crc(body: &[u8]) -> u32 {
     let mut crc = u32::MAX;
     for byte in body {
         crc ^= u32::from(*byte);
@@ -329,91 +341,4 @@ fn crc(body: &[u8]) -> u32 {
         }
     }
     !crc
-}
-
-#[cfg(test)]
-#[expect(clippy::disallowed_types, clippy::disallowed_macros, reason = "a test builds bodies and members in a Vec")]
-#[expect(clippy::disallowed_methods, reason = "fixtures are built with ordinary iterators and slices")]
-#[expect(
-    clippy::arithmetic_side_effects,
-    clippy::default_numeric_fallback,
-    reason = "the fixtures' sizes and offsets use ordinary test arithmetic"
-)]
-mod tests {
-    use super::*;
-    use alloc::vec::Vec;
-
-    /// `body` through the client's encoder, as the Codex route sends it.
-    fn encoded(body: &[u8]) -> Vec<u8> {
-        let mut member = vec![0; skein_http::gzip::bound(body.len()).expect("a bounded body")];
-        let length = skein_http::gzip::encode(body, &mut member).expect("room for the member");
-        member.truncate(length);
-        member
-    }
-
-    fn inflated(member: &[u8], room: u32) -> Option<Vec<u8>> {
-        let mut out = List::with_capacity(room);
-        inflate(member, &mut out).map(|()| out.as_slice().to_vec())
-    }
-
-    fn hex(text: &str) -> Vec<u8> {
-        (0..text.len()).step_by(2).map(|at| u8::from_str_radix(&text[at..at + 2], 16).expect("hex")).collect()
-    }
-
-    #[test]
-    fn what_the_encoder_sends_inflates_to_the_body() {
-        let mut state = 0x2545_f491_u32;
-        let noise: Vec<u8> = (0..70_000)
-            .map(|_| {
-                state ^= state << 13_u32;
-                state ^= state >> 17_u32;
-                state ^= state << 5_u32;
-                state.to_le_bytes()[0]
-            })
-            .collect();
-        let text = br#"{"model":"fixture","input":[{"type":"message","content":"Hello"}]}"#.repeat(900);
-        let run = vec![7; 300_000];
-        for body in [&b""[..], b"x", &text, &noise, &run] {
-            let member = encoded(body);
-            let room = u32::try_from(body.len()).expect("a bounded body");
-            assert_eq!(inflated(&member, room).as_deref(), Some(body));
-        }
-    }
-
-    #[test]
-    fn stored_and_fixed_blocks_inflate_too() {
-        // Python's zlib at level 0, and with Z_FIXED.
-        let stored = hex("1f8b0800000000000403010f00f0ff73746f7265642061732069742069736578d15a0f000000");
-        assert_eq!(inflated(&stored, 15).as_deref(), Some(&b"stored as it is"[..]));
-        let fixed = hex("1f8b08000000000002034b5448cbac484d5148ce4f49d55148c4c903005ef3d59928000000");
-        assert_eq!(inflated(&fixed, 40).as_deref(), Some(&b"a fixed code, a fixed code, a fixed code"[..]));
-    }
-
-    #[test]
-    fn a_member_that_is_not_whole_and_checked_is_refused() {
-        let body = b"a body the server holds room for, a body the server holds room for";
-        let member = encoded(body);
-        let room = u32::try_from(body.len()).expect("a bounded body");
-        assert!(inflated(&member, room).is_some());
-        let changed = |at: usize, bits: u8| {
-            let mut member = member.clone();
-            member[at] ^= bits;
-            member
-        };
-        let crc = member.len() - 8;
-        let size = member.len() - 4;
-        for refused in [
-            changed(0, 1),    // not gzip
-            changed(2, 1),    // not DEFLATE
-            changed(3, 8),    // a file name follows
-            changed(crc, 1),  // the CRC-32 fails
-            changed(size, 1), // ISIZE fails
-            member[..member.len() - 1].to_vec(),
-            member[..HEADER + 2].to_vec(),
-            [&member[..], &[0]].concat(), // a byte trails the member
-        ] {
-            assert_eq!(inflated(&refused, room), None);
-        }
-        assert_eq!(inflated(&member, room - 1), None, "past the room");
-    }
 }
