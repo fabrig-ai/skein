@@ -143,3 +143,41 @@ fn a_killed_real_host_releases_its_startup_append_descriptors() {
     assert_eq!(outcome.killed.len(), 1);
     assert_scratch_closed(descriptors);
 }
+
+fn launch_directory(dir: &[u8], exchange: bool) -> (real::Outcome<Script>, Scratch) {
+    use skein_world_tests::launch;
+    let scratch = Scratch::new("launch-directory");
+    std::fs::create_dir_all(scratch.path().join("run/work")).expect("launch tree");
+    std::fs::create_dir(scratch.path().join("work")).expect("other directory");
+    let root = open_root(scratch.path()).expect("parent root");
+    let mut world = real::World::new(Judge);
+    world.host_roots(launch::program(), launch::roots);
+    world.spawn_with_fds(vec![root], || launch::parent(root, scratch.path().as_os_str().as_bytes(), dir, exchange));
+    (world.run(&Clock::new(), Duration::from_secs(2)), scratch)
+}
+
+#[test]
+fn a_hosted_child_inherits_its_launch_directory() {
+    let descriptors = descriptor_count();
+    let (outcome, scratch) = launch_directory(b"work", true);
+    assert_eq!(outcome.procs[0].child_exit, Some(Exit::Code(0)));
+    assert_eq!(
+        std::fs::read(scratch.path().join("run/work/note")).expect("child output"),
+        skein_world_tests::launch::CONTENT
+    );
+    for path in ["note", "run/note", "work/note"] {
+        assert!(!scratch.path().join(path).exists(), "no file at {path}");
+    }
+    assert_scratch_closed(descriptors);
+}
+
+#[test]
+fn a_launch_directory_beneath_nothing_refuses_the_spawn() {
+    for (dir, error) in [(b"missing".as_slice(), Error::NotFound), (b"..", Error::Escape), (b"/", Error::Escape)] {
+        let descriptors = descriptor_count();
+        let (outcome, _scratch) = launch_directory(dir, false);
+        assert_eq!(outcome.procs.len(), 1, "{dir:?}: no child admitted");
+        assert!(outcome.procs[0].results.contains(&Err(error)), "{dir:?}: the open's error");
+        assert_scratch_closed(descriptors);
+    }
+}

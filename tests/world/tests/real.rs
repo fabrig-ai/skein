@@ -160,10 +160,16 @@ impl skein_world::Referee<Script> for SignalJudge {
 fn referee_real_signal_reaches_only_the_signalfd_reader_and_pipe_signal_reaches_its_host() {
     let mut world = real::World::new_controlled(|control| SignalJudge { control, child: false, sent: false });
     world.spawn_signalfd(|signal| {
-        Script::child(&Inherited { roots: vec![], appends: vec![], pipes: vec![], signal }, &[Act::ReadSignal])
+        Script::child(
+            &Inherited { dir: None, roots: vec![], appends: vec![], pipes: vec![], signal },
+            &[Act::ReadSignal],
+        )
     });
     world.spawn_signals(|signal| {
-        Script::child(&Inherited { roots: vec![], appends: vec![], pipes: vec![], signal }, &[Act::ReadSignal])
+        Script::child(
+            &Inherited { dir: None, roots: vec![], appends: vec![], pipes: vec![], signal },
+            &[Act::ReadSignal],
+        )
     });
     let outcome = world.run(&Clock::new(), Duration::from_secs(2));
     assert_eq!(outcome.procs[0].signals, [skein_io::kernel::ServiceSignal::Terminate]);
