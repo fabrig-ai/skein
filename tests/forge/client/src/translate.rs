@@ -140,11 +140,17 @@ fn write_op(write: &client::Write) -> forge::Write {
         }
         client::Write::Close { number } => forge::Write::Close { number: *number },
         client::Write::Reopen { number } => forge::Write::Reopen { number: *number },
-        client::Write::Merge { number: pull, head } => forge::Write::Merge { number: *pull, head: number(*head) },
-        client::Write::Update { number } => forge::Write::Update { number: *number },
-        client::Write::Status { commit, context, check } => {
-            forge::Write::Status { commit: number(*commit), context: context.clone(), state: check_out(*check) }
+        client::Write::Merge { number: pull, head } => {
+            forge::Write::Merge { number: *pull, head: number(*head), how: forge::MergeHow::Style }
         }
+        client::Write::Update { number } => forge::Write::Update { number: *number, style: forge::UpdateStyle::Merge },
+        client::Write::Status { commit, context, check } => forge::Write::Status {
+            commit: number(*commit),
+            context: context.clone(),
+            state: check_out(*check),
+            description: Box::new([]),
+            link: Box::new([]),
+        },
         client::Write::CreateBranch { branch, commit } => {
             forge::Write::CreateBranch { branch: branch.clone(), commit: number(*commit) }
         }
@@ -272,6 +278,7 @@ pub fn answer(asked: &client::Op, answer: forge::Answer, l: &Limits) -> client::
         forge::Answer::Comment { .. }
         | forge::Answer::Dependencies(_)
         | forge::Answer::Labels(_)
+        | forge::Answer::GitTree { .. }
         | forge::Answer::Tree(_)
         | forge::Answer::Pages { .. }
         | forge::Answer::Page(_)

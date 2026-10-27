@@ -415,7 +415,16 @@ fn bounded_job_bytes_translate_to_a_truncated_attempt_log() {
     let result = skein_forge_client_world::translate::answer(
         &asked,
         skein_fake_forge_domain::api::Answer::Job {
-            job: skein_fake_forge_domain::api::Job { id: 7, run: 3, index: 0, attempt: 2 },
+            job: skein_fake_forge_domain::api::Job {
+                id: 7,
+                run: 3,
+                index: 0,
+                attempt: 2,
+                name: Box::new([]),
+                state: skein_fake_forge_domain::api::RunState::Completed,
+                conclusion: Some(skein_fake_forge_domain::api::Conclusion::Failure),
+                steps: Box::new([]),
+            },
             steps: Box::new([
                 skein_fake_forge_domain::api::Step {
                     number: 0,
