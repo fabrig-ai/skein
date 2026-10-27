@@ -31,6 +31,7 @@ fn harness_with_default(default: &[u8]) -> Harness {
             &mut h.domain,
             &h.fake_env.limits,
             a::Setup {
+                workflows: Box::new([]),
                 id,
                 name: boxed(name),
                 default: boxed(default),

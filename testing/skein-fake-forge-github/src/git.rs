@@ -215,6 +215,7 @@ pub(crate) fn render(name: Name, result: Result<api::Answer, api::Error>, bounds
             | api::Answer::Comment { .. }
             | api::Answer::Dependencies(_)
             | api::Answer::Labels(_)
+            | api::Answer::GitTree { .. }
             | api::Answer::Tree(_)
             | api::Answer::File(_)
             | api::Answer::Pages { .. }
