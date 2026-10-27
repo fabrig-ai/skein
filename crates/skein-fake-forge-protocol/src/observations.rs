@@ -65,6 +65,19 @@ fn render(json: &mut Encoder, record: &Recorded) -> Option<()> {
                         None => json.null(),
                     }
                 }
+                Observation::Rebased { repository, branch, from, to, by } => {
+                    json.string(b"rebased");
+                    json.key(b"repository");
+                    json.string(repository);
+                    json.key(b"branch");
+                    json.string(branch);
+                    json.key(b"from");
+                    json.unsigned(*from);
+                    json.key(b"to");
+                    json.unsigned(*to);
+                    json.key(b"by");
+                    json.unsigned(*by);
+                }
                 Observation::Deleted { repository, branch, at, by } => {
                     json.string(b"deleted");
                     json.key(b"repository");
