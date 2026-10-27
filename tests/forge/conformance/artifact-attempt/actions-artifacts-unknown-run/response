@@ -1,0 +1,10 @@
+HTTP/1.1 404 Not Found
+Cache-Control: max-age=0, private, must-revalidate
+Content-Type: application/json;charset=utf-8
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+Date: Wed, 01 Jan 2020 00:00:00 GMT
+Connection: close
+Content-Length: 98
+
+{"message":"run with id 9999: resource does not exist","url":"http://127.0.0.1:3000/api/swagger"}
