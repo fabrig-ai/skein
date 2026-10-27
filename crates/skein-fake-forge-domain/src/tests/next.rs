@@ -18,7 +18,10 @@ fn clean_update_keeps_two_parents_reports_hooks_and_checks_the_new_head() {
     h.settle();
     assert_eq!(h.pull(number).statuses[0].state, Check::Passed);
     let base = crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"ci", b"red", MAINTAINER).unwrap();
-    assert_eq!(h.call(ENGINE, write(Write::Update { number })), Ok(Answer::Done));
+    assert_eq!(
+        h.call(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Merge })),
+        Ok(Answer::Done)
+    );
     let pull = h.pull(number);
     assert_ne!(pull.commit, work);
     assert_eq!(pull.statuses[0].state, Check::Pending);
@@ -38,7 +41,10 @@ fn clean_update_keeps_two_parents_reports_hooks_and_checks_the_new_head() {
         Request::Reply { .. } => false,
     }));
     let remaining = h.domain.room().commits;
-    assert_eq!(h.call(ENGINE, write(Write::Update { number })), Ok(Answer::Done));
+    assert_eq!(
+        h.call(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Merge })),
+        Ok(Answer::Done)
+    );
     assert_eq!(h.domain.room().commits, remaining, "an already up-to-date update makes no extra commit");
     assert_eq!(h.branch(b"work"), Some(pull.commit));
 }
@@ -51,13 +57,22 @@ fn conflicting_update_changes_neither_head_nor_objects() {
     let number = opened(&mut h, b"work");
     crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"README", b"theirs", MAINTAINER).unwrap();
     let remaining = h.domain.room().commits;
-    assert_eq!(h.call(ENGINE, write(Write::Update { number })), Err(Error::Conflict));
+    assert_eq!(
+        h.call(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Merge })),
+        Err(Error::Conflict)
+    );
     assert_eq!(h.branch(b"work"), Some(work));
     assert_eq!(h.pull(number).commit, work);
     assert_eq!(h.domain.room().commits, remaining);
-    assert_eq!(h.call(PERSON, write(Write::Update { number })), Err(Error::Forbidden));
+    assert_eq!(
+        h.call(PERSON, write(Write::Update { number, style: crate::api::UpdateStyle::Merge })),
+        Err(Error::Forbidden)
+    );
     h.call(ENGINE, write(Write::Close { number })).unwrap();
-    assert_eq!(h.call(ENGINE, write(Write::Update { number })), Err(Error::Closed));
+    assert_eq!(
+        h.call(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Merge })),
+        Err(Error::Closed)
+    );
 }
 
 #[test]
@@ -173,7 +188,7 @@ fn a_manually_reported_failure_has_no_ci_job() {
     assert_eq!(checks.len(), 1);
     let check = checks.first().unwrap();
     assert_eq!(check.status.state, Check::Failed);
-    assert_eq!(&*check.description, b"CI failed");
+    assert_eq!(&*check.description, b"");
     assert_eq!(&*check.link, b"");
     assert_eq!(check.job, None);
     assert_eq!(h.call(PERSON, read(Read::Log { job: 0, attempt: 1, step: None })), Err(Error::Missing(What::Job)));
@@ -205,7 +220,10 @@ fn oversized_update_repository_is_not_retained_for_a_delayed_write() {
     let config = Config { landing: 1000, ..CALM };
     let mut h = Harness::new(config);
     let name = skein_lib::bytes::zeroed(usize::try_from(config.limits.name_bytes.checked_add(1).unwrap()).unwrap());
-    assert_eq!(h.call_on(&name, ENGINE, write(Write::Update { number: 1 })), Err(Error::Missing(What::Repository)));
+    assert_eq!(
+        h.call_on(&name, ENGINE, write(Write::Update { number: 1, style: crate::api::UpdateStyle::Merge })),
+        Err(Error::Missing(What::Repository))
+    );
     assert_eq!(h.domain.tally().landed, 0);
 }
 
@@ -259,4 +277,152 @@ fn inspection_reads_protection_without_client_authorization_or_calls() {
     assert_eq!(h.domain.tally(), tally);
     let unprotected = Harness::new(CALM);
     assert_eq!(unprotected.domain.inspect_protection(REPOSITORY, MAIN), None);
+}
+
+#[test]
+fn a_fast_forward_merge_moves_the_base_to_the_head() {
+    let mut h = Harness::new(CALM);
+    let head = h.commit(FIRST, &[(b"README", b"new")]);
+    h.push(ENGINE, b"work", head).unwrap();
+    let number = opened(&mut h, b"work");
+    let room = h.domain.room().commits;
+    assert_eq!(
+        h.call(ENGINE, write(Write::Merge { number, head, how: crate::api::MergeHow::FastForwardOnly })),
+        Ok(Answer::Merged(head))
+    );
+    assert_eq!(h.branch(MAIN), Some(head));
+    assert_eq!(h.pull(number).merged, Some(head));
+    assert_eq!(h.pull(number).state, State::Closed);
+    assert_eq!(h.domain.room().commits, room);
+}
+#[test]
+fn a_fast_forward_merge_of_a_head_behind_its_base_is_a_conflict() {
+    let mut h = Harness::new(CALM);
+    let head = h.commit(FIRST, &[(b"README", b"work")]);
+    h.push(ENGINE, b"work", head).unwrap();
+    let number = opened(&mut h, b"work");
+    let base = crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"ci", b"base", MAINTAINER).unwrap();
+    let room = h.domain.room().commits;
+    assert_eq!(
+        h.call(ENGINE, write(Write::Merge { number, head, how: crate::api::MergeHow::FastForwardOnly })),
+        Err(Error::Conflict)
+    );
+    assert_eq!(h.branch(MAIN), Some(base));
+    assert_eq!(h.pull(number).state, State::Open);
+    assert_eq!(h.domain.room().commits, room);
+}
+#[test]
+fn an_update_by_rebase_replays_the_branch_onto_the_base() {
+    let mut h = Harness::new(CALM);
+    let one =
+        crate::commit(&mut h.domain, &CALM, FIRST, files(&[(b"README", b"one"), (b"ci", b"green")]), b"first patch")
+            .unwrap()
+            .unwrap();
+    let two =
+        crate::commit(&mut h.domain, &CALM, one, files(&[(b"README", b"two"), (b"ci", b"green")]), b"second patch")
+            .unwrap()
+            .unwrap();
+    h.push(ENGINE, b"work", two).unwrap();
+    let number = opened(&mut h, b"work");
+    let base = crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"ci", b"base", MAINTAINER).unwrap();
+    assert_eq!(
+        h.call(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Rebase })),
+        Ok(Answer::Done)
+    );
+    let tip = h.branch(b"work").unwrap();
+    let last = h.domain.object(tip).unwrap();
+    assert_eq!(&*last.message, b"second patch");
+    assert_eq!(&**last.tree.get(b"README".as_slice()).unwrap(), b"two");
+    assert_eq!(&**last.tree.get(b"ci".as_slice()).unwrap(), b"base");
+    let first = h.domain.object(last.parent.unwrap()).unwrap();
+    assert_eq!(first.parent, Some(base));
+    assert_eq!(&*first.message, b"first patch");
+    assert_ne!(last.parent, Some(one));
+    assert!(h.domain.has(REPOSITORY).contains(&last.parent.unwrap()));
+    let pull = h.pull(number);
+    assert_eq!(pull.commit, tip);
+    assert_eq!(pull.statuses[0].state, Check::Pending);
+}
+#[test]
+fn an_update_by_rebase_refuses_a_conflict() {
+    let mut h = Harness::new(CALM);
+    let one = h.commit(FIRST, &[(b"ci", b"first")]);
+    let two = h.commit(one, &[(b"README", b"work")]);
+    h.push(ENGINE, b"work", two).unwrap();
+    let number = opened(&mut h, b"work");
+    crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"README", b"base", MAINTAINER).unwrap();
+    let room = h.domain.room().commits;
+    assert_eq!(
+        h.call(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Rebase })),
+        Err(Error::Conflict)
+    );
+    assert_eq!(h.branch(b"work"), Some(two));
+    assert_eq!(h.pull(number).commit, two);
+    assert_eq!(h.domain.room().commits, room, "a later conflict stores no earlier replay");
+}
+#[test]
+fn an_update_by_rebase_of_a_branch_on_the_tip_changes_nothing() {
+    let mut h = Harness::new(CALM);
+    let head = h.commit(FIRST, &[(b"README", b"work")]);
+    h.push(ENGINE, b"work", head).unwrap();
+    let number = opened(&mut h, b"work");
+    let room = h.domain.room().commits;
+    assert_eq!(
+        h.call(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Rebase })),
+        Ok(Answer::Done)
+    );
+    assert_eq!(h.branch(b"work"), Some(head));
+    assert_eq!(h.domain.room().commits, room);
+}
+
+fn judge_changes(h: &mut Harness, decision: Option<(u64, u64)>) -> crate::promises::Verdict {
+    use crate::promises::{Bounds, Decision, Judge, Profile, Recorded};
+    let mut judge = Judge::new(Profile {
+        client: ENGINE,
+        marker: (copy_of(b"<key>"), copy_of(b"</key>")),
+        owned_branches: Box::new([]),
+        allowed: Box::new([]),
+        bounds: Bounds { objects: 32, decisions: 8 },
+    });
+    if let Some((number, head)) = decision {
+        judge.decide(&Decision { repository: copy_of(REPOSITORY), number, head });
+    }
+    while let Some(observation) = h.domain.pop_observation() {
+        let forward = if let Observation::Moved { from: Some(from), to, .. } = &observation {
+            Some(h.domain.is_ancestor(*from, *to))
+        } else {
+            None
+        };
+        judge.observe(&Recorded::Observed { observation, forward });
+    }
+    judge.observe(&Recorded::Lost(h.domain.observations_lost()));
+    judge.decided();
+    judge.verdict()
+}
+
+#[test]
+fn a_fast_forward_merge_is_judged_at_the_decided_head_and_its_base_move_is_exempt() {
+    let mut h = Harness::new(CALM);
+    let head = h.commit(FIRST, &[(b"README", b"work")]);
+    h.push(ENGINE, b"work", head).unwrap();
+    let number = opened(&mut h, b"work");
+    h.ok(ENGINE, write(Write::Merge { number, head, how: crate::api::MergeHow::FastForwardOnly }));
+    assert_eq!(judge_changes(&mut h, Some((number, head))), crate::promises::Verdict::Pass);
+}
+
+#[test]
+fn a_rebased_branch_move_is_seen_by_the_forced_promise() {
+    let mut h = Harness::new(CALM);
+    let head = h.commit(FIRST, &[(b"README", b"work")]);
+    h.push(ENGINE, b"work", head).unwrap();
+    let number = opened(&mut h, b"work");
+    crate::advance(&mut h.domain, &h.env, REPOSITORY, MAIN, b"ci", b"base", MAINTAINER).unwrap();
+    h.ok(ENGINE, write(Write::Update { number, style: crate::api::UpdateStyle::Rebase }));
+    assert_eq!(
+        judge_changes(&mut h, None),
+        crate::promises::Verdict::Fail(Box::new([crate::promises::Breach {
+            promise: crate::promises::Promise::Forced,
+            subject: copy_of(b"ai%2Fkit/work")
+        }]))
+    );
 }

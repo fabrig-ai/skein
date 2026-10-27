@@ -93,8 +93,12 @@ pub(crate) fn read(domain: &Domain, config: &Config, id: Id<Repository>, read: &
             }
             Ok(Answer::Comments(comments.into_boxed()))
         }
-        Read::Runs { commit, number } => Ok(crate::actions::runs(repository, *commit, *number)),
-        Read::Run { run } => Ok(Answer::Run(crate::actions::run(repository, *run)?.run)),
+        Read::Runs { workflow, commit, number, page, limit } => {
+            let size = if *limit == 0 { limits.page_size } else { (*limit).min(limits.page_size) };
+            Ok(crate::actions::runs(repository, workflow.as_deref(), *commit, *number, *page, size))
+        }
+        Read::GitTree { object, page, limit } => crate::trees::read(domain, repository, limits, *object, *page, *limit),
+        Read::Run { run } => Ok(Answer::Run(crate::actions::run(repository, *run)?.run.clone())),
         Read::Jobs { run } => crate::actions::jobs(repository, *run),
         Read::Statuses { commit } => {
             if !repository.has.contains(commit) {

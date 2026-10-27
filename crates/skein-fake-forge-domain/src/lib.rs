@@ -50,6 +50,7 @@ pub mod api;
 mod boundary;
 mod ci;
 mod creation;
+mod dispatch;
 mod domain;
 mod faults;
 mod git;
@@ -65,6 +66,7 @@ mod queue;
 mod reads;
 mod scenario;
 mod store;
+mod trees;
 mod wiki;
 
 #[cfg(test)]
