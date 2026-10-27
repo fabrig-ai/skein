@@ -179,7 +179,7 @@ fn a_tree_is_read_by_commit_then_by_directory() {
     else {
         panic!("tree answer")
     };
-    assert!(!more);
+    assert!(more, "Forgejo keeps truncated set on the short last page");
     assert_eq!((&*entries[0].name, entries[0].kind), (b"src".as_slice(), EntryKind::Tree));
     assert_eq!(
         world.read(Read::Tree { object: head, page: 3 }).expect("past last root page"),

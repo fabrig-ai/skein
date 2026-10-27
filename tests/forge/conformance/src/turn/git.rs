@@ -50,6 +50,16 @@ fn trees(p: &mut Probe<'_>) -> Result<()> {
             && page3.root().get("truncated").bool() == Some(false),
         "expected page lengths 2,1,0 and truncated true,false,false",
     );
+    let name = "tree-truncated-stays-true-on-short-last-page";
+    let last = p.get(name, &format!("{REPO}/git/trees/{head}?page=2&per_page=2"))?;
+    p.check(
+        name,
+        rows(&last, "tree")?.len() == 1
+            && last.root().get("truncated").bool() == Some(true)
+            && rows(&page3, "tree")?.is_empty()
+            && page3.root().get("truncated").bool() == Some(false),
+        "expected a truncated short page followed by an empty, untruncated page",
+    );
     let name = "tree-past-last-page-is-an-empty-array";
     let empty = p.get(name, &format!("{REPO}/git/trees/{head}?page=3&per_page=2"))?;
     p.check(

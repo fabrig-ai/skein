@@ -412,6 +412,6 @@ fn turn_routes_name_the_domain_calls_and_keep_their_fields() {
     assert_eq!(skein_forge::forgejo::id::write(&tree).as_ref(), b"1111111111111111111111111111111111111111");
     assert_eq!(errors::answer(a::Error::Refused, Route::Rerun, Time::ZERO).status, 400);
     assert_eq!(errors::answer(a::Error::Missing(a::What::File), Route::Dispatch, Time::ZERO).status, 404);
-    assert_eq!(errors::answer(a::Error::Missing(a::What::Branch), Route::Dispatch, Time::ZERO).status, 404);
+    assert_eq!(errors::answer(a::Error::Missing(a::What::Branch), Route::Dispatch, Time::ZERO).status, 400);
     assert_eq!(errors::answer(a::Error::Conflict, Route::Update, Time::ZERO).status, 409);
 }
