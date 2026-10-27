@@ -57,6 +57,8 @@ pub(super) fn looked(d: &mut Domain, env: &Env<Limits>, number: u64, pull: api::
             | api::Write::Update { .. }
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. }
             | api::Write::DeleteBranch { .. } => unreachable!("only a merge is queued"),
         };
         let error = if pull.commit != head {

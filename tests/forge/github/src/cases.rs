@@ -470,7 +470,10 @@ fn pulls(r: &mut Runner<'_>) -> Result<()> {
             && first.header("x-ratelimit-remaining") == second.header("x-ratelimit-remaining"))
     })?;
     case(r, "merge-unheld-by-ci", |r| {
-        let answer = r.plan(0, api::Op::Write(api::Write::Merge { number: n, head: oid(&moved)? }))?;
+        let answer = r.plan(
+            0,
+            api::Op::Write(api::Write::Merge { number: n, head: oid(&moved)?, how: skein_forge::api::MergeHow::Style }),
+        )?;
         Ok(matches!(answer, Ok(api::Answer::Merged(_))))
     })?;
     merge_repeat_idempotent(r, n, &moved)?;
@@ -602,7 +605,10 @@ fn rules(r: &mut Runner<'_>) -> Result<()> {
     })?;
     r.next("bypass-always-merges")?;
     rule(r, 0, &base, 2, false, true)?;
-    let answer = r.plan(0, api::Op::Write(api::Write::Merge { number: n, head: oid(&sha)? }))?;
+    let answer = r.plan(
+        0,
+        api::Op::Write(api::Write::Merge { number: n, head: oid(&sha)?, how: skein_forge::api::MergeHow::Style }),
+    )?;
     r.fact("bypass-always-merges", matches!(answer, Ok(api::Answer::Merged(_))), "always bypass did not merge");
     queue(r)
 }
@@ -772,7 +778,10 @@ fn queue_pending(r: &mut Runner<'_>, index: usize, number: u64, sha: &str) -> Re
     if !queue_approval(r, index, number)? {
         return Ok(());
     }
-    let answer = r.plan(index, api::Op::Write(api::Write::Merge { number, head: oid(sha)? }))?;
+    let answer = r.plan(
+        index,
+        api::Op::Write(api::Write::Merge { number, head: oid(sha)?, how: skein_forge::api::MergeHow::Style }),
+    )?;
     let response = enqueue(r, index, number, sha)?;
     r.fact(
         "enqueue-pending-check-protected",
@@ -796,7 +805,7 @@ fn queue_merged(r: &mut Runner<'_>, index: usize, number: u64, sha: &str) -> Res
     let Some(queued) = queue_plan(
         r,
         index,
-        api::Op::Write(api::Write::Merge { number, head: oid(sha)? }),
+        api::Op::Write(api::Write::Merge { number, head: oid(sha)?, how: skein_forge::api::MergeHow::Style }),
         false,
         "queue admission refused",
     )?

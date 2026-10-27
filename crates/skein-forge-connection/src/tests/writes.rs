@@ -93,7 +93,7 @@ fn write_rows() -> [WriteRow; 7] {
         ),
         (
             "update",
-            Write::Update { number: 7 },
+            Write::Update { number: 7, style: skein_forge::api::UpdateStyle::Merge },
             b"POST /api/v1/repos/fixture/specimen/pulls/7/update?style=merge ".as_slice(),
             b"\r\n\r\n".as_slice(),
             200,
@@ -102,7 +102,13 @@ fn write_rows() -> [WriteRow; 7] {
         ),
         (
             "status",
-            Write::Status { commit: head(), context: boxed(b"gate"), check: Check::Passed },
+            Write::Status {
+                commit: head(),
+                context: boxed(b"gate"),
+                check: Check::Passed,
+                description: Box::new([]),
+                link: Box::new([]),
+            },
             b"POST /api/v1/repos/fixture/specimen/statuses/0100000000000000000000000000000000000000 ".as_slice(),
             br#"{"state":"success","context":"gate"}"#.as_slice(),
             201,
@@ -151,7 +157,16 @@ fn text_that_is_not_utf8_is_refused_with_nothing_written() {
         ("comment", Write::Post { number: 7, key: boxed(b"key"), body: boxed(&[0xff]) }),
         ("review", Write::Review { number: 7, key: boxed(b"key"), verdict: Verdict::Comment, body: boxed(&[0xff]) }),
         ("edit", Write::Edit { number: 7, title: None, body: Some(boxed(&[0xff])) }),
-        ("context", Write::Status { commit: head(), context: boxed(&[0xff]), check: Check::Pending }),
+        (
+            "context",
+            Write::Status {
+                commit: head(),
+                context: boxed(&[0xff]),
+                check: Check::Pending,
+                description: Box::new([]),
+                link: Box::new([]),
+            },
+        ),
         ("branch", Write::CreateBranch { branch: boxed(&[0xff]), commit: head() }),
     ];
     for (name, write) in rows {
@@ -346,7 +361,11 @@ fn openings_deadline_before_post_is_unavailable_after_post_timeout() {
 #[test]
 fn a_merge_sends_the_rows_style_and_reads_its_commit() {
     let mut h = fixtures::known();
-    h.call(1, fixtures::REPO, Op::Write(Write::Merge { number: 7, head: head() }));
+    h.call(
+        1,
+        fixtures::REPO,
+        Op::Write(Write::Merge { number: 7, head: head(), how: skein_forge::api::MergeHow::Style }),
+    );
     h.run(Duration::ZERO);
     let written = h.request_bytes(fixtures::FORGE);
     assert!(
@@ -371,7 +390,11 @@ fn every_failure_of_a_merges_read_is_timeout() {
     ];
     for (name, code, body) in rows {
         let mut h = fixtures::known();
-        h.call(1, fixtures::REPO, Op::Write(Write::Merge { number: 7, head: head() }));
+        h.call(
+            1,
+            fixtures::REPO,
+            Op::Write(Write::Merge { number: 7, head: head(), how: skein_forge::api::MergeHow::Style }),
+        );
         response(&mut h, 200, b"");
         response(&mut h, code, body);
         let answered = h.answered(1).expect("uncertain merge answered");
@@ -381,11 +404,15 @@ fn every_failure_of_a_merges_read_is_timeout() {
 #[test]
 fn a_merge_style_refusal_drops_the_repository_row() {
     let mut h = fixtures::known();
-    h.call(1, fixtures::REPO, Op::Write(Write::Merge { number: 7, head: head() }));
+    h.call(
+        1,
+        fixtures::REPO,
+        Op::Write(Write::Merge { number: 7, head: head(), how: skein_forge::api::MergeHow::Style }),
+    );
     response(&mut h, 405, br#"{"message":"squash is not an allowed merge style for this repository"}"#);
     let answered = h.answered(1).expect("style refused");
     assert_eq!((answered.cost, &answered.result), (1, &Err(Error::Refused)));
-    h.call(2, fixtures::REPO, Op::Write(Write::Update { number: 7 }));
+    h.call(2, fixtures::REPO, Op::Write(Write::Update { number: 7, style: skein_forge::api::UpdateStyle::Merge }));
     h.run(Duration::ZERO);
     assert!(bytes::find(&h.request_bytes(fixtures::FORGE), b"GET /api/v1/repositories/1 ").is_some());
 }

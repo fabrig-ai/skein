@@ -273,7 +273,7 @@ fn a_jobs_steps_keep_their_numbers_names_and_statuses() {
     assert_eq!(
         answers::read(&config(), &crate::setup::Store::new(&limits()), &Request::Job { at: at(), job: 8 }, &input),
         Ok(Answer::Job {
-            job: d::Job { id: 8, run_id: 7, attempt: 2 },
+            job: d::Job { id: 8, run_id: 7, attempt: 2, name: Box::new([]), status: d::StepStatus::Unknown },
             steps: Box::new([
                 d::Step { number: 0, name: boxed(b"Setup"), status: d::StepStatus::Success },
                 d::Step { number: 1, name: boxed(b"Work"), status: d::StepStatus::Cancelled },

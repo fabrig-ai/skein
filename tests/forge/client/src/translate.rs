@@ -78,6 +78,9 @@ pub fn op(op: &client::Op, l: &Limits) -> forge::Op {
 }
 fn read_op(read: &client::Read, l: &Limits) -> forge::Read {
     match read {
+        client::Read::Runs { .. } | client::Read::Run { .. } | client::Read::Tree { .. } => {
+            unreachable!("turn calls have no domain translation")
+        }
         client::Read::Locate { .. } => forge::Read::Locate,
         client::Read::Items { since, page, kind } => forge::Read::Items {
             order: forge::Order::LeastUpdated,
@@ -118,6 +121,9 @@ fn read_op(read: &client::Read, l: &Limits) -> forge::Read {
 }
 fn write_op(write: &client::Write) -> forge::Write {
     match write {
+        client::Write::Dispatch { .. } | client::Write::Rerun { .. } => {
+            unreachable!("turn calls have no domain translation")
+        }
         client::Write::CreateIssue { key, title, body } => {
             forge::Write::CreateIssue { title: title.clone(), body: keyed(key, body), labels: Box::new([]) }
         }
@@ -140,9 +146,9 @@ fn write_op(write: &client::Write) -> forge::Write {
         }
         client::Write::Close { number } => forge::Write::Close { number: *number },
         client::Write::Reopen { number } => forge::Write::Reopen { number: *number },
-        client::Write::Merge { number: pull, head } => forge::Write::Merge { number: *pull, head: number(*head) },
-        client::Write::Update { number } => forge::Write::Update { number: *number },
-        client::Write::Status { commit, context, check } => {
+        client::Write::Merge { number: pull, head, .. } => forge::Write::Merge { number: *pull, head: number(*head) },
+        client::Write::Update { number, .. } => forge::Write::Update { number: *number },
+        client::Write::Status { commit, context, check, .. } => {
             forge::Write::Status { commit: number(*commit), context: context.clone(), state: check_out(*check) }
         }
         client::Write::CreateBranch { branch, commit } => {
@@ -393,6 +399,9 @@ fn pull_answer(asked: &client::Op, pull: forge::Pull, l: &Limits) -> client::Ans
             | client::Read::PullFiles { .. }
             | client::Read::Compare { .. }
             | client::Read::Checks { .. }
+            | client::Read::Runs { .. }
+            | client::Read::Run { .. }
+            | client::Read::Tree { .. }
             | client::Read::Job { .. }
             | client::Read::Protection { .. }
             | client::Read::Settings

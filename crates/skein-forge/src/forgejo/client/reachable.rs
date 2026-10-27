@@ -114,6 +114,7 @@ impl Reachable {
                 }
             }
             Move::Scalar { kind, key, value } => match value {
+                Value::Input(_) => unreachable!("dispatch input table"),
                 Value::Number(n) => {
                     if kind == Kind::Reachable(ReachableKind::Owner) {
                         self.row.owner = n;

@@ -38,6 +38,8 @@ impl Plan {
             | api::Write::Update { .. }
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. }
             | api::Write::DeleteBranch { .. } => None,
         }
     }

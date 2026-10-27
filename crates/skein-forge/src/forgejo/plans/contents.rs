@@ -65,6 +65,9 @@ impl Plan {
             | api::Read::Collaborators { .. }
             | api::Read::Permission { .. }
             | api::Read::Checks { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. } => return Err(api::Error::InvalidAnswer),
         };
         Ok(Self {
@@ -226,6 +229,7 @@ impl Plan {
             | d::Row::Pull(_)
             | d::Row::Branch(_)
             | d::Row::Protection(_)
+            | d::Row::Entry(_)
             | d::Row::Run(_)
             | d::Row::Hook(_)
             | d::Row::Team(_)
@@ -301,6 +305,7 @@ impl Plan {
             | d::Document::Branch(_)
             | d::Document::Protection(_)
             | d::Document::Permission(_)
+            | d::Document::Tree { .. }
             | d::Document::Runs { .. }
             | d::Document::Job(_)
             | d::Document::Run(_)

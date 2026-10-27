@@ -198,6 +198,8 @@ fn target(request: &Request, out: &mut Target) -> Method {
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Jobs { .. }
@@ -210,6 +212,8 @@ fn target(request: &Request, out: &mut Target) -> Method {
         | Request::EditIssue { .. }
         | Request::RequestReviewers { .. }
         | Request::RemoveReviewers { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Merge { .. }
         | Request::Update { .. }
         | Request::PostStatus { .. }
@@ -295,6 +299,8 @@ fn body(json: &mut Encoder, request: &Request) {
         | Request::PullFiles { .. }
         | Request::Compare { .. }
         | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
         | Request::Runs { .. }
         | Request::Run { .. }
         | Request::Jobs { .. }
@@ -307,6 +313,8 @@ fn body(json: &mut Encoder, request: &Request) {
         | Request::EditIssue { .. }
         | Request::RequestReviewers { .. }
         | Request::RemoveReviewers { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
         | Request::Merge { .. }
         | Request::Update { .. }
         | Request::PostStatus { .. }
@@ -372,6 +380,7 @@ impl Orgs {
         match movement {
             Move::Demand(demand) => return Step::Demand(demand),
             Move::Scalar { key, value, .. } => match value {
+                Value::Input(_) => unreachable!("dispatch input table"),
                 Value::Number(id) => {
                     if self.kind == SetupKind::Org {
                         self.org.id = id;

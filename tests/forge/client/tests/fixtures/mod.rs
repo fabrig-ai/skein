@@ -67,7 +67,11 @@ pub fn merge_entry(pull: u64, head: u64) -> Entry {
         task: 7,
         repository: REPO,
         effect: Effect {
-            write: api::Write::Merge { number: pull, head: skein_forge_client_world::translate::commit(head) },
+            write: api::Write::Merge {
+                number: pull,
+                head: skein_forge_client_world::translate::commit(head),
+                how: skein_forge::api::MergeHow::Style,
+            },
             condition: Condition::Merge { base: Box::from(&b"main"[..]) },
         },
         start: None,

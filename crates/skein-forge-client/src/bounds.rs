@@ -31,11 +31,14 @@ pub(crate) fn read(value: &Read) -> Option<u64> {
         | Read::Statuses { page, .. }
         | Read::Remarks { page, .. }
         | Read::PullFiles { page, .. }
-        | Read::Collaborators { page } => *page != 0,
+        | Read::Collaborators { page }
+        | Read::Runs { page, .. }
+        | Read::Tree { page, .. } => *page != 0,
         Read::Locate { owner, name } => return skein_forge::locate::bytes(owner, name),
         Read::PullFor { .. }
         | Read::Branch { .. }
         | Read::Protection { .. }
+        | Read::Run { .. }
         | Read::Job { .. }
         | Read::Item { .. }
         | Read::Pull { .. }
@@ -49,17 +52,32 @@ pub(crate) fn read(value: &Read) -> Option<u64> {
 }
 pub(crate) fn write(value: &Write, l: &Limits) -> Option<u64> {
     match value {
+        Write::Dispatch { workflow, branch, inputs } => {
+            if workflow.is_empty() || branch.is_empty() || inputs.len() > skein_forge::api::INPUTS {
+                return None;
+            }
+            for input in inputs {
+                if input.name.is_empty() {
+                    return None;
+                }
+            }
+        }
+        Write::Status { description, .. } => {
+            if description.len() > skein_forge::api::DESCRIPTION_BYTES {
+                return None;
+            }
+        }
         Write::SetReviewers { reviewers, .. } => {
             if u64::try_from(reviewers.len()).ok()? > u64::from(l.rows) {
                 return None;
             }
         }
-        Write::CreateIssue { .. }
+        Write::Rerun { .. }
+        | Write::CreateIssue { .. }
         | Write::OpenPull { .. }
         | Write::Post { .. }
         | Write::Review { .. }
         | Write::Edit { .. }
-        | Write::Status { .. }
         | Write::CreateBranch { .. }
         | Write::DeleteBranch { .. }
         | Write::Close { .. }

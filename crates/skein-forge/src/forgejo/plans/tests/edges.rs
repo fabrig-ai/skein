@@ -264,7 +264,7 @@ const MERGE_SENDS: [&str; 2] =
 #[test]
 fn merge_read_429_is_timeout() {
     for retry_after in [None, Some(RETRY)] {
-        let mut run = write_cases::begun(Write::Merge { number: ITEM_NUMBER, head: HEAD });
+        let mut run = write_cases::begun(Write::Merge { number: ITEM_NUMBER, head: HEAD, how: api::MergeHow::Style });
         run.answer(200, b"");
         assert_eq!(
             run.answer_with(429, b"{}", super::super::Fields { retry_after, ..fixtures::fields() }),
@@ -276,7 +276,7 @@ fn merge_read_429_is_timeout() {
 
 #[test]
 fn merge_write_429_is_rate_limited() {
-    let mut run = write_cases::begun(Write::Merge { number: ITEM_NUMBER, head: HEAD });
+    let mut run = write_cases::begun(Write::Merge { number: ITEM_NUMBER, head: HEAD, how: api::MergeHow::Style });
     assert_eq!(run.answer(429, b"{}"), Step::Done(Err(Error::RateLimited { after: Duration::ZERO })));
     run.assert_sent(&MERGE_SENDS[..MERGE_POST_REQUESTS]);
 }

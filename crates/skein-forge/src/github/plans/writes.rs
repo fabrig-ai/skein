@@ -85,7 +85,7 @@ impl Plan {
     }
     fn initial(&mut self, bounds: Bounds, word: &[u8]) -> Result<Step, api::Error> {
         match self.write {
-            api::Write::Update { number } | api::Write::SetReviewers { number, .. } => {
+            api::Write::Update { number, .. } | api::Write::SetReviewers { number, .. } => {
                 let row = self.row.as_ref().ok_or(api::Error::InvalidAnswer)?;
                 let request = Request::Pull { owner: row.owner.clone(), name: row.name.clone(), number };
                 self.stage = Stage::Pull;
@@ -101,6 +101,8 @@ impl Plan {
             | api::Write::Merge { .. }
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. }
             | api::Write::DeleteBranch { .. } => self.mutation(bounds, word),
         }
     }
@@ -109,7 +111,7 @@ impl Plan {
         let owner = row.owner.clone();
         let name = row.name.clone();
         let request = match &self.write {
-            api::Write::Update { number } => {
+            api::Write::Update { number, .. } => {
                 Request::Update { owner, name, number: *number, head: self.pinned.ok_or(api::Error::InvalidAnswer)? }
             }
             api::Write::Review { number, key, verdict, body } => Request::Review {
@@ -136,19 +138,26 @@ impl Plan {
             api::Write::CreateBranch { branch, commit } => {
                 Request::CreateBranch { owner, name, branch: branch.clone(), commit: *commit }
             }
-            api::Write::Status { commit, context, check } => {
-                Request::Status { owner, name, commit: *commit, context: context.clone(), check: *check }
-            }
+            api::Write::Status { commit, context, check, description, link } => Request::Status {
+                owner,
+                name,
+                commit: *commit,
+                context: context.clone(),
+                check: *check,
+                description: description.clone(),
+                link: link.clone(),
+            },
             api::Write::Edit { number, title, body } => {
                 Request::Edit { owner, name, number: *number, title: title.clone(), body: body.clone() }
             }
             api::Write::Reopen { number } => Request::Reopen { owner, name, number: *number },
             api::Write::Close { number } => Request::Close { owner, name, number: *number },
+            api::Write::Dispatch { .. } | api::Write::Rerun { .. } => return Err(api::Error::Refused),
             api::Write::DeleteBranch { branch } => Request::DeleteBranch { owner, name, branch: branch.clone() },
             api::Write::SetReviewers { number, .. } => {
                 return self.reviewers_mutation(*number);
             }
-            api::Write::Merge { number, head } => Request::Merge {
+            api::Write::Merge { number, head, .. } => Request::Merge {
                 owner,
                 name,
                 number: *number,
@@ -164,7 +173,7 @@ impl Plan {
         match self.write {
             api::Write::Merge { .. } => Some(Kind::Merge),
             api::Write::Review { .. } | api::Write::Post { .. } => Some(Kind::Id),
-            api::Write::DeleteBranch { .. } => None,
+            api::Write::Dispatch { .. } | api::Write::Rerun { .. } | api::Write::DeleteBranch { .. } => None,
             api::Write::CreateIssue { .. } | api::Write::OpenPull { .. } => Some(Kind::Number),
             api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
@@ -181,7 +190,7 @@ impl Plan {
         }
         match self.write {
             api::Write::Update { .. } => 202,
-            api::Write::DeleteBranch { .. } => 204,
+            api::Write::Dispatch { .. } | api::Write::Rerun { .. } | api::Write::DeleteBranch { .. } => 204,
             api::Write::Post { .. }
             | api::Write::CreateIssue { .. }
             | api::Write::OpenPull { .. }
@@ -209,7 +218,9 @@ impl Plan {
             api::Write::Post { body, .. } => Asked::Write { empty: body.is_empty() },
             api::Write::CreateIssue { title, body, .. } => Asked::Write { empty: title.is_empty() || body.is_empty() },
             api::Write::OpenPull { title, body, .. } => Asked::OpenPull { empty: title.is_empty() || body.is_empty() },
-            api::Write::DeleteBranch { .. } => Asked::DeleteBranch,
+            api::Write::Dispatch { .. } | api::Write::Rerun { .. } | api::Write::DeleteBranch { .. } => {
+                Asked::DeleteBranch
+            }
             api::Write::CreateBranch { .. } => Asked::CreateBranch,
             api::Write::Edit { title, body, .. } => {
                 Asked::Write { empty: empty(title.as_deref()) || empty(body.as_deref()) }
@@ -355,7 +366,7 @@ impl Plan {
         word: &[u8],
     ) -> Result<Step, api::Error> {
         let number = match self.write {
-            api::Write::Update { number } => number,
+            api::Write::Update { number, .. } => number,
             api::Write::CreateIssue { .. }
             | api::Write::OpenPull { .. }
             | api::Write::Post { .. }
@@ -367,6 +378,8 @@ impl Plan {
             | api::Write::Merge { .. }
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. }
             | api::Write::DeleteBranch { .. } => return Err(api::Error::InvalidAnswer),
         };
         if pull.number != number || crate::github::id::write_commit(&pull.head_commit).is_none() {
@@ -398,6 +411,8 @@ impl Plan {
             | api::Write::Update { .. }
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. }
             | api::Write::DeleteBranch { .. } => Err(self.invalid()),
         }
     }

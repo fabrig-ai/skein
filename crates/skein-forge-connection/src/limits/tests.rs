@@ -17,6 +17,8 @@ fn each_listing_uses_its_largest_answer_row() {
         (Listing::Collaborators, fixtures::ROW_COLLABORATORS),
         (Listing::PullFiles, fixtures::ROW_PULLFILES),
         (Listing::Compare, fixtures::ROW_COMPARE),
+        (Listing::Runs, fixtures::ROW_RUNS),
+        (Listing::Tree, fixtures::ROW_TREE),
     ] {
         assert_eq!(
             skein_forge::measure::answer(&maximal_answer(listing)),
@@ -52,6 +54,8 @@ fn maximal_answer(listing: Listing) -> api::Answer {
     let string = usize::try_from(limits.string_bytes).expect("fixture string");
     let body = usize::try_from(limits.body_bytes).expect("fixture body");
     match listing {
+        Listing::Runs => api::Answer::Runs { runs: Box::new([maximal_run(string)]), more: false },
+        Listing::Tree => tree(string),
         Listing::Items => {
             let mut labels = List::with_capacity(limits.inner);
             for _ in 0..limits.inner {
@@ -436,4 +440,31 @@ fn discovery_candidate_storage_refuses_checked_overflow() {
     let l = super::Limits { installations: u32::MAX, ..fixtures::limits() };
     let s = Shared { calls: u32::MAX, ..fixtures::shared() };
     assert_eq!(super::worst_case(&l, &s, super::Forges { forgejo: 0, github: 1 }, 0), None);
+}
+
+fn maximal_run(string: usize) -> api::Run {
+    api::Run {
+        id: 1,
+        number: 1,
+        workflow: fixtures::filled(string, b'w'),
+        commit: fixtures::BRANCH_HEAD,
+        event: api::Event::Dispatch,
+        actor: fixtures::WRITER,
+        state: api::RunState::Waiting,
+        conclusion: None,
+        url: fixtures::filled(string, b'u'),
+        created: Time::ZERO,
+        jobs: Box::new([]),
+    }
+}
+fn tree(string: usize) -> api::Answer {
+    api::Answer::Tree {
+        entries: Box::new([api::Entry {
+            name: fixtures::filled(string, b'n'),
+            mode: 0o100_644,
+            kind: api::EntryKind::Blob,
+            object: fixtures::BRANCH_HEAD,
+        }]),
+        more: false,
+    }
 }

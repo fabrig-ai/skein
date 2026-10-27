@@ -283,7 +283,7 @@ fn unseen_connect_failure_costs_zero_and_seen_reset_costs_one() {
     answered(&mut h, 1, Err(Error::Timeout));
 }
 fn merge() -> Op {
-    Op::Write(Write::Merge { number: 7, head: [0; 32] })
+    Op::Write(Write::Merge { number: 7, head: [0; 32], how: api::MergeHow::Style })
 }
 fn reviewers() -> Op {
     Op::Write(Write::SetReviewers { number: 7, reviewers: Box::from([]) })
@@ -507,7 +507,7 @@ fn every_landed_write_runs_once_with_full_installation_authorization() {
         ),
         (
             "Merge",
-            Write::Merge { number: 7, head: [0; 32] },
+            Write::Merge { number: 7, head: [0; 32], how: api::MergeHow::Style },
             200,
             br#"{"sha":"0000000000000000000000000000000000000000"}"#,
             Answer::Merged([0; 32]),
@@ -528,13 +528,7 @@ fn every_landed_write_runs_once_with_full_installation_authorization() {
             b"{}",
             Answer::Done,
         ),
-        (
-            "Status",
-            Write::Status { commit: [0; 32], context: Box::from(b"ci".as_slice()), check: api::Check::Passed },
-            201,
-            b"{}",
-            Answer::Done,
-        ),
+        ("Status", status_write(), 201, b"{}", Answer::Done),
         (
             "CreateBranch",
             Write::CreateBranch { branch: Box::from(b"topic".as_slice()), commit: [0; 32] },
@@ -626,7 +620,7 @@ fn original_reads_keep_the_dialects_typed_answers() {
 #[test]
 fn update_reads_its_head_then_sends_one_pinned_write() {
     let mut h = known();
-    begin(&mut h, Op::Write(Write::Update { number: 7 }));
+    begin(&mut h, Op::Write(Write::Update { number: 7, style: api::UpdateStyle::Merge }));
     h.answer(FORGE, &f::ok(f::GITHUB_PULL));
     h.answer(FORGE, &f::response(202, b"{}"));
     answered(&mut h, 2, Ok(Answer::Done));
@@ -841,4 +835,14 @@ fn bot_permission_after_repository_discovery_sends_no_collaborator_request() {
     h.answer(FORGE, &f::ok(f::GITHUB_REPOSITORY));
     answered(&mut h, 1, Ok(Answer::Permission(api::Permission::None)));
     assert_eq!(h.request_lines(FORGE).len(), 1);
+}
+
+fn status_write() -> Write {
+    Write::Status {
+        commit: [0; 32],
+        context: Box::from(b"ci".as_slice()),
+        check: api::Check::Passed,
+        description: Box::new([]),
+        link: Box::new([]),
+    }
 }
