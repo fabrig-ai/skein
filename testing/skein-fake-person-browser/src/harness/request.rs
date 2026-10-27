@@ -1,5 +1,5 @@
 //! One status-only HTTP exchange, on the harness's io loop.
-use super::Asked;
+use super::{Asked, Play, RequestFailure};
 use skein_http::client::{self, Body, Call, Client};
 use skein_io::{self as io, Request};
 use skein_lib::{Env, Queue, Time, Token, Wall, stream};
@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 pub(super) struct Exchange {
     pub person: usize,
     pub status: Option<u16>,
+    failure: Option<RequestFailure>,
     pub closed: bool,
     pub requests: VecDeque<Request>,
     owner: Token,
@@ -32,6 +33,7 @@ impl Exchange {
         Self {
             person,
             status: None,
+            failure: None,
             closed: false,
             owner,
             socket: None,
@@ -50,6 +52,14 @@ impl Exchange {
     pub fn update(&mut self, now: Time, wall: Wall) {
         self.env.now = now;
         self.env.wall = wall;
+    }
+    pub fn answer(&mut self, play: &mut dyn Play) {
+        if let Some(status) = self.status.take() {
+            match self.failure.take() {
+                Some(failure) => play.request_failed(failure),
+                None => play.answered(status),
+            }
+        }
     }
     pub fn stop(&mut self) {
         // The client can be closed while the socket's terminal event is pending.
@@ -79,7 +89,8 @@ impl Exchange {
             io::Event::Stream { up, .. } => {
                 client::up(&mut self.client, &self.env, up, &mut self.above, &mut self.below);
             }
-            io::Event::Failed { .. } => {
+            io::Event::Failed { error, .. } => {
+                self.failure = Some(RequestFailure::Io(error));
                 self.status = Some(0);
                 self.stop();
             }
@@ -103,7 +114,8 @@ impl Exchange {
                     self.status = Some(response.status);
                     self.stop();
                 }
-                client::Event::Failed(_) => {
+                client::Event::Failed(error) => {
+                    self.failure = Some(RequestFailure::Http(error));
                     self.status = Some(0);
                     self.stop();
                 }

@@ -4,6 +4,7 @@ use crate::BrowserFace;
 use skein_fake_person::{Next, Person};
 use skein_lib::{Duration, Time};
 use std::collections::VecDeque;
+use std::fmt::Write as _;
 mod growth;
 
 pub enum Step {
@@ -82,6 +83,7 @@ pub struct Script {
     awaited: Option<(Time, Awaited)>,
     request: Option<super::Asked>,
     status: Option<u16>,
+    request_failure: Option<super::RequestFailure>,
     text: Option<(skein_fake_person::Find, Box<[u8]>, bool)>,
 }
 impl Script {
@@ -102,6 +104,7 @@ impl Script {
             awaited: None,
             request: None,
             status: None,
+            request_failure: None,
         }
     }
     fn await_step(&mut self, face: &mut BrowserFace<'_>, now: Time) -> bool {
@@ -116,12 +119,19 @@ impl Script {
                 format!("trouble containing {}", String::from_utf8_lossy(words)),
             ),
             Awaited::Status(status) => {
-                (self.status == Some(*status), format!("status {status}, saw {:?}", self.status))
+                let mut words = format!("status {status}, saw {:?}", self.status);
+                if let Some(failure) = self.request_failure {
+                    write!(words, "; request failed: {failure:?}").expect("string write");
+                } else if self.status.is_none() && now >= until {
+                    words.push_str("; no response before the request deadline");
+                }
+                (self.status == Some(*status), words)
             }
         };
         if met {
             self.at += 1;
             self.status = None;
+            self.request_failure = None;
         } else if now >= until {
             face.fail(format!("did not receive {words} within its bound"));
             self.at += 1;
@@ -349,6 +359,10 @@ impl Play for Script {
     }
     fn answered(&mut self, status: u16) {
         self.status = Some(status);
+    }
+    fn request_failed(&mut self, failure: super::RequestFailure) {
+        self.status = Some(0);
+        self.request_failure = Some(failure);
     }
     fn at(&self) -> u32 {
         self.at + self.person.as_ref().map_or(0, Person::at)

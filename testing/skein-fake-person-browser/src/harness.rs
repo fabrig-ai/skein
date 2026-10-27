@@ -96,6 +96,13 @@ pub struct Asked {
     pub headers: Vec<skein_ui_web::transport::Header>,
     pub body: Box<[u8]>,
 }
+/// The request's failure at the io or HTTP boundary. These boundaries expose
+/// typed errors, not the kernel's original errno.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RequestFailure {
+    Io(io::Error),
+    Http(skein_http::client::Error),
+}
 pub trait Play {
     fn next(&mut self, face: &mut BrowserFace<'_>, now: Time) -> Next<Box<[u8]>>;
     /// Current zero-based script position, for diagnostics.
@@ -106,6 +113,11 @@ pub trait Play {
         None
     }
     fn answered(&mut self, _status: u16) {}
+    /// A request ended without a response head. The default preserves the
+    /// status-only face; scripts retain the error in their failure report.
+    fn request_failed(&mut self, _failure: RequestFailure) {
+        self.answered(0);
+    }
     fn at(&self) -> u32 {
         0
     }
@@ -733,9 +745,7 @@ impl Runtime {
             return;
         }
         for exchange in &mut self.exchanges {
-            if let Some(status) = exchange.status.take() {
-                people[exchange.person].answered(status);
-            }
+            exchange.answer(people[exchange.person]);
         }
         self.exchanges.retain(|exchange| !exchange.closed);
         for (index, (play, face)) in people.iter_mut().zip(faces).enumerate() {
