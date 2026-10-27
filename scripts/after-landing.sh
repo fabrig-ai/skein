@@ -62,18 +62,24 @@ def expression(tests):
                       for binary, test in sorted(tests)) or "none()"
 
 
-def junit_failures(profile):
+def junit(profile):
     report = ET.parse(TARGET / "nextest" / profile / "after-landing.xml")
-    names = set()
+    failures = set()
+    starved = set()
     for suite in report.iter("testsuite"):
         for test in suite.findall("testcase"):
-            if test.find("failure") is not None or test.find("error") is not None:
+            failed = test.find("failure") is not None or test.find("error") is not None
+            passed_starved = not failed and test.find("skipped") is None and any(
+                line.startswith("skein-world: starved:")
+                for output in (*test.findall("system-out"), *test.findall("system-err"))
+                for line in (output.text or "").splitlines())
+            if failed or passed_starved:
                 binary = test.get("classname") or suite.get("name")
                 name = test.get("name")
                 if not binary or not name or any(c.isspace() or not c.isprintable() for c in binary + name):
-                    raise ValueError("JUnit failure lacks a printable binary/test name")
-                names.add(f"{profile} {binary} {name}")
-    return names
+                    raise ValueError("JUnit testcase lacks a printable binary/test name")
+                (failures if failed else starved).add(f"{profile} {binary} {name}")
+    return failures, starved
 
 
 def run(phases):
@@ -123,6 +129,7 @@ def run(phases):
                       NEXTEST_USER_CONFIG_FILE="none")
     statuses = {}
     failures = set()
+    starved = set()
     for name, profile, prerequisites, command in phases:
         if name not in selected:
             continue
@@ -159,7 +166,8 @@ def run(phases):
         names = set()
         if profile and not (filtered and code == 4):
             try:
-                names = junit_failures(profile)
+                names, passed_starved = junit(profile)
+                starved.update(passed_starved)
             except (OSError, ET.ParseError, ValueError) as error:
                 if code:
                     print(f"{name}: JUnit unavailable: {error}", flush=True)
@@ -170,6 +178,8 @@ def run(phases):
             failures.add(name)
     for name in sorted(failures):
         print(f"after-landing: failed {name}", flush=True)
+    for name in sorted(starved):
+        print(f"after-landing: starved {name}", flush=True)
     return 1 if failures else 0
 
 

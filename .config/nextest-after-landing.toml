@@ -1,7 +1,10 @@
 # Only scripts/after-landing.sh loads this tool config. Profiles retain
 # their filters, concurrency, timeouts and retry settings.
+# Keep passing tests' output so the tier can name starved passes.
 [profile.browser.junit]
 path = "after-landing.xml"
+store-success-output = true
 
 [profile.exhaustive.junit]
 path = "after-landing.xml"
+store-success-output = true

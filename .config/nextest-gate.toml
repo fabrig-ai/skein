@@ -1,0 +1,11 @@
+# Only scripts/check.sh loads this tool config. The repository's
+# profiles retain their filters, concurrency, timeouts and retry settings.
+# Keep passing tests' output so the gate can name starved passes.
+# Paths are relative to target/nextest/<profile>/.
+[profile.default.junit]
+path = "gate.xml"
+store-success-output = true
+
+[profile.fuzzy.junit]
+path = "gate.xml"
+store-success-output = true

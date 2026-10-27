@@ -22,6 +22,7 @@ step() {
 
 # programming-model.md, 2: every binary installs the fail-stop hook first.
 step fail-stop python3 -I -B scripts/fail_stop.py
+step scripts python3 -I -B -m unittest discover -s scripts -p 'test_*.py'
 step fmt cargo fmt --all --check
 # testing-strategy.md 10: A setup written once; Named fixtures and sizes.
 mkdir -p target
@@ -47,5 +48,6 @@ cargo check -p skein-tls
 # testing-strategy.md, section 8: nextest starts each test directly.
 export NEXTEST_DOUBLE_SPAWN=0
 step build cargo nextest run --workspace --no-run
-step focused cargo nextest run --workspace
-step fuzzy cargo nextest run --workspace --profile fuzzy
+step focused cargo nextest run --workspace --tool-config-file "gate:$PWD/.config/nextest-gate.toml"
+step fuzzy cargo nextest run --workspace --profile fuzzy --tool-config-file "gate:$PWD/.config/nextest-gate.toml"
+python3 -I -B scripts/gate_starved.py default fuzzy
