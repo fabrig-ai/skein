@@ -1,0 +1,8 @@
+POST /api/v1/repos/fixture/turn/statuses/0000000000000000000000000000000000000011 HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Content-Type: application/json
+Content-Length: 128
+Connection: close
+
+{"state":"success","context":"turn/status","description":"turn status words","target_url":"https://example.invalid/turn/status"}
