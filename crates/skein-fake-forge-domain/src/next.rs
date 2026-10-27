@@ -7,7 +7,7 @@ use crate::domain::Domain;
 use crate::git;
 use crate::limits::Limits;
 use crate::pulls;
-use crate::store::{Repository, fits};
+use crate::store::Repository;
 use alloc::boxed::Box;
 use skein_lib::bytes::copy_of;
 use skein_lib::{Id, List, Map};
@@ -128,32 +128,27 @@ pub(crate) fn checks(repository: &Repository, limits: &Limits, commit: u64, ci_u
     }
     let mut summaries = List::with_capacity(limits.contexts);
     for status in pulls::statuses(repository, limits, commit) {
-        let description: &[u8] = match status.state {
-            Check::Pending => b"CI pending",
-            Check::Passed => b"CI passed",
-            Check::Failed => b"CI failed",
-        };
-        fits(description, limits.body_bytes)?;
-        let link = if status.author == ci_user {
-            crate::actions::link(repository, commit, &status.context)
-        } else {
-            Box::new([])
-        };
+        let description = copy_of(&status.description);
+        let link = copy_of(&status.link);
         let job = if status.state == Check::Failed && status.author == ci_user {
             crate::actions::reference(repository, commit, &status.context)
         } else {
             None
         };
-        summaries
-            .push(CheckSummary { status, description: copy_of(description), link, job })
-            .expect("one summary per admitted context");
+        summaries.push(CheckSummary { status, description, link, job }).expect("one summary per admitted context");
     }
     Ok(Answer::Checks(summaries.into_boxed()))
 }
 
 pub(crate) fn job(repository: &Repository, id: u64, ci_user: u64) -> Result<Answer, Error> {
-    let (job, context, failing) = failed_job(repository, id, ci_user)?;
-    Ok(Answer::Job { job, steps: crate::actions::steps(context, failing) })
+    let (_, job) = crate::actions::latest(repository, id)?;
+    let run = crate::actions::run(repository, job.run)?;
+    if run.run.workflow.is_some() {
+        return Ok(Answer::Job { steps: job.steps.clone(), job });
+    }
+    let (mut job, context, failing) = failed_job(repository, id, ci_user)?;
+    job.steps = crate::actions::steps(context, failing);
+    Ok(Answer::Job { steps: job.steps.clone(), job })
 }
 
 pub(crate) fn log(
@@ -163,6 +158,26 @@ pub(crate) fn log(
     step: Option<u32>,
     ci_user: u64,
 ) -> Result<Answer, Error> {
+    let (_, dispatched) = crate::actions::latest(repository, id)?;
+    if crate::actions::run(repository, dispatched.run)?.run.workflow.is_some() {
+        if dispatched.attempt != attempt {
+            return Err(Error::Missing(What::Job));
+        }
+        let mut out = List::with_capacity(
+            u32::try_from(dispatched.name.len()).expect("bounded job").saturating_mul(6).saturating_add(91),
+        );
+        for slice in &dispatched.steps {
+            if step.is_none() || step == Some(slice.number) {
+                for &byte in &slice.log {
+                    out.push(byte).expect("bounded job log");
+                }
+            }
+        }
+        if step.is_some() && step > Some(2) {
+            return Err(Error::Missing(What::Job));
+        }
+        return Ok(Answer::File(out.into_boxed()));
+    }
     let (job, context, failing) = failed_job(repository, id, ci_user)?;
     if job.attempt != attempt {
         return Err(Error::Missing(What::Job));
@@ -213,10 +228,15 @@ pub(crate) fn update(
     id: Id<Repository>,
     user: u64,
     number: u64,
+    style: crate::api::UpdateStyle,
 ) -> Result<Answer, Error> {
     let repository = domain.repositories.get(id).expect("a repository of the forge");
     repository.require(user, crate::api::Permission::Write)?;
-    if !repository.styles.merge {
+    let enabled = match style {
+        crate::api::UpdateStyle::Merge => repository.styles.merge,
+        crate::api::UpdateStyle::Rebase => repository.styles.rebase,
+    };
+    if !enabled {
         return Err(Error::Refused);
     }
     let item = repository.item(number)?;
@@ -229,25 +249,79 @@ pub(crate) fn update(
     if git::is_ancestor(domain, onto, head) {
         return Ok(Answer::Done);
     }
-    let tree = pulls::merged(domain, &env.limits.limits, onto, head)?;
     let branch = copy_of(&pull.head);
     if repository.is_protected(&branch) {
         return Err(Error::Protected);
     }
-    let merged = git::store(
-        domain,
-        crate::Object {
-            parent: Some(head),
-            merge_parent: Some(onto),
-            tree,
-            message: Box::new([]),
-            author: None,
-            committer: None,
-        },
-    )?;
+    let merged = match style {
+        crate::api::UpdateStyle::Merge => {
+            let tree = pulls::merged(domain, &env.limits.limits, onto, head)?;
+            git::store(
+                domain,
+                crate::Object {
+                    parent: Some(head),
+                    merge_parent: Some(onto),
+                    tree,
+                    message: Box::new([]),
+                    author: None,
+                    committer: None,
+                },
+            )?
+        }
+        crate::api::UpdateStyle::Rebase => rebase(domain, &env.limits.limits, onto, head)?,
+    };
+    let history = git::ancestors(domain, merged);
     let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
-    repository.has.insert(merged).expect("a repository has room for every commit");
+    for &commit in &history {
+        repository.has.insert(commit).expect("repository can retain every commit");
+    }
     repository.branches.insert(copy_of(&branch), merged).expect("the head branch exists");
     git::moved(domain, env, id, &branch, Some(head), merged, user);
     Ok(Answer::Done)
+}
+
+/// Validate every replay before storing any commit, so a conflict or full store changes nothing.
+fn rebase(domain: &mut Domain, limits: &Limits, onto: u64, head: u64) -> Result<u64, Error> {
+    let base_history = git::ancestors(domain, onto);
+    let history = git::ancestors(domain, head);
+    let mut commits = List::with_capacity(limits.commits);
+    for &commit in &history {
+        if !base_history.contains(&commit) {
+            commits.push(commit).expect("bounded history");
+        }
+    }
+    if commits.len() > domain.commits.capacity().saturating_sub(domain.commits.len()) {
+        return Err(Error::Full);
+    }
+    let empty = Map::with_capacity(0);
+    let mut tree = git::copy_tree(limits, &domain.object(onto).expect("base tip").tree);
+    for &commit in &commits {
+        let object = domain.object(commit).expect("branch commit");
+        let ancestor = match object.parent {
+            Some(parent) => &domain.object(parent).expect("parent").tree,
+            None => &empty,
+        };
+        tree = pulls::merge_trees(limits, ancestor, &tree, &object.tree)?;
+    }
+    drop(tree);
+    let mut parent = onto;
+    for &commit in &commits {
+        let object = domain.object(commit).expect("branch commit");
+        let ancestor = match object.parent {
+            Some(parent) => &domain.object(parent).expect("parent").tree,
+            None => &empty,
+        };
+        let tree =
+            pulls::merge_trees(limits, ancestor, &domain.object(parent).expect("replayed parent").tree, &object.tree)
+                .expect("every patch validated");
+        let message = copy_of(&object.message);
+        let author = object.author.clone();
+        let committer = object.committer.clone();
+        parent = git::store(
+            domain,
+            crate::Object { parent: Some(parent), merge_parent: None, tree, message, author, committer },
+        )
+        .expect("all commit slots admitted");
+    }
+    Ok(parent)
 }
