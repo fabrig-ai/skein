@@ -7,6 +7,7 @@ enum Shape {
     Runs,
     Run,
     Tree,
+    Commits,
     Located,
     Items,
     Item,
@@ -38,6 +39,7 @@ fn shape(answer: &Answer) -> Shape {
         Answer::Runs { .. } => Shape::Runs,
         Answer::Run(_) => Shape::Run,
         Answer::Tree { .. } => Shape::Tree,
+        Answer::Commits { .. } => Shape::Commits,
         Answer::Located { .. } => Shape::Located,
         Answer::Items { .. } => Shape::Items,
         Answer::Item { .. } => Shape::Item,
@@ -71,6 +73,8 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
             Read::Runs { .. } => Shape::Runs,
             Read::Run { .. } => Shape::Run,
             Read::Tree { .. } => Shape::Tree,
+            Read::Commits { .. } => Shape::Commits,
+            Read::Artifact { .. } | Read::File { .. } => Shape::File,
             Read::Locate { .. } => Shape::Located,
             Read::Items { .. } => Shape::Items,
             Read::Item { .. } => Shape::Item,
@@ -84,7 +88,6 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
             Read::Compare { .. } => Shape::Compare,
             Read::Checks { .. } => Shape::Checks,
             Read::Job { .. } => Shape::Job,
-            Read::File { .. } => Shape::File,
             Read::Protection { .. } => Shape::Protection,
             Read::Settings => Shape::Settings,
             Read::Collaborators { .. } => Shape::Collaborators,
@@ -115,6 +118,7 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
         Op::Write(_) => true,
     }
 }
+#[expect(clippy::too_many_lines, reason = "the read validator names each operation and its answer invariant")]
 fn read_accepts(read: &Read, answer: &Answer) -> bool {
     match read {
         Read::Runs { workflow, commit, .. } => {
@@ -139,6 +143,8 @@ fn read_accepts(read: &Read, answer: &Answer) -> bool {
             };
             value.id == *run
         }
+        Read::Artifact { max_bytes, .. } => artifact_fits(answer, *max_bytes),
+        Read::Commits { .. } => commits_unique(answer),
         Read::Tree { .. } => {
             let Answer::Tree { entries, .. } = answer else {
                 return false;
@@ -169,6 +175,7 @@ fn read_accepts(read: &Read, answer: &Answer) -> bool {
             | Answer::Runs { .. }
             | Answer::Run(_)
             | Answer::Tree { .. }
+            | Answer::Commits { .. }
             | Answer::Located { .. }
             | Answer::Item { .. }
             | Answer::Pull(_)
@@ -244,6 +251,7 @@ fn checks_at_head(answer: &Answer, head: Commit) -> bool {
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -296,6 +304,7 @@ fn items_ordered(answer: &Answer, kind: Option<Kind>) -> bool {
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Pull(_)
         | Answer::Reviews { .. }
@@ -337,6 +346,7 @@ fn reviews_ordered(answer: &Answer) -> bool {
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -381,6 +391,7 @@ fn item_matches(answer: &Answer, number: u64, after: u64) -> bool {
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Pull(_)
         | Answer::Reviews { .. }
@@ -413,6 +424,7 @@ fn pull_answer(answer: &Answer) -> Option<&Pull> {
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Reviews { .. }
@@ -445,6 +457,7 @@ fn observed_head(answer: &Answer) -> Option<Commit> {
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -479,6 +492,7 @@ fn compared(answer: &Answer, before: Commit, after: Commit) -> bool {
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -516,6 +530,7 @@ fn file_matches(answer: &Answer, head: Commit, path: &[u8], max_bytes: u32) -> b
         | Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Located { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)
@@ -546,5 +561,81 @@ fn tree_suffix(kind: skein_forge::api::EntryKind) -> &'static [u8] {
     match kind {
         skein_forge::api::EntryKind::Tree => b"/",
         skein_forge::api::EntryKind::Blob | skein_forge::api::EntryKind::Commit => b"",
+    }
+}
+
+fn artifact_fits(answer: &Answer, max_bytes: u32) -> bool {
+    match answer {
+        Answer::File { bytes, .. } => bytes.len() <= usize::try_from(max_bytes).expect("u32 fits"),
+        Answer::Located { .. }
+        | Answer::Items { .. }
+        | Answer::Item { .. }
+        | Answer::Pull(_)
+        | Answer::Reviews { .. }
+        | Answer::Statuses { .. }
+        | Answer::Remarks { .. }
+        | Answer::Commit(_)
+        | Answer::Branches(_)
+        | Answer::PullFiles { .. }
+        | Answer::Compare { .. }
+        | Answer::Checks(_)
+        | Answer::Job { .. }
+        | Answer::Protection(_)
+        | Answer::Settings(_)
+        | Answer::Collaborators { .. }
+        | Answer::Permission(_)
+        | Answer::Created(_)
+        | Answer::Commented(_)
+        | Answer::Reviewed(_)
+        | Answer::Merged(_)
+        | Answer::Queued
+        | Answer::Branch(_)
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
+        | Answer::Commits { .. }
+        | Answer::Done => false,
+    }
+}
+fn commits_unique(answer: &Answer) -> bool {
+    match answer {
+        Answer::Commits { commits, .. } => {
+            for (index, commit) in commits.iter().enumerate() {
+                for previous in commits.get(..index).expect("enumerated commit") {
+                    if previous.id == commit.id {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
+        Answer::Located { .. }
+        | Answer::Items { .. }
+        | Answer::Item { .. }
+        | Answer::Pull(_)
+        | Answer::Reviews { .. }
+        | Answer::Statuses { .. }
+        | Answer::Remarks { .. }
+        | Answer::Commit(_)
+        | Answer::Branches(_)
+        | Answer::PullFiles { .. }
+        | Answer::Compare { .. }
+        | Answer::Checks(_)
+        | Answer::Job { .. }
+        | Answer::File { .. }
+        | Answer::Protection(_)
+        | Answer::Settings(_)
+        | Answer::Collaborators { .. }
+        | Answer::Permission(_)
+        | Answer::Created(_)
+        | Answer::Commented(_)
+        | Answer::Reviewed(_)
+        | Answer::Merged(_)
+        | Answer::Queued
+        | Answer::Branch(_)
+        | Answer::Runs { .. }
+        | Answer::Run(_)
+        | Answer::Tree { .. }
+        | Answer::Done => false,
     }
 }

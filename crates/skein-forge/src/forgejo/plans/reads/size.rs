@@ -113,6 +113,13 @@ pub fn answer(answer: &api::Answer, limit: u32) -> Result<u64, api::Error> {
             }
             total = crate::measure::answer(answer).ok_or(api::Error::TooLarge)?;
         }
+        api::Answer::Commits { commits, .. } => {
+            rows(commits.len(), size_of::<api::CommitMessage>(), limit)?;
+            for commit in commits {
+                rows(commit.parents.len(), crate::measure::COMMIT_BYTES, limit)?;
+            }
+            total = crate::measure::answer(answer).ok_or(api::Error::TooLarge)?;
+        }
         api::Answer::Run(run) => {
             rows(run.jobs.len(), crate::measure::RUN_JOB_BYTES, limit)?;
             total = crate::measure::run(run).ok_or(api::Error::TooLarge)?;

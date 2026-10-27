@@ -98,6 +98,7 @@ pub struct Reachable {
 }
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Row {
+    CommitMessage(CommitMessage),
     /// Retains every repository so the setup host can filter after counting the page.
     Reachable(Reachable),
     /// Admin search reaches every repository, so each row has push set true.
@@ -564,4 +565,12 @@ pub(crate) fn run() -> Run {
 }
 pub(crate) fn job() -> Job {
     Job { id: 0, run_id: 0, attempt: 0, name: Box::new([]), status: StepStatus::Unknown }
+}
+
+/// A comparison's full commit fields.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct CommitMessage {
+    pub id: ObjectId,
+    pub parents: Box<[ObjectId]>,
+    pub message: Box<[u8]>,
 }

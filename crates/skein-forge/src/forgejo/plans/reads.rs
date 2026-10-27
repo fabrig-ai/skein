@@ -49,6 +49,7 @@ pub struct Plan {
     row: Option<Repository>,
     request: Option<Exchange>,
     turn: Option<super::turn::Plan>,
+    commits: Option<super::commits::Plan>,
     contents: Option<crate::forgejo::plans::contents::Plan>,
     actions: Option<crate::forgejo::plans::actions::Plan>,
     rows: Rows,
@@ -76,6 +77,7 @@ impl Plan {
             row: None,
             request: None,
             turn: None,
+            commits: None,
             contents: None,
             actions: None,
             rows: Rows::None,
@@ -126,6 +128,8 @@ impl Plan {
             | api::Read::Runs { .. }
             | api::Read::Run { .. }
             | api::Read::Tree { .. }
+            | api::Read::Artifact { .. }
+            | api::Read::Commits { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => {}
         }
@@ -155,6 +159,7 @@ impl Plan {
         self.limit = bounds.page_size;
         r::Page { page: Some(page), limit: Some(self.limit) }
     }
+    #[expect(clippy::too_many_lines, reason = "the initial request dispatch names every read variant")]
     fn initial(&mut self, bounds: Bounds, tables: &mut Tables) -> Result<Step, api::Error> {
         self.stage = Stage::Read;
         let at = self.at();
@@ -164,6 +169,22 @@ impl Plan {
                 return Ok(self.turn(super::turn::Mode::Runs { workflow, commit, page }, bounds));
             }
             api::Read::Run { run } => return Ok(self.turn(super::turn::Mode::Run(run), bounds)),
+            api::Read::Artifact { .. } => return Err(api::Error::Refused),
+            api::Read::Commits { before, after, page } => {
+                if page == 0 {
+                    return Err(api::Error::Empty);
+                }
+                let mut plan = super::commits::Plan::new(
+                    before,
+                    after,
+                    page,
+                    self.row.as_ref().expect("resolved").clone(),
+                    bounds,
+                )?;
+                let step = plan.begin();
+                self.commits = Some(plan);
+                return Ok(step);
+            }
             api::Read::Tree { object, page } => return Ok(self.turn(super::turn::Mode::Tree { object, page }, bounds)),
             api::Read::Items { since, page, kind } => {
                 self.rows = Rows::Items(List::with_capacity(bounds.page_size));
@@ -286,6 +307,9 @@ impl Plan {
         word: &[u8],
         tables: &mut Tables,
     ) -> Result<Option<Step>, api::Error> {
+        if let Some(plan) = &mut self.commits {
+            return plan.heard(heard, bounds, self.repository, tables);
+        }
         if let Some(plan) = &mut self.turn {
             return plan.heard(heard, bounds, self.repository, tables);
         }
@@ -454,6 +478,7 @@ impl Plan {
             | d::Row::Team(_)
             | d::Row::File(_)
             | d::Row::Commit(_)
+            | d::Row::CommitMessage(_)
             | d::Row::Entry(_)
             | d::Row::Run(_)
             | d::Row::Step(_)
@@ -490,6 +515,8 @@ impl Plan {
                 | api::Read::Runs { .. }
                 | api::Read::Run { .. }
                 | api::Read::Tree { .. }
+                | api::Read::Artifact { .. }
+                | api::Read::Commits { .. }
                 | api::Read::Job { .. }
                 | api::Read::File { .. } => false,
             };
@@ -517,6 +544,7 @@ impl Plan {
             | api::Answer::Runs { .. }
             | api::Answer::Run(_)
             | api::Answer::Tree { .. }
+            | api::Answer::Commits { .. }
             | api::Answer::Located { .. }
             | api::Answer::PullFiles { .. }
             | api::Answer::Compare { .. }
@@ -662,6 +690,7 @@ impl Plan {
             | api::Answer::Runs { .. }
             | api::Answer::Run(_)
             | api::Answer::Tree { .. }
+            | api::Answer::Commits { .. }
             | api::Answer::Located { .. }
             | api::Answer::PullFiles { .. }
             | api::Answer::Compare { .. }

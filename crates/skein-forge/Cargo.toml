@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 skein-lib.workspace = true
 skein-json.workspace = true
+skein-http.workspace = true
 
 [lints]
 workspace = true

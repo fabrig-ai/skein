@@ -613,6 +613,8 @@ fn admitted(op: &api::Op) -> bool {
             | api::Read::Runs { .. }
             | api::Read::Run { .. }
             | api::Read::Tree { .. }
+            | api::Read::Artifact { .. }
+            | api::Read::Commits { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. }
             | api::Read::Compare { .. }

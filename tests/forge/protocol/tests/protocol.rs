@@ -91,6 +91,9 @@ use skein_forge_client_world::translate::commit;
 
 fn workflow() -> raw::Workflow {
     raw::Workflow {
+        fails: Box::new([]),
+        report: None,
+        select: None,
         file: Box::from(b"gate.yml".as_slice()),
         jobs: Box::new([Box::from(b"build".as_slice()), Box::from(b"test".as_slice())]),
         latency_min: Duration::from_secs(2),

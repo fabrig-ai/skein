@@ -473,6 +473,7 @@ impl BodyDecoder {
                 | Request::Permission { .. }
                 | Request::PullFiles { .. }
                 | Request::Compare { .. }
+                | Request::Commits { .. }
                 | Request::Raw { .. }
                 | Request::Tree { .. }
                 | Request::WorkflowRuns { .. }
@@ -663,6 +664,7 @@ impl BodyDecoder {
             | Request::Permission { .. }
             | Request::PullFiles { .. }
             | Request::Compare { .. }
+            | Request::Commits { .. }
             | Request::Raw { .. }
             | Request::Tree { .. }
             | Request::WorkflowRuns { .. }
@@ -730,6 +732,7 @@ impl BodyDecoder {
             | Request::Permission { .. }
             | Request::PullFiles { .. }
             | Request::Compare { .. }
+            | Request::Commits { .. }
             | Request::Raw { .. }
             | Request::Tree { .. }
             | Request::WorkflowRuns { .. }

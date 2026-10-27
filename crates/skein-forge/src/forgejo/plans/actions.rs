@@ -50,6 +50,8 @@ impl Plan {
             api::Read::Runs { .. }
             | api::Read::Run { .. }
             | api::Read::Tree { .. }
+            | api::Read::Artifact { .. }
+            | api::Read::Commits { .. }
             | api::Read::Locate { .. }
             | api::Read::Items { .. }
             | api::Read::Item { .. }
@@ -255,7 +257,8 @@ impl Plan {
             | d::Row::File(_)
             | d::Row::Hook(_)
             | d::Row::Team(_)
-            | d::Row::Commit(_) => Err(api::Error::InvalidAnswer),
+            | d::Row::Commit(_)
+            | d::Row::CommitMessage(_) => Err(api::Error::InvalidAnswer),
         }
     }
     #[expect(clippy::manual_map, reason = "Step functions use explicit matches without closures")]

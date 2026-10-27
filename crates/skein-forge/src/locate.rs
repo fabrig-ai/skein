@@ -13,6 +13,7 @@ pub fn accepts(answer: &Answer) -> bool {
         Answer::Runs { .. }
         | Answer::Run(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Items { .. }
         | Answer::Item { .. }
         | Answer::Pull(_)

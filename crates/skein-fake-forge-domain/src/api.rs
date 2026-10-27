@@ -40,6 +40,16 @@ pub enum Op {
 /// The reads change nothing; `ListingPermission` lets the protocol combine grants before filtering.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Read {
+    /// A run's one uploaded artifact; absent until an unfaulted completion.
+    Artifact {
+        run: u64,
+        name: Box<[u8]>,
+    },
+    /// The bounded range after before through after, oldest first.
+    Commits {
+        before: u64,
+        after: u64,
+    },
     /// The scenario's id for the named repository.
     Locate,
     /// The page `page` (from one) of `limit` items (the most a page holds,
@@ -409,6 +419,13 @@ pub enum Want {
 /// The answer to a call that succeeded.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Answer {
+    Artifact {
+        commit: u64,
+        artifact: Artifact,
+    },
+    Commits {
+        commits: Box<[CommitMessage]>,
+    },
     Located {
         id: u32,
     },
@@ -912,6 +929,8 @@ pub struct Checks {
 /// A verdict cued by a commit's file content or message.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Cue {
+    /// Fails the ids listed one per line in the file at the run's commit.
+    Tests { path: Box<[u8]> },
     /// Passes when the file at `path` contains `green`, and fails otherwise.
     File { path: Box<[u8]>, green: Box<[u8]> },
     /// Fails when the commit message contains `fail`, and passes otherwise.
@@ -941,6 +960,12 @@ pub struct Protection {
 /// A workflow run only when dispatched (fake-forge.md, 2.3).
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Workflow {
+    /// The test ids failed by the workflow, beside its cue (fake-forge.md, 2.3).
+    pub fails: Box<[Box<[u8]>]>,
+    /// The artifact a completed run uploads, naming the ids it failed.
+    pub report: Option<Report>,
+    /// The dispatch input selecting ids to run alone.
+    pub select: Option<Box<[u8]>>,
     /// Its file under `.forgejo/workflows/`, as a dispatch names it.
     pub file: Box<[u8]>,
     pub jobs: Box<[Box<[u8]>]>,
@@ -953,3 +978,31 @@ pub struct Workflow {
 
 /// One named dispatch input; keys fit a name and values a body (fake-forge.md, 2.3).
 pub type WorkflowInput = (Box<[u8]>, Box<[u8]>);
+
+/// A workflow's report artifact.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Report {
+    pub artifact: Box<[u8]>,
+    pub format: ReportFormat,
+    pub deflate: bool,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ReportFormat {
+    Junit,
+    Lines,
+}
+/// One uploaded artifact, before its wire archive is encoded.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Artifact {
+    pub name: Box<[u8]>,
+    pub path: Box<[u8]>,
+    pub bytes: Box<[u8]>,
+    pub deflate: bool,
+}
+/// A range's full commit metadata.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct CommitMessage {
+    pub id: u64,
+    pub parents: Box<[u64]>,
+    pub message: Box<[u8]>,
+}

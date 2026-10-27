@@ -353,10 +353,11 @@ fn ci_job(id: u64, run: u64, index: u32, attempt: u32) -> Job {
     }
 }
 
-fn dispatch_harness(config: Config, jobs: &[&[u8]]) -> Harness {
-    let mut configured = setup();
-    configured.checks.contexts = Box::new([]);
-    configured.workflows = Box::new([crate::api::Workflow {
+fn workflow(jobs: &[&[u8]]) -> crate::api::Workflow {
+    crate::api::Workflow {
+        fails: Box::new([]),
+        report: None,
+        select: None,
         file: copy_of(b"gate.yml"),
         jobs: names(jobs),
         latency_min: Duration::from_secs(10),
@@ -364,7 +365,12 @@ fn dispatch_harness(config: Config, jobs: &[&[u8]]) -> Harness {
         passes: 1000,
         silent: 0,
         cue: None,
-    }]);
+    }
+}
+fn dispatch_harness(config: Config, jobs: &[&[u8]]) -> Harness {
+    let mut configured = setup();
+    configured.checks.contexts = Box::new([]);
+    configured.workflows = Box::new([workflow(jobs)]);
     Harness::with(config, configured)
 }
 fn dispatch() -> Op {
@@ -723,3 +729,5 @@ fn a_seed_replays_workflow_latency_runner_faults_and_reruns() {
         );
     }
 }
+
+mod reports;

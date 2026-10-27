@@ -338,6 +338,8 @@ fn outcome(result: Result<Answer, Error>) -> Result<Option<u64>, Error> {
         | Answer::Commit(_)
         | Answer::GitTree { .. }
         | Answer::Tree(_)
+        | Answer::Artifact { .. }
+        | Answer::Commits { .. }
         | Answer::File(_)
         | Answer::Pages { .. }
         | Answer::Page(_)
@@ -471,12 +473,14 @@ fn a_forge_filled_to_its_limits_stays_within_its_worst_case() {
     }
     let room = forge.domain.room();
     assert_eq!(room.statuses, 0, "every repository holds as many statuses as it may");
-    // The store holds as many commits as it may.
+    // A full history makes whole-message answers exercise every remaining commit.
+    let first = *firsts.as_slice().first().expect("first repository");
+    let mut last = first;
     for content in 0..u8::MAX {
         let made = skein_fake_forge_domain::commit(
             &mut forge.domain,
             &config,
-            *firsts.as_slice().first().expect("first repository"),
+            last,
             tree(content),
             &text(
                 LIMITS
@@ -488,10 +492,15 @@ fn a_forge_filled_to_its_limits_stays_within_its_worst_case() {
                 b'm',
             ),
         );
-        if made == Err(Error::Full) {
-            break;
+        match made {
+            Ok(Some(commit)) => last = commit,
+            Ok(None) => {}
+            Err(Error::Full) => break,
+            Err(error) => panic!("history fill: {error:?}"),
         }
     }
+    let repository = name(b'r', 0);
+    forge.ok(AUTHOR, &repository, Op::Git(Git::Push { branch: name(b'b', 0), commit: last, expected: Some(first) }));
     assert_eq!(forge.domain.room().commits, 0);
     let tally = forge.domain.tally();
     assert_eq!((tally.full, tally.unreported), (0, 0), "nothing was refused for room while filling");
@@ -523,6 +532,14 @@ fn a_forge_filled_to_its_limits_stays_within_its_worst_case() {
     ];
     for op in big {
         forge.send(ADMIN, &repository, op);
+    }
+    assert_eq!(forge.domain.calls(), LIMITS.calls);
+    for _ in 0..LIMITS.calls {
+        let (_, result) = forge.fire().expect("one retained answer goes out");
+        result.expect("the retained read succeeds");
+    }
+    for _ in 0..LIMITS.calls {
+        forge.send(ADMIN, &repository, Op::Read(Read::Commits { before: first, after: last }));
     }
     assert_eq!(forge.domain.calls(), LIMITS.calls);
     let held = forge.meter.held();

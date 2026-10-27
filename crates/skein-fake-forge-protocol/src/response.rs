@@ -51,6 +51,8 @@ fn number(answer: &Answer) -> Option<u64> {
         | Answer::Commit(_)
         | Answer::GitTree { .. }
         | Answer::Tree(_)
+        | Answer::Artifact { .. }
+        | Answer::Commits { .. }
         | Answer::File(_)
         | Answer::Pages { .. }
         | Answer::Page(_)
@@ -131,6 +133,7 @@ pub fn follow(request: &Request, answer: &Answer) -> Result<Option<(a::Read, Sel
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }
@@ -209,6 +212,7 @@ pub fn select(config: &Config, request: &Request, range: Option<Range>) -> Resul
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Commits { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }
         | Request::Dispatch { .. }
@@ -290,6 +294,7 @@ fn status(request: &Request) -> u16 {
         | crate::Route::Collaborators
         | crate::Route::Permission
         | crate::Route::PullFiles
+        | crate::Route::Commits
         | crate::Route::Compare
         | crate::Route::Raw
         | crate::Route::Tree
@@ -406,6 +411,8 @@ fn document(
         | Answer::Labels(_)
         | Answer::GitTree { .. }
         | Answer::Tree(_)
+        | Answer::Artifact { .. }
+        | Answer::Commits { .. }
         | Answer::File(_)
         | Answer::Pages { .. }
         | Answer::Page(_)
@@ -419,6 +426,7 @@ fn document(
         | Answer::Branch(_) => answers::read(config, setup, request, answer),
     }
 }
+#[expect(clippy::too_many_lines, reason = "the response dispatcher exhaustively names the domain answers")]
 pub fn answer(
     config: &Config,
     setup: &Store,
@@ -468,6 +476,8 @@ pub fn answer(
         | Answer::Commit(_)
         | Answer::GitTree { .. }
         | Answer::Tree(_)
+        | Answer::Artifact { .. }
+        | Answer::Commits { .. }
         | Answer::Pages { .. }
         | Answer::Page(_)
         | Answer::Created(_)
@@ -513,6 +523,8 @@ pub fn answer(
         | Answer::Commit(_)
         | Answer::GitTree { .. }
         | Answer::Tree(_)
+        | Answer::Artifact { .. }
+        | Answer::Commits { .. }
         | Answer::File(_)
         | Answer::Pages { .. }
         | Answer::Page(_)
@@ -840,6 +852,12 @@ mod bounded {
                     budget.row(0)?;
                 }
             }
+            a::Answer::Commits { commits } => {
+                for commit in commits {
+                    let parents = commit.parents.len().checked_mul(size_of::<skein_forge::forgejo::id::ObjectId>())?;
+                    budget.row(commit.message.len().checked_add(parents)?)?;
+                }
+            }
             a::Answer::Cloned { branches, .. } => {
                 for branch in branches {
                     budget.row(branch.branch.len())?;
@@ -858,6 +876,7 @@ mod bounded {
             | a::Answer::Labels(_)
             | a::Answer::Commit(_)
             | a::Answer::Tree(_)
+            | a::Answer::Artifact { .. }
             | a::Answer::Pages { .. }
             | a::Answer::Page(_)
             | a::Answer::Created(_)

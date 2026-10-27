@@ -89,6 +89,19 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
     };
     let checks = &domain.repositories.get(id).expect("a repository of the forge").checks;
     let state = match &checks.cue {
+        Some(Cue::Tests { path }) => {
+            let object = domain.object(commit).expect("CI commit");
+            match object.tree.get(&**path) {
+                Some(bytes) => {
+                    if crate::reports::lines(bytes, &env.limits.limits).expect("bounded cue").is_empty() {
+                        Check::Passed
+                    } else {
+                        Check::Failed
+                    }
+                }
+                None => Check::Passed,
+            }
+        }
         Some(Cue::File { path, green }) => {
             let tree = &domain.commits.get(&commit).expect("a commit of the store").tree;
             let green = match tree.get(&**path) {

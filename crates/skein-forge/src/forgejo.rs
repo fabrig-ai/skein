@@ -18,3 +18,5 @@ pub mod time;
 pub mod failure;
 
 pub mod plans;
+
+pub mod zip;

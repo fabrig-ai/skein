@@ -59,6 +59,7 @@ pub enum Route {
     Permission,
     PullFiles,
     Compare,
+    Commits,
     Raw,
     Tree,
     WorkflowRuns,
@@ -133,6 +134,7 @@ impl Route {
             | Self::Collaborators
             | Self::Permission
             | Self::PullFiles
+            | Self::Commits
             | Self::Compare
             | Self::Raw
             | Self::Tree
@@ -210,7 +212,8 @@ pub fn route(request: &Request) -> Route {
         Request::Collaborators { .. } => Route::Collaborators,
         Request::Permission { .. } => Route::Permission,
         Request::PullFiles { .. } => Route::PullFiles,
-        Request::Compare { .. } => Route::Compare,
+        Request::Compare { files: false, .. } | Request::Commits { .. } => Route::Commits,
+        Request::Compare { files: true, .. } => Route::Compare,
         Request::Raw { .. } => Route::Raw,
         Request::Tree { .. } => Route::Tree,
         Request::WorkflowRuns { .. } => Route::WorkflowRuns,

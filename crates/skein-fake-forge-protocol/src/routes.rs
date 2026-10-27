@@ -114,6 +114,7 @@ pub fn repository(config: &Config, request: &Request) -> Option<Box<[u8]>> {
         | Request::Pulls { at, .. }
         | Request::PullFiles { at, .. }
         | Request::Compare { at, .. }
+        | Request::Commits { at, .. }
         | Request::Raw { at, .. }
         | Request::Tree { at, .. }
         | Request::WorkflowRuns { at, .. }
@@ -261,7 +262,10 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
             let (page, limit) = page(config, *p);
             Read::PullFiles { number: *number, page, limit }
         }
-        Request::Compare { before, after, .. } => Read::Compare {
+        Request::Commits { before, after, .. } | Request::Compare { before, after, files: false, .. } => {
+            Read::Commits { before: commit(before).ok_or(missing)?, after: commit(after).ok_or(missing)? }
+        }
+        Request::Compare { before, after, files: true, .. } => Read::Compare {
             base: commit(before).ok_or(missing)?,
             head: commit(after).ok_or(missing)?,
             page: 1,
@@ -427,6 +431,7 @@ fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
         | Request::WorkflowRuns { .. }

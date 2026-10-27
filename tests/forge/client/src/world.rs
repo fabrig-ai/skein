@@ -573,6 +573,17 @@ impl World {
         };
         id
     }
+    /// Store a commit and push it to main for range-read stories.
+    pub fn historical_commit(&mut self, parent: u64, message: &[u8]) -> u64 {
+        let id = forge::commit_tree(&mut self.forge, &self.forge_env.limits, parent, None, Box::new([]), message)
+            .expect("fixture commit");
+        self.external(
+            raw::Op::Git(raw::Git::Push { branch: Box::from(*b"main"), commit: id, expected: Some(parent) }),
+            21_010,
+            2,
+        );
+        id
+    }
     pub fn historical_topic(&mut self) {
         self.external(raw::Op::Git(raw::Git::Create { branch: Box::from(&b"topic"[..]), commit: 1 }), 21_000, 2);
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: self.forge_env.limits };
@@ -831,6 +842,7 @@ fn inbox_count(answer: &api::Answer) -> u32 {
         | api::Answer::Runs { .. }
         | api::Answer::Run(_)
         | api::Answer::Tree { .. }
+        | api::Answer::Commits { .. }
         | api::Answer::Located { .. }
         | api::Answer::Pull(_)
         | api::Answer::Statuses { .. }

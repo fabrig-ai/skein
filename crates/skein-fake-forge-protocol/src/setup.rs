@@ -218,6 +218,7 @@ impl Store {
             | Request::Pulls { .. }
             | Request::PullFiles { .. }
             | Request::Compare { .. }
+            | Request::Commits { .. }
             | Request::Raw { .. }
             | Request::Tree { .. }
             | Request::WorkflowRuns { .. }
@@ -291,6 +292,7 @@ impl Store {
             | Request::Pulls { .. }
             | Request::PullFiles { .. }
             | Request::Compare { .. }
+            | Request::Commits { .. }
             | Request::Raw { .. }
             | Request::Tree { .. }
             | Request::WorkflowRuns { .. }

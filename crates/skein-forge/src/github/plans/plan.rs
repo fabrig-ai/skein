@@ -49,7 +49,11 @@ impl Plan {
     pub fn new(repository: api::Repository, op: api::Op) -> Self {
         let refused = match &op {
             api::Op::Read(read) => match read {
-                api::Read::Runs { .. } | api::Read::Run { .. } | api::Read::Tree { .. } => true,
+                api::Read::Runs { .. }
+                | api::Read::Run { .. }
+                | api::Read::Tree { .. }
+                | api::Read::Artifact { .. }
+                | api::Read::Commits { .. } => true,
                 api::Read::Locate { .. }
                 | api::Read::Items { .. }
                 | api::Read::Item { .. }

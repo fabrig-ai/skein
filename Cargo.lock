@@ -802,6 +802,7 @@ dependencies = [
 name = "skein-forge"
 version = "0.0.0"
 dependencies = [
+ "skein-http",
  "skein-json",
  "skein-lib",
  "skein-scratch",

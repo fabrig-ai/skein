@@ -172,6 +172,7 @@ pub fn expected(answer: Answer) -> (Document, Vec<Row>) {
         | Answer::Comments(_)
         | Answer::Pull(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Pulls(_) => panic!("review family answer"),
     }
 }

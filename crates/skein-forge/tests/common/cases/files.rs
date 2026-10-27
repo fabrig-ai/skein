@@ -224,6 +224,7 @@ pub fn expected(answer: Answer) -> (Document, Vec<Row>) {
         | Answer::Protections(_)
         | Answer::Collaborators(_)
         | Answer::Tree { .. }
+        | Answer::Commits { .. }
         | Answer::Permission(_) => panic!("file family answer"),
     }
 }

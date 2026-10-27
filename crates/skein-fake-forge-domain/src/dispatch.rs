@@ -49,6 +49,20 @@ pub(crate) fn dispatch(
     if repository.dispatched.capacity() == 0 {
         return Err(Error::Full);
     }
+    let probe = Run {
+        id: 0,
+        number: 0,
+        commit,
+        workflow: Some(file.clone()),
+        event: RunEvent::Dispatch,
+        user,
+        state: RunState::Running,
+        conclusion: None,
+        created: domain::clock(env),
+        inputs: inputs.clone(),
+    };
+    crate::reports::failed(domain, &workflow, &probe, &env.limits.limits)?;
+    let artifact = crate::reports::artifact(domain, &workflow, &probe, &env.limits.limits)?;
     let repository = domain.repositories.get_mut(id).expect("dispatch repository");
     if repository.dispatched.len() == repository.dispatched.capacity() {
         let (&oldest, _) = repository.dispatched.iter().next().expect("a full nonempty run store");
@@ -86,8 +100,11 @@ pub(crate) fn dispatch(
         })
         .expect("one job per definition");
     }
-    let mut kept = Kept { run, jobs };
+    let mut kept = Kept { run, jobs, artifact: None };
     actions::complete(&mut kept);
+    if kept.run.state == RunState::Completed {
+        kept.artifact = artifact;
+    }
     let run = kept.run.id;
     repository.dispatched.insert(run, kept).expect("run room admitted");
     for index in 0..u32::try_from(workflow.jobs.len()).expect("bounded jobs") {
@@ -140,7 +157,9 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
     let lost = domain.rng.chance(env.limits.lost);
     let file = kept.run.workflow.as_ref().expect("dispatched workflow");
     let workflow = workflow(repository, file).expect("configured workflow");
-    let state = if lost {
+    let failed_ids =
+        crate::reports::failed(domain, workflow, &kept.run, &env.limits.limits).expect("report inputs admitted");
+    let state = if lost || !failed_ids.is_empty() {
         Check::Failed
     } else {
         match &workflow.cue {
@@ -151,6 +170,7 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
                     Check::Passed
                 }
             }
+            Some(Cue::Tests { .. }) => Check::Passed,
             Some(Cue::File { path, green }) => match domain.object(commit).expect("run commit").tree.get(&**path) {
                 Some(content) if find(content, green).is_some() => Check::Passed,
                 Some(_) | None => Check::Failed,
@@ -173,6 +193,8 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
     } else {
         Failing::Workflow
     };
+    let artifact =
+        crate::reports::artifact(domain, workflow, &kept.run, &env.limits.limits).expect("report inputs admitted");
     let repository = domain.repositories.get_mut(id).expect("repository");
     let kept = repository.dispatched.get_mut(&run).expect("run");
     let mut attempt = None;
@@ -187,6 +209,9 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
         }
     }
     actions::complete(kept);
+    if crate::reports::reportable(kept) {
+        kept.artifact = artifact;
+    }
     let attempt = attempt.expect("timer's retained job");
     crate::hooks::notify(
         domain,
@@ -221,6 +246,7 @@ pub(crate) fn rerun(
     }
     let repository = domain.repositories.get_mut(id).expect("repository");
     let kept = repository.dispatched.get_mut(&entry.run).expect("dispatched run");
+    kept.artifact = None;
     for index in 0..kept.jobs.len() {
         let entry = kept.jobs.get_mut(index).expect("retained job");
         if entry.id == job {

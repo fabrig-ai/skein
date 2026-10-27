@@ -495,6 +495,7 @@ fn adoption_reads_history_and_preserves_foreign_or_copied_marker_news() {
             | api::Answer::Runs { .. }
             | api::Answer::Run(_)
             | api::Answer::Tree { .. }
+            | api::Answer::Commits { .. }
             | api::Answer::Located { .. }
             | api::Answer::Pull(_)
             | api::Answer::Reviews { .. }
@@ -564,6 +565,7 @@ fn comment_ids(world: &World) -> skein_lib::List<u64> {
             | api::Answer::Runs { .. }
             | api::Answer::Run(_)
             | api::Answer::Tree { .. }
+            | api::Answer::Commits { .. }
             | api::Answer::Located { .. }
             | api::Answer::Pull(_)
             | api::Answer::Reviews { .. }
@@ -623,6 +625,7 @@ fn review_page_recovery_keeps_old_pending_submissions_without_duplicate_news() {
             | api::Answer::Runs { .. }
             | api::Answer::Run(_)
             | api::Answer::Tree { .. }
+            | api::Answer::Commits { .. }
             | api::Answer::Located { .. }
             | api::Answer::Item { .. }
             | api::Answer::Pull(_)
@@ -739,6 +742,7 @@ fn review_count(world: &World) -> u32 {
             | api::Answer::Runs { .. }
             | api::Answer::Run(_)
             | api::Answer::Tree { .. }
+            | api::Answer::Commits { .. }
             | api::Answer::Located { .. }
             | api::Answer::Item { .. }
             | api::Answer::Pull(_)
@@ -803,5 +807,110 @@ fn a_pre_adoption_human_edit_is_news_despite_our_retained_author_and_marker() {
     world.restart();
     world.run_for(1);
     assert_eq!(comment_ids(&world).as_slice(), &[own]);
+    world.finish();
+}
+
+#[test]
+fn a_completed_dispatch_exposes_its_failed_ids_artifact() {
+    use skein_fake_forge_domain::api as raw;
+    use skein_lib::Duration;
+    // b plus its newline is the entire failed-id file.
+    const FAILED_BYTES: u32 = 2;
+    let mut world = World::with_workflows(
+        Settings::calm(61),
+        Box::new([raw::Workflow {
+            file: Box::from(*b"gate.yml"),
+            jobs: Box::new([Box::from(b"tests".as_slice())]),
+            fails: Box::new([Box::from(b"a".as_slice()), Box::from(b"b".as_slice())]),
+            report: Some(raw::Report {
+                artifact: Box::from(*b"tests"),
+                format: raw::ReportFormat::Lines,
+                deflate: true,
+            }),
+            select: Some(Box::from(*b"select")),
+            latency_min: Duration::from_secs(1),
+            latency_max: Duration::from_secs(1),
+            silent: 0,
+            passes: 1000,
+            cue: None,
+        }]),
+    );
+    let head = skein_forge_client_world::translate::commit(world.branch(b"main").expect("main"));
+    let mut entry = fixtures::issue(1);
+    entry.effect.write = api::Write::Dispatch {
+        workflow: Box::from(*b"gate.yml"),
+        branch: Box::from(*b"main"),
+        inputs: Box::new([api::Input { name: Box::from(*b"select"), value: Box::from(*b"b") }]),
+    };
+    world.make(entry);
+    world.run_for(2);
+    world.read(100, api::Read::Runs { workflow: Box::from(*b"gate.yml"), commit: head, page: 1 });
+    world.run_for(1);
+    let Some(Ok(api::Answer::Runs { runs, .. })) = world.read_result(100) else {
+        panic!("run listing");
+    };
+    let id = runs[0].id;
+    world.read(101, api::Read::Run { run: id });
+    world.run_for(1);
+    let Some(Ok(api::Answer::Run(run))) = world.read_result(101) else {
+        panic!("completed run");
+    };
+    assert_eq!((run.state, run.conclusion), (api::RunState::Completed, Some(api::Conclusion::Failure)));
+    world.read(102, api::Read::Artifact { run: id, name: Box::from(*b"tests"), max_bytes: FAILED_BYTES });
+    world.run_for(1);
+    assert_eq!(
+        world.read_result(102),
+        Some(&Ok(api::Answer::File {
+            head,
+            path: Box::from(*b"failed.txt"),
+            bytes: Box::from(*b"b\n"),
+            truncated: false
+        }))
+    );
+    world.finish();
+}
+#[test]
+fn range_commits_keep_their_messages_across_two_pages() {
+    use skein_forge_client_world::translate::commit;
+    let mut world = World::new(Settings::calm(67));
+    let before = world.branch(b"main").expect("main");
+    let first = world.historical_commit(before, b"first\n\nTrailer: one\n");
+    let second = world.historical_commit(first, b"second\n\nTrailer: two\n");
+    let third = world.historical_commit(second, b"third\n\nTrailer: three\n");
+    for (page, expected) in [
+        (
+            1,
+            api::Answer::Commits {
+                commits: Box::new([
+                    api::CommitMessage {
+                        id: commit(first),
+                        parents: Box::new([commit(before)]),
+                        message: Box::from(*b"first\n\nTrailer: one\n"),
+                    },
+                    api::CommitMessage {
+                        id: commit(second),
+                        parents: Box::new([commit(first)]),
+                        message: Box::from(*b"second\n\nTrailer: two\n"),
+                    },
+                ]),
+                more: true,
+            },
+        ),
+        (
+            2,
+            api::Answer::Commits {
+                commits: Box::new([api::CommitMessage {
+                    id: commit(third),
+                    parents: Box::new([commit(second)]),
+                    message: Box::from(*b"third\n\nTrailer: three\n"),
+                }]),
+                more: false,
+            },
+        ),
+    ] {
+        world.read(100 + u64::from(page), api::Read::Commits { before: commit(before), after: commit(third), page });
+        world.run_for(1);
+        assert_eq!(world.read_result(100 + u64::from(page)), Some(&Ok(expected)));
+    }
     world.finish();
 }

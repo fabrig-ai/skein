@@ -130,6 +130,7 @@ pub(super) fn write(json: &mut Encoder, answer: &super::Answer) {
         | super::Answer::Collaborators(_)
         | super::Answer::Permission(_)
         | super::Answer::Tree { .. }
+        | super::Answer::Commits { .. }
         | super::Answer::CombinedStatus { .. } => unreachable!("organization answer selection"),
     }
 }
