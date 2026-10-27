@@ -60,7 +60,7 @@ fn github_fake_merged_pull_reads_as_merged_in_the_mixed_listing() {
     let issue = r::issue(&mut h, b"issue");
     let (pull, head) = r::pull(&mut h);
     h.env.now = Time::from_nanos(2_000_000_000);
-    r::call(&mut h, a::Op::Write(a::Write::Merge { number: pull, head }));
+    r::call(&mut h, a::Op::Write(a::Write::Merge { number: pull, head, how: a::MergeHow::Style }));
     let token = r::token(&mut h);
     let api::Answer::Items { items, .. } =
         r::read(&mut h, &token, api::Read::Items { since: Time::ZERO, page: 1, kind: None }).expect("mixed listing")

@@ -161,7 +161,16 @@ fn github_fake_merge_check_rules_name_each_unmet_context_and_state() {
     for (context, state) in
         [(b"running".as_slice(), a::Check::Pending), (b"failed", a::Check::Failed), (b"passed", a::Check::Passed)]
     {
-        r::call(&mut h, a::Op::Write(a::Write::Status { commit: head, context: f::boxed(context), state }));
+        r::call(
+            &mut h,
+            a::Op::Write(a::Write::Status {
+                commit: head,
+                context: f::boxed(context),
+                state,
+                description: Box::new([]),
+                link: Box::new([]),
+            }),
+        );
     }
     let token = r::token(&mut h);
     assert_eq!(w::write(&mut h, &token, write(number, head)), Err(api::Error::Protected));

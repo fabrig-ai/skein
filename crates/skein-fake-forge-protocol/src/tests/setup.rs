@@ -377,6 +377,7 @@ fn user_repos_harness(all_repositories: bool) -> fixtures::Harness {
             &mut h.domain,
             &h.fake_env.limits,
             a::Setup {
+                workflows: Box::new([]),
                 id,
                 name: boxed(full),
                 default: boxed(b"main"),

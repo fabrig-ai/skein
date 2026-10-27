@@ -182,7 +182,14 @@ fn changed_files_keep_the_path_and_each_kind_of_change() {
 #[test]
 fn a_ci_status_has_no_creator_and_a_link_relative_to_the_origin() {
     let input = a::Answer::Checks(Box::new([a::CheckSummary {
-        status: a::Status { context: boxed(b"ci"), state: a::Check::Failed, author: 3, at: Time::ZERO },
+        status: a::Status {
+            description: Box::new([]),
+            link: Box::new([]),
+            context: boxed(b"ci"),
+            state: a::Check::Failed,
+            author: 3,
+            at: Time::ZERO,
+        },
         description: boxed(b"failed"),
         link: boxed(b"/org/repo/actions/runs/1/jobs/0"),
         job: Some(a::JobRef { run: 1, job: 1, attempt: 1 }),
@@ -212,7 +219,14 @@ fn statuses_combine_failed_before_pending_before_passed() {
         let mut rows = skein_lib::List::with_capacity(2);
         for state in checks {
             rows.push(a::CheckSummary {
-                status: a::Status { context: boxed(b"ci"), state, author: 2, at: Time::ZERO },
+                status: a::Status {
+                    description: Box::new([]),
+                    link: Box::new([]),
+                    context: boxed(b"ci"),
+                    state,
+                    author: 2,
+                    at: Time::ZERO,
+                },
                 description: boxed(b""),
                 link: boxed(b""),
                 job: None,
@@ -263,7 +277,16 @@ fn a_files_false_comparison_keeps_commits_and_lists_no_files() {
 #[test]
 fn a_jobs_steps_keep_their_numbers_names_and_statuses() {
     let input = a::Answer::Job {
-        job: a::Job { id: 8, run: 7, index: 0, attempt: 2 },
+        job: a::Job {
+            name: Box::new([]),
+            state: a::RunState::Completed,
+            conclusion: Some(a::Conclusion::Failure),
+            steps: Box::new([]),
+            id: 8,
+            run: 7,
+            index: 0,
+            attempt: 2,
+        },
         steps: Box::new([
             a::Step { number: 0, name: boxed(b"Setup"), status: a::StepStatus::Success, log: boxed(b"setup\n") },
             a::Step { number: 1, name: boxed(b"Work"), status: a::StepStatus::Cancelled, log: boxed(b"work\n") },

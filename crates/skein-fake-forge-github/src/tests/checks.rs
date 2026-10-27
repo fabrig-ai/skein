@@ -69,7 +69,13 @@ fn github_fake_reported_statuses_stay_statuses_and_empty_combined_is_pending_zer
         if reported {
             r::call(
                 &mut h,
-                a::Op::Write(a::Write::Status { commit, context: f::boxed(b"human"), state: a::Check::Passed }),
+                a::Op::Write(a::Write::Status {
+                    commit,
+                    context: f::boxed(b"human"),
+                    state: a::Check::Passed,
+                    description: Box::new([]),
+                    link: Box::new([]),
+                }),
             );
         }
         for runs in [false, true] {

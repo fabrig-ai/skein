@@ -88,7 +88,9 @@ fn github_fake_graphql_pull_has_stable_identity_and_domain_merge_commit() {
     assert_eq!(initial.merge_commit, None);
     assert_eq!(initial.queued, None);
     assert_eq!(initial.dequeued, None);
-    let a::Answer::Merged(merged) = r::call(&mut h, a::Op::Write(a::Write::Merge { number, head })) else {
+    let a::Answer::Merged(merged) =
+        r::call(&mut h, a::Op::Write(a::Write::Merge { number, head, how: a::MergeHow::Style }))
+    else {
         panic!("merged")
     };
     let response = query(&mut h, &token, b"widgets", number);
@@ -230,7 +232,13 @@ fn github_fake_enqueue_is_idempotent_and_pull_reads_its_position() {
     r::call_as(
         &mut h,
         f::BOT,
-        a::Op::Write(a::Write::Status { commit: head, context: f::boxed(b"required"), state: a::Check::Passed }),
+        a::Op::Write(a::Write::Status {
+            commit: head,
+            context: f::boxed(b"required"),
+            state: a::Check::Passed,
+            description: Box::new([]),
+            link: Box::new([]),
+        }),
     );
     for _delivery in 0..2_u32 {
         let response = enqueue(&mut h, &token, &id, head);
