@@ -195,7 +195,7 @@ fn filters(p: &mut Probe<'_>, before: &str, after: &str) -> Result<()> {
                     && r.get("trigger_user").get("id").u64() == Some(p.recorder.f.owner.id)
             })
             && rows(&old, "workflow_runs")?.len() == 1,
-        "workflow/head filters, newest order or page boundaries differ",
+        "head_sha and newest order hold; workflow is ignored: page 2 also contains other.yaml",
     );
     // Finish every queued job before the fixture's runner is stopped.
     for id in ids {
