@@ -217,6 +217,7 @@ struct Frame {
 #[derive(Debug)]
 enum Want {
     Start(Kind),
+    Input(Box<[u8]>),
     Key,
     Value { field: Field, bit: u64 },
     Skip,
@@ -234,6 +235,7 @@ pub(crate) struct Walk {
 }
 #[derive(Debug)]
 pub(crate) enum Value {
+    Input(crate::api::Input),
     Number(u64),
     Text(Box<[u8]>),
     Boolean(bool),
@@ -283,6 +285,18 @@ impl Walk {
         let want = core::mem::replace(&mut self.want, Want::Terminal);
         match want {
             Want::Start(kind) => self.start(kind, event),
+            Want::Input(name) => {
+                let value = scalar(field(b"inputs", Read::Text), event)?;
+                let Value::Text(value) = value else {
+                    return Err(Malformed::Shape { field: b"inputs" });
+                };
+                self.want = Want::Key;
+                Ok(Move::Scalar {
+                    kind: self.parent().expect("inputs object"),
+                    key: b"inputs",
+                    value: Value::Input(crate::api::Input { name, value }),
+                })
+            }
             Want::Key => self.key(event, limits),
             Want::Value { field, bit } => self.value(field, bit, event),
             Want::Skip => {
@@ -373,6 +387,10 @@ impl Walk {
                 if self.skip_row && frame.kind == Kind::Item(Item::Comment) {
                     self.want = Want::Skip;
                     return Ok(Move::Demand(tokenizer::Request::Skip));
+                }
+                if frame.kind == Kind::Write(crate::forgejo::server::writes::WriteKind::Inputs) {
+                    self.want = Want::Input(key.clone());
+                    return Ok(Move::Demand(tokenizer::Request::Text(limits.string_bytes)));
                 }
                 for (index, field) in fields(frame.kind).iter().enumerate() {
                     if field.key == &**key {

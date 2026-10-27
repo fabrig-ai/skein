@@ -46,6 +46,7 @@ pub enum Recovery {
 #[expect(clippy::match_same_arms, reason = "each forge kind declares its own recovery reason")]
 pub fn recovery(write: &Write) -> Recovery {
     match write {
+        Write::Dispatch { .. } | Write::Rerun { .. } => Recovery::Unrecoverable,
         // Forgejo refuses a second pull only while one for those branches is open.
         Write::OpenPull { .. } => Recovery::Conditional,
         // A branch may be deleted; Forgejo then keeps no proof it was created.

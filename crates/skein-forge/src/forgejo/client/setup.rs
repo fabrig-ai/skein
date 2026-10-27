@@ -98,6 +98,7 @@ impl Setup {
                 _ => return Step::Malformed(Malformed::Shape { field: key }),
             },
             Move::Scalar { key, value, .. } => match value {
+                Value::Input(_) => unreachable!("dispatch input table"),
                 Value::Number(value) => self.user.id = value,
                 Value::Boolean(value) => self.user.is_admin = value,
                 Value::Text(text) => {

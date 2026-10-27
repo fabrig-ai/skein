@@ -234,6 +234,9 @@ fn github_pull_resolves_absent_repository() {
             | api::Read::PullFiles { .. }
             | api::Read::Compare { .. }
             | api::Read::Checks { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. }
             | api::Read::Protection { .. }

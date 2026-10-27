@@ -24,6 +24,21 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
     }
     let at = Repo { owner: owner.clone(), name: name.clone() };
     let request = match tail {
+        [git, trees, object] if &**git == b"git" && &**trees == b"trees" => {
+            let page_number = match query_value(&target.query, b"page") {
+                Some(v) => Some(u32::try_from(number_value(&v)?).or(Err(Unrouted::Malformed))?),
+                None => None,
+            };
+            let limit = match query_value(&target.query, b"per_page") {
+                Some(v) => Some(u32::try_from(number_value(&v)?).or(Err(Unrouted::Malformed))?),
+                None => None,
+            };
+            Request::Tree {
+                at,
+                object: id::read(object).ok_or(Unrouted::Malformed)?,
+                page: crate::forgejo::request::Page { page: page_number, limit },
+            }
+        }
         [pulls, number, files] if &**pulls == b"pulls" && &**files == b"files" => {
             Request::PullFiles { at, number: number_value(number)?, page: page(&target.query)? }
         }
@@ -85,6 +100,31 @@ fn file(json: &mut Encoder, value: &ChangedFile) {
 }
 pub(super) fn write(json: &mut Encoder, answer: &Answer) {
     match answer {
+        Answer::Tree { entries, truncated } => {
+            json.object_start();
+            json.key(b"truncated");
+            json.boolean(*truncated);
+            json.key(b"tree");
+            json.array_start();
+            for entry in entries {
+                json.object_start();
+                json.key(b"path");
+                json.string(&entry.path);
+                json.key(b"mode");
+                json.string(&mode(entry.mode));
+                json.key(b"type");
+                json.string(match entry.kind {
+                    crate::api::EntryKind::Blob => b"blob",
+                    crate::api::EntryKind::Tree => b"tree",
+                    crate::api::EntryKind::Commit => b"commit",
+                });
+                json.key(b"sha");
+                json.string(&id::write(&entry.sha));
+                json.object_end();
+            }
+            json.array_end();
+            json.object_end();
+        }
         Answer::Files(values) => {
             json.array_start();
             for value in values {
@@ -153,4 +193,18 @@ pub(super) fn write(json: &mut Encoder, answer: &Answer) {
         | Answer::Job { .. }
         | Answer::Jobs(_) => unreachable!("file answer selection"),
     }
+}
+
+fn mode(mut value: u32) -> Box<[u8]> {
+    let mut digits = [b'0'; 11];
+    let mut start = 10usize;
+    for digit in digits.iter_mut().rev() {
+        *digit = b'0'.saturating_add(u8::try_from(value % 8).expect("octal digit"));
+        value = value.checked_div(8).expect("nonzero radix");
+        if value == 0 {
+            break;
+        }
+        start = start.saturating_sub(1);
+    }
+    skein_lib::bytes::copy_of(digits.get(start..).expect("octal range"))
 }

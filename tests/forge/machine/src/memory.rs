@@ -728,7 +728,9 @@ pub fn full_heap(forges: Forges) -> Full {
         assert_eq!(w.live_calls, 0, "both file calls completed");
     }
     if forges.github > 0 {
-        w.call(3, forge, || api::Op::Write(api::Write::Merge { number: 1, head: head() }));
+        w.call(3, forge, || {
+            api::Op::Write(api::Write::Merge { number: 1, head: head(), how: skein_forge::api::MergeHow::Style })
+        });
         w.settle();
         w.call(4, forge, || {
             api::Op::Write(api::Write::SetReviewers {

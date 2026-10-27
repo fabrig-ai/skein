@@ -339,7 +339,7 @@ fn tools(calls: Vec<Answer>) -> (Machine, api::Commit) {
     (w, head)
 }
 fn merge_call(w: &mut Machine, call: u64, number: u64, head: api::Commit) {
-    w.call(call, TOOLS, Op::Write(api::Write::Merge { number, head }));
+    w.call(call, TOOLS, Op::Write(api::Write::Merge { number, head, how: skein_forge::api::MergeHow::Style }));
     w.run_for(SECOND);
 }
 fn queue_script() -> Vec<Answer> {

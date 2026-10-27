@@ -369,6 +369,8 @@ fn write_other_cases() -> Vec<(&'static str, Request)> {
                 commit: sha(4),
                 state: StatusState::Success,
                 context: Box::from(*b"fixture/test"),
+                description: Box::new([]),
+                link: Box::new([]),
             },
         ),
         (
@@ -378,6 +380,8 @@ fn write_other_cases() -> Vec<(&'static str, Request)> {
                 commit: sha(4),
                 state: StatusState::Pending,
                 context: Box::from(*b"fixture/other"),
+                description: Box::new([]),
+                link: Box::new([]),
             },
         ),
         ("create-branch", Request::CreateBranch { at: specimen(), branch: Box::from(*b"recorded"), from: sha(4) }),

@@ -131,7 +131,11 @@ fn github_queue_merge_fits_one_slots_heap() {
     let pull = f::ok(&pull);
     let enqueued = f::ok(br#"{"data":{"enqueuePullRequest":{"mergeQueueEntry":{"position":1}}}}"#);
     let mut heap = CallHeap { peak: 0, held: 0 };
-    begin(&mut h, Op::Write(Write::Merge { number: 7, head: [0; 32] }), &mut heap);
+    begin(
+        &mut h,
+        Op::Write(Write::Merge { number: 7, head: [0; 32], how: skein_forge::api::MergeHow::Style }),
+        &mut heap,
+    );
     hear(&mut h, &refusal, &mut heap);
     hear(&mut h, &pull, &mut heap);
     assert!(skein_lib::bytes::find(&h.request_bytes(f::FORGE), &text).is_some());

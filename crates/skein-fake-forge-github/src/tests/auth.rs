@@ -286,6 +286,8 @@ fn routes() -> Box<[(Route, Class)]> {
                 commit: head,
                 context: f::boxed(b"ci"),
                 check: api::Check::Passed,
+                description: Box::new([]),
+                link: Box::new([]),
             },
             Full,
         ),

@@ -430,6 +430,8 @@ fn other_requests() -> [Request; 36] {
             name: name.clone(),
             commit,
             context: branch.clone(),
+            description: Box::new([]),
+            link: Box::new([]),
             check: skein_forge::api::Check::Passed,
         },
         Request::CreateBranch { owner: owner.clone(), name: name.clone(), branch: branch.clone(), commit },

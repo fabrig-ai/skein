@@ -34,6 +34,8 @@ pub(super) fn route(method: super::Method, path: &[u8]) -> Option<Request> {
             name,
             commit: super::id::commit(commit)?,
             context: Box::from([]),
+            description: Box::new([]),
+            link: Box::new([]),
             check: crate::api::Check::Pending,
         });
     }
@@ -493,6 +495,8 @@ pub fn write_body(request: Request, body: &[u8], limits: &Limits) -> Option<Requ
                 &[
                     Field { key: b"state", body: false, required: true },
                     Field { key: b"context", body: false, required: true },
+                    Field { key: b"description", body: false, required: false },
+                    Field { key: b"target_url", body: false, required: false },
                 ],
                 limits,
             )?;
@@ -502,7 +506,15 @@ pub fn write_body(request: Request, body: &[u8], limits: &Limits) -> Option<Requ
                 b"failure" => crate::api::Check::Failed,
                 _ => return None,
             };
-            Some(Request::Status { owner, name, commit, context: Box::from(fields.get(b"context")?), check })
+            Some(Request::Status {
+                owner,
+                name,
+                commit,
+                context: Box::from(fields.get(b"context")?),
+                check,
+                description: Box::from(fields.get(b"description").unwrap_or(b"")),
+                link: Box::from(fields.get(b"target_url").unwrap_or(b"")),
+            })
         }
         Request::Edit { owner, name, number, .. } => {
             let fields = parse(

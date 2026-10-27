@@ -464,6 +464,8 @@ pub(super) fn page_size(op: &api::Op, cap: u32, l: &Limits, s: &Shared) -> u32 {
             api::Read::Collaborators { .. } => Listing::Collaborators,
             api::Read::PullFiles { .. } => Listing::PullFiles,
             api::Read::Compare { .. } => Listing::Compare,
+            api::Read::Runs { .. } => Listing::Runs,
+            api::Read::Tree { .. } => Listing::Tree,
             api::Read::Locate { .. }
             | api::Read::Item { .. }
             | api::Read::Pull { .. }
@@ -471,6 +473,7 @@ pub(super) fn page_size(op: &api::Op, cap: u32, l: &Limits, s: &Shared) -> u32 {
             | api::Read::Protection { .. }
             | api::Read::Permission { .. }
             | api::Read::File { .. }
+            | api::Read::Run { .. }
             | api::Read::Job { .. }
             | api::Read::Settings => return 1,
         },

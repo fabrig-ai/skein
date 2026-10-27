@@ -44,6 +44,9 @@ impl Referee {
                 }
             }
             api::Answer::Items { .. }
+            | api::Answer::Runs { .. }
+            | api::Answer::Run(_)
+            | api::Answer::Tree { .. }
             | api::Answer::Located { .. }
             | api::Answer::Pull(_)
             | api::Answer::Statuses { .. }

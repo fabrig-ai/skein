@@ -125,7 +125,7 @@ fn editing() -> [WriteCase; 5] {
         },
         WriteCase {
             name: "merge",
-            write: Write::Merge { number: 1, head: HEAD },
+            write: Write::Merge { number: 1, head: HEAD, how: api::MergeHow::Style },
             replies: &[(200, b""), (200, MERGED)],
             expected: Ok(Answer::Merged(HEAD)),
             sends: &["POST /api/v1/repos/fixture/specimen/pulls/1/merge", "GET /api/v1/repos/fixture/specimen/pulls/1"],
@@ -134,7 +134,7 @@ fn editing() -> [WriteCase; 5] {
         },
         WriteCase {
             name: "update",
-            write: Write::Update { number: 1 },
+            write: Write::Update { number: 1, style: api::UpdateStyle::Merge },
             replies: &[(200, b"")],
             expected: Ok(Answer::Done),
             sends: &["POST /api/v1/repos/fixture/specimen/pulls/1/update?style=merge"],
@@ -147,7 +147,13 @@ fn branches() -> [WriteCase; 5] {
     [
         WriteCase {
             name: "status",
-            write: Write::Status { commit: HEAD, context: Box::from(&b"ci"[..]), check: api::Check::Passed },
+            write: Write::Status {
+                commit: HEAD,
+                context: Box::from(&b"ci"[..]),
+                check: api::Check::Passed,
+                description: Box::new([]),
+                link: Box::new([]),
+            },
             replies: &[(201, STATUS)],
             expected: Ok(Answer::Done),
             sends: &["POST /api/v1/repos/fixture/specimen/statuses/0100000000000000000000000000000000000000"],

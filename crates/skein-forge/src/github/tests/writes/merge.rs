@@ -9,7 +9,7 @@ fn text(bytes: &[u8]) -> &str {
     core::str::from_utf8(bytes).unwrap()
 }
 fn merge() -> api::Write {
-    api::Write::Merge { number: 5, head: commit() }
+    api::Write::Merge { number: 5, head: commit(), how: api::MergeHow::Style }
 }
 fn limits() -> crate::github::limits::Limits {
     let mut limits = super::limits();

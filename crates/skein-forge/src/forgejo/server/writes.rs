@@ -19,6 +19,8 @@ use skein_json::tokenizer;
 use skein_lib::List;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum WriteKind {
+    Dispatch,
+    Inputs,
     Issue,
     NewUser,
     NewToken,
@@ -47,8 +49,12 @@ pub(crate) enum WriteKind {
 const fn field(key: &'static [u8], read: Read, required: bool) -> Field {
     Field { key, read, required }
 }
+#[expect(clippy::too_many_lines, reason = "each request body kind declares its complete field table")]
 pub(crate) fn fields(kind: WriteKind) -> &'static [Field] {
     match kind {
+        WriteKind::Dispatch => {
+            const { &[field(b"ref", Read::Text, true), field(b"inputs", Read::Object(Kind::Write(WriteKind::Inputs)), true)] }
+        }
         WriteKind::NewToken => {
             const { &[field(b"name", Read::Text, true), field(b"scopes", Read::Array(Kind::Write(WriteKind::Scopes)), true)] }
         }
@@ -131,18 +137,29 @@ pub(crate) fn fields(kind: WriteKind) -> &'static [Field] {
         WriteKind::Merge => {
             const { &[field(b"Do", Read::Text, true), field(b"head_commit_id", Read::Id { empty: false }, true)] }
         }
-        WriteKind::Status => const { &[field(b"state", Read::Text, true), field(b"context", Read::Text, true)] },
+        WriteKind::Status => {
+            const {
+                &[
+                    field(b"state", Read::Text, true),
+                    field(b"context", Read::Text, true),
+                    field(b"description", Read::Text, false),
+                    field(b"target_url", Read::Text, false),
+                ]
+            }
+        }
         WriteKind::Branch => {
             const { &[field(b"new_branch_name", Read::Text, true), field(b"old_ref_name", Read::Id { empty: false }, true)] }
         }
-        WriteKind::Scopes | WriteKind::Scope | WriteKind::Logins | WriteKind::Login => &[],
+        WriteKind::Inputs | WriteKind::Scopes | WriteKind::Scope | WriteKind::Logins | WriteKind::Login => &[],
     }
 }
 pub(crate) fn element(kind: WriteKind) -> Option<Kind> {
     match kind {
         WriteKind::Scopes => Some(Kind::Write(WriteKind::Scope)),
         WriteKind::Logins => Some(Kind::Write(WriteKind::Login)),
-        WriteKind::Collaborator
+        WriteKind::Dispatch
+        | WriteKind::Inputs
+        | WriteKind::Collaborator
         | WriteKind::HookConfig
         | WriteKind::NewHook
         | WriteKind::NewToken
@@ -183,6 +200,7 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
     let at = Repo { owner: owner.clone(), name: name.clone() };
     route_tail(method, at, tail, &target.query, limits)
 }
+#[expect(clippy::too_many_lines, reason = "each mutation route declares its method and body kind")]
 fn route_tail(
     method: Method,
     at: Repo,
@@ -191,6 +209,21 @@ fn route_tail(
     limits: &Limits,
 ) -> Result<Route, Unrouted> {
     let (required, kind, request) = match tail {
+        [actions, workflows, workflow, dispatches]
+            if &**actions == b"actions" && &**workflows == b"workflows" && &**dispatches == b"dispatches" =>
+        {
+            (
+                Method::Post,
+                WriteKind::Dispatch,
+                Request::Dispatch { at, workflow: workflow.clone(), branch: Box::new([]), inputs: Box::new([]) },
+            )
+        }
+        [actions, jobs, job, rerun] if &**actions == b"actions" && &**jobs == b"jobs" && &**rerun == b"rerun" => {
+            if method != Method::Post {
+                return Err(Unrouted::Method);
+            }
+            return Ok(Route::Ready(Request::Rerun { at, job: number_value(job)? }));
+        }
         [contents, parts @ ..] if &**contents == b"contents" && !parts.is_empty() => {
             (Method::Post, WriteKind::NewFile, new_file(at, parts))
         }
@@ -266,6 +299,8 @@ fn route_tail(
                 commit: id::read(commit).ok_or(Unrouted::Malformed)?,
                 state: StatusState::Pending,
                 context: Box::from([]),
+                description: Box::new([]),
+                link: Box::new([]),
             },
         ),
         [branches] if &**branches == b"branches" => {
@@ -286,6 +321,11 @@ fn route_tail(
         walk: Walk::new(Kind::Write(kind), limits),
         request,
         texts: List::with_capacity(limits.inner),
+        inputs: List::with_capacity(if kind == WriteKind::Dispatch {
+            u32::try_from(crate::api::INPUTS).expect("input bound")
+        } else {
+            0
+        }),
         terminal: false,
         committer: crate::forgejo::request::Author { name: Box::new([]), email: Box::new([]) },
     }))
@@ -295,6 +335,7 @@ pub struct BodyDecoder {
     pub(super) walk: Walk,
     pub(super) request: Request,
     pub(super) texts: List<Box<[u8]>>,
+    pub(super) inputs: List<crate::api::Input>,
     pub(super) terminal: bool,
     pub(super) committer: crate::forgejo::request::Author,
 }
@@ -360,6 +401,12 @@ pub fn body(decoder: &mut BodyDecoder, limits: &Limits, event: &tokenizer::Event
 }
 impl BodyDecoder {
     fn end(&mut self, kind: Kind, limits: &Limits) {
+        if kind == Kind::Write(WriteKind::Inputs) {
+            let Request::Dispatch { inputs, .. } = &mut self.request else {
+                unreachable!("dispatch input table");
+            };
+            *inputs = core::mem::replace(&mut self.inputs, List::with_capacity(0)).into_boxed();
+        }
         if kind == Kind::Write(WriteKind::Logins)
             || kind == Kind::Write(WriteKind::Scopes)
             || kind == Kind::Setup(crate::forgejo::client::setup::SetupKind::Events)
@@ -379,6 +426,8 @@ impl BodyDecoder {
                 | Request::PostComment { .. }
                 | Request::PostReview { .. }
                 | Request::EditIssue { .. }
+                | Request::Dispatch { .. }
+                | Request::Rerun { .. }
                 | Request::Merge { .. }
                 | Request::Update { .. }
                 | Request::PostStatus { .. }
@@ -425,6 +474,8 @@ impl BodyDecoder {
                 | Request::PullFiles { .. }
                 | Request::Compare { .. }
                 | Request::Raw { .. }
+                | Request::Tree { .. }
+                | Request::WorkflowRuns { .. }
                 | Request::Runs { .. }
                 | Request::Run { .. }
                 | Request::Job { .. }
@@ -465,6 +516,18 @@ impl BodyDecoder {
     }
     fn scalar(&mut self, kind: Kind, key: &'static [u8], value: Value, limits: &Limits) -> Result<(), Malformed> {
         let text = match value {
+            Value::Input(input) => {
+                if input.name.is_empty() {
+                    return Err(Malformed::Value { field: b"inputs" });
+                }
+                for held in self.inputs.as_slice() {
+                    if held.name == input.name {
+                        return Err(Malformed::Value { field: b"inputs" });
+                    }
+                }
+                self.inputs.push(input).or(Err(Malformed::Bound { field: b"inputs" }))?;
+                return Ok(());
+            }
             Value::Text(text) | Value::Body(crate::forgejo::document::Body::Kept(text)) => Some(text),
             Value::Body(crate::forgejo::document::Body::Long(_)) => return Err(Malformed::TooLong { field: key }),
             Value::Id(id) => {
@@ -560,16 +623,21 @@ impl BodyDecoder {
                 _ => unreachable!("edit fields"),
             },
             Request::Merge { style, .. } => *style = merge_style(&text).ok_or(Malformed::Value { field: key })?,
-            Request::PostStatus { state, context, .. } => {
-                if key == b"context" {
+            Request::PostStatus { state, context, description, link, .. } => {
+                if key == b"description" {
+                    *description = text;
+                } else if key == b"target_url" {
+                    *link = text;
+                } else if key == b"context" {
                     *context = text;
                 } else {
                     *state =
                         crate::forgejo::client::items::status_state(&text).ok_or(Malformed::Value { field: key })?;
                 }
             }
-            Request::CreateBranch { branch, .. } => *branch = text,
-            Request::RequestReviewers { .. }
+            Request::Dispatch { branch, .. } | Request::CreateBranch { branch, .. } => *branch = text,
+            Request::Rerun { .. }
+            | Request::RequestReviewers { .. }
             | Request::RemoveReviewers { .. }
             | Request::User
             | Request::ApiSettings
@@ -596,6 +664,8 @@ impl BodyDecoder {
             | Request::PullFiles { .. }
             | Request::Compare { .. }
             | Request::Raw { .. }
+            | Request::Tree { .. }
+            | Request::WorkflowRuns { .. }
             | Request::Runs { .. }
             | Request::Run { .. }
             | Request::Job { .. }
@@ -626,7 +696,9 @@ impl BodyDecoder {
         match &mut self.request {
             Request::Merge { head, .. } => *head = id,
             Request::CreateBranch { from, .. } => *from = id,
-            Request::CreateIssue { .. }
+            Request::Dispatch { .. }
+            | Request::Rerun { .. }
+            | Request::CreateIssue { .. }
             | Request::OpenPull { .. }
             | Request::PostComment { .. }
             | Request::PostReview { .. }
@@ -659,6 +731,8 @@ impl BodyDecoder {
             | Request::PullFiles { .. }
             | Request::Compare { .. }
             | Request::Raw { .. }
+            | Request::Tree { .. }
+            | Request::WorkflowRuns { .. }
             | Request::Runs { .. }
             | Request::Run { .. }
             | Request::Job { .. }

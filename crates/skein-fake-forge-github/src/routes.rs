@@ -163,8 +163,8 @@ pub(crate) fn decode(method: Method, target: &[u8], limits: &Limits) -> Option<R
         Request::DeleteBranch { owner, name, branch } => {
             Route::Token(Token::Write(writes::Route::DeleteBranch { owner, name, branch }))
         }
-        Request::Status { owner, name, commit, context, check } => {
-            Route::Token(Token::Write(writes::Route::Status { owner, name, commit, context, check }))
+        Request::Status { owner, name, commit, context, check, description, link } => {
+            Route::Token(Token::Write(writes::Route::Status { owner, name, commit, context, check, description, link }))
         }
         Request::OpenPull { owner, name, title, body, head, base } => {
             Route::Token(Token::Write(writes::Route::OpenPull { owner, name, title, body, head, base }))

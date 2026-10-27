@@ -93,6 +93,7 @@ impl Plan {
             | d::Document::Status(_)
             | d::Document::Review(_)
             | d::Document::Compare(_)
+            | d::Document::Tree { .. }
             | d::Document::Runs { .. }
             | d::Document::Job(_)
             | d::Document::Run(_)
@@ -131,6 +132,7 @@ impl Plan {
             | d::Document::Protection(_)
             | d::Document::Permission(_)
             | d::Document::Compare(_)
+            | d::Document::Tree { .. }
             | d::Document::Runs { .. }
             | d::Document::Job(_)
             | d::Document::Run(_)
@@ -183,6 +185,9 @@ impl Plan {
             | api::Read::PullFiles { .. }
             | api::Read::Compare { .. }
             | api::Read::Checks { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => return Err(api::Error::InvalidAnswer),
         };
@@ -209,6 +214,9 @@ impl Plan {
             | api::Read::PullFiles { .. }
             | api::Read::Compare { .. }
             | api::Read::Checks { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => false,
         };
@@ -251,6 +259,9 @@ impl Plan {
             | api::Read::PullFiles { .. }
             | api::Read::Compare { .. }
             | api::Read::Checks { .. }
+            | api::Read::Runs { .. }
+            | api::Read::Run { .. }
+            | api::Read::Tree { .. }
             | api::Read::Job { .. }
             | api::Read::File { .. } => Err(api::Error::InvalidAnswer),
         }
@@ -280,6 +291,9 @@ impl Plan {
                 | api::Read::PullFiles { .. }
                 | api::Read::Compare { .. }
                 | api::Read::Checks { .. }
+                | api::Read::Runs { .. }
+                | api::Read::Run { .. }
+                | api::Read::Tree { .. }
                 | api::Read::Job { .. }
                 | api::Read::File { .. } => return Err(api::Error::InvalidAnswer),
             },
