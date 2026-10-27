@@ -49,17 +49,17 @@ fn paged(entries: Box<[TreeEntry]>, page: u32, limit: u32, limits: &Limits) -> A
     let size = if limit == 0 { limits.page_size } else { limit.min(limits.page_size) };
     let skip = u64::from(page.saturating_sub(1)).saturating_mul(u64::from(size));
     let mut out = List::with_capacity(size);
-    let mut truncated = false;
+    let exceeds_page = entries.len() > usize::try_from(size).expect("page size fits");
     for (index, entry) in entries.into_iter().enumerate() {
         if u64::try_from(index).expect("bounded entries") < skip {
             continue;
         }
         if out.room() == 0 {
-            truncated = true;
             break;
         }
         out.push(entry).expect("page room checked");
     }
+    let truncated = exceeds_page && !out.is_empty();
     Answer::GitTree { entries: out.into_boxed(), truncated }
 }
 
