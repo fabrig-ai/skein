@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Cache-Control: max-age=0, private, must-revalidate
+Content-Type: application/json;charset=utf-8
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+Date: Wed, 01 Jan 2020 00:00:00 GMT
+Connection: close
+Content-Length: 748
+
+{"name":"dispatch","commit":{"id":"0000000000000000000000000000000000000021","message":"after-dispatch.txt\n","url":"http://127.0.0.1:3000/fixture/turn/commit/0000000000000000000000000000000000000021","author":{"name":"fixture","email":"fixture@example.invalid","username":"fixture"},"committer":{"name":"fixture","email":"fixture@example.invalid","username":"fixture"},"verification":{"verified":false,"reason":"gpg.error.not_signed_commit","signature":"","signer":null,"payload":""},"timestamp":"2020-01-01T00:00:37+05:30","added":null,"removed":null,"modified":null},"protected":false,"required_approvals":0,"enable_status_check":false,"status_check_contexts":[],"user_can_push":true,"user_can_merge":true,"effective_branch_protection_name":""}
