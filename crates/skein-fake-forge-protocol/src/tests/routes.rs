@@ -364,13 +364,7 @@ fn turn_routes_name_the_domain_calls_and_keep_their_fields() {
         ),
         (
             Request::WorkflowRuns { at: at(), workflow: boxed(b"gate.yml"), head_sha: routes::object(9), page },
-            Op::Read(Read::Runs {
-                workflow: Some(boxed(b"gate.yml")),
-                commit: Some(9),
-                number: None,
-                page: 2,
-                limit: 1,
-            }),
+            Op::Read(Read::Runs { workflow: None, commit: Some(9), number: None, page: 2, limit: 1 }),
         ),
         (
             Request::Dispatch {
