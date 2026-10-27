@@ -8,6 +8,8 @@ use crate::forgejo::{
 use alloc::boxed::Box;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ActionKind {
+    Artifacts,
+    Artifact,
     Run,
     Actor,
     Runs,
@@ -22,6 +24,16 @@ const fn field(key: &'static [u8], read: Read) -> Field {
 }
 pub(crate) fn fields(kind: ActionKind) -> &'static [Field] {
     match kind {
+        ActionKind::Artifact => {
+            const {
+                &[
+                    field(b"id", Read::Number),
+                    field(b"name", Read::Text),
+                    field(b"run_id", Read::Number),
+                    field(b"size_in_bytes", Read::Number),
+                ]
+            }
+        }
         ActionKind::Run => {
             const {
                 &[
@@ -72,21 +84,28 @@ pub(crate) fn fields(kind: ActionKind) -> &'static [Field] {
             const { &[field(b"number", Read::Number), field(b"name", Read::Body), field(b"status", Read::Text)] }
         }
         ActionKind::Actor => const { &[field(b"id", Read::Number)] },
-        ActionKind::Runs | ActionKind::Jobs | ActionKind::Steps => &[],
+        ActionKind::Artifacts | ActionKind::Runs | ActionKind::Jobs | ActionKind::Steps => &[],
     }
 }
 pub(crate) fn element(kind: ActionKind) -> Option<Kind> {
     match kind {
+        ActionKind::Artifacts => Some(Kind::Action(ActionKind::Artifact)),
         ActionKind::Runs => Some(Kind::Action(ActionKind::Run)),
         ActionKind::Jobs => Some(Kind::Action(ActionKind::Job)),
         ActionKind::Steps => Some(Kind::Action(ActionKind::Step)),
-        ActionKind::Actor | ActionKind::Run | ActionKind::Job | ActionKind::Step | ActionKind::Listing => None,
+        ActionKind::Artifact
+        | ActionKind::Actor
+        | ActionKind::Run
+        | ActionKind::Job
+        | ActionKind::Step
+        | ActionKind::Listing => None,
     }
 }
 #[derive(Debug)]
 pub(super) struct Actions {
     root: ActionKind,
     run: Run,
+    artifact: document::Artifact,
     job: Job,
     step: document::Step,
     total_count: u64,
@@ -99,6 +118,7 @@ impl Actions {
         Self {
             root,
             run: document::run(),
+            artifact: artifact(),
             job: document::job(),
             step: document::Step { number: 0, name: Box::from([]), status: StepStatus::Unknown },
             total_count: 0,
@@ -111,6 +131,13 @@ impl Actions {
         let result = match movement {
             Move::Demand(demand) => return Step::Demand(demand),
             Move::Scalar { kind, key, value } => self.scalar(kind, key, value),
+            Move::End(Kind::Action(ActionKind::Artifact)) => {
+                return Step::Row(
+                    Row::Artifact(core::mem::replace(&mut self.artifact, artifact())),
+                    skein_json::tokenizer::Request::Next,
+                );
+            }
+            Move::End(Kind::Action(ActionKind::Artifacts)) => Ok(()),
             Move::End(Kind::Action(ActionKind::Run)) => {
                 if self.root == ActionKind::Listing {
                     self.actor_seen = false;
@@ -173,9 +200,13 @@ impl Actions {
                 return Step::Done(match self.root {
                     ActionKind::Run => Document::Run(core::mem::replace(&mut self.run, document::run())),
                     ActionKind::Listing => Document::Runs { total_count: self.total_count },
-                    ActionKind::Jobs => Document::Listed { skipped: walk.skipped() },
+                    ActionKind::Artifacts | ActionKind::Jobs => Document::Listed { skipped: walk.skipped() },
                     ActionKind::Job => Document::Job(core::mem::replace(&mut self.job, document::job())),
-                    ActionKind::Actor | ActionKind::Step | ActionKind::Steps | ActionKind::Runs => {
+                    ActionKind::Artifact
+                    | ActionKind::Actor
+                    | ActionKind::Step
+                    | ActionKind::Steps
+                    | ActionKind::Runs => {
                         unreachable!("action root selection")
                     }
                 });
@@ -191,7 +222,9 @@ impl Actions {
             Value::Input(_) => unreachable!("dispatch input table"),
             Value::Number(n) => match key {
                 b"id" => {
-                    if kind == Kind::Action(ActionKind::Actor) {
+                    if kind == Kind::Action(ActionKind::Artifact) {
+                        self.artifact.id = n;
+                    } else if kind == Kind::Action(ActionKind::Actor) {
                         self.run.trigger_actor = n;
                     } else if kind == Kind::Action(ActionKind::Run) {
                         self.run.id = n;
@@ -200,7 +233,14 @@ impl Actions {
                     }
                 }
                 b"index_in_repo" => self.run.index_in_repo = n,
-                b"run_id" => self.job.run_id = n,
+                b"run_id" => {
+                    if kind == Kind::Action(ActionKind::Artifact) {
+                        self.artifact.run_id = n;
+                    } else {
+                        self.job.run_id = n;
+                    }
+                }
+                b"size_in_bytes" => self.artifact.size_in_bytes = n,
                 b"attempt" | b"number" => {
                     let Ok(n) = u32::try_from(n) else {
                         return Err(Malformed::Range { field: key });
@@ -227,7 +267,13 @@ impl Actions {
                     self.run.event = text;
                 }
                 b"html_url" => self.run.html_url = text,
-                b"name" => self.job.name = text,
+                b"name" => {
+                    if kind == Kind::Action(ActionKind::Artifact) {
+                        self.artifact.name = text;
+                    } else {
+                        self.job.name = text;
+                    }
+                }
                 b"status" => {
                     let status = document::step_status(&text).ok_or(Malformed::Value { field: key })?;
                     if kind == Kind::Action(ActionKind::Run) {
@@ -257,4 +303,8 @@ impl Actions {
         }
         Ok(())
     }
+}
+
+fn artifact() -> document::Artifact {
+    document::Artifact { id: 0, name: Box::new([]), run_id: 0, size_in_bytes: 0 }
 }

@@ -40,6 +40,23 @@ pub(crate) fn read(domain: &Domain, config: &Config, id: Id<Repository>, read: &
     let limits = &config.limits;
     let repository = domain.repositories.get(id).expect("a repository of the forge");
     match read {
+        Read::Artifacts { run } => {
+            let kept = crate::actions::run(repository, *run).or(Err(Error::Missing(What::Job)))?;
+            let values: Box<[crate::api::ArtifactInfo]> = match &kept.artifact {
+                Some(artifact) => Box::from([crate::api::ArtifactInfo {
+                    id: *run,
+                    name: artifact.name.clone(),
+                    size_in_bytes: u64::try_from(artifact.bytes.len()).expect("bounded report"),
+                }]),
+                None => Box::new([]),
+            };
+            Ok(Answer::Artifacts(values))
+        }
+        Read::ArtifactById { id } => {
+            let kept = crate::actions::run(repository, *id).or(Err(Error::Missing(What::File)))?;
+            let artifact = kept.artifact.as_ref().ok_or(Error::Missing(What::File))?;
+            Ok(Answer::Artifact { commit: kept.run.commit, artifact: artifact.clone() })
+        }
         Read::Artifact { run, name } => {
             let kept = crate::actions::run(repository, *run).or(Err(Error::Missing(What::File)))?;
             match &kept.artifact {

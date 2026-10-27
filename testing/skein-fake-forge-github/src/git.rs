@@ -217,6 +217,7 @@ pub(crate) fn render(name: Name, result: Result<api::Answer, api::Error>, bounds
             | api::Answer::Labels(_)
             | api::Answer::GitTree { .. }
             | api::Answer::Tree(_)
+            | api::Answer::Artifacts(_)
             | api::Answer::Artifact { .. }
             | api::Answer::Commits { .. }
             | api::Answer::File(_)

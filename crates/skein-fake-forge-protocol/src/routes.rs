@@ -114,6 +114,8 @@ pub fn repository(config: &Config, request: &Request) -> Option<Box<[u8]>> {
         | Request::Pulls { at, .. }
         | Request::PullFiles { at, .. }
         | Request::Compare { at, .. }
+        | Request::Artifacts { at, .. }
+        | Request::ArtifactZip { at, .. }
         | Request::Commits { at, .. }
         | Request::Raw { at, .. }
         | Request::Tree { at, .. }
@@ -281,6 +283,8 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
             page: 1,
             limit: 1,
         },
+        Request::Artifacts { run, .. } => Read::Artifacts { run: *run },
+        Request::ArtifactZip { id, .. } => Read::ArtifactById { id: *id },
         Request::Run { run, .. } => Read::Run { run: *run },
         Request::Job { job, .. } => Read::Job { job: *job },
         Request::Jobs { run, .. } => Read::Jobs { run: *run },
@@ -431,6 +435,8 @@ fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
         | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }

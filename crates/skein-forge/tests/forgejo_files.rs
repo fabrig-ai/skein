@@ -3,7 +3,7 @@
 use skein_forge::forgejo::{
     client,
     decode::Malformed,
-    document::{Row, StatusState},
+    document::{Document, Row, StatusState},
     server,
 };
 pub mod common;
@@ -140,4 +140,44 @@ fn a_failing_actions_status_links_its_run_and_job() {
     assert_eq!(job.run_id, run.id);
     assert_eq!(job.id, 2);
     assert_eq!(job.attempt, 1);
+}
+
+#[test]
+fn the_recorded_forgejo_zip_inflates_its_single_file() {
+    // Forgejo 17's four-byte report in a 144-byte ZIP with a signed descriptor.
+    const ZIP_BYTES: u32 = 144;
+    const FILE_BYTES: u32 = 4;
+    let transcript = forgejo::transcript("actions-artifact-zip");
+    assert_eq!(transcript.status, 200);
+    assert_eq!(transcript.body.len(), usize::try_from(ZIP_BYTES).expect("fixture length"));
+    assert_eq!(
+        skein_forge::forgejo::zip::read(&transcript.body, FILE_BYTES, ZIP_BYTES),
+        Ok(skein_forge::forgejo::zip::File {
+            path: Box::from(*b"failed.txt"),
+            bytes: Box::from(*b"a\nb\n"),
+            truncated: false
+        })
+    );
+}
+
+#[test]
+fn an_unknown_runs_artifact_listing_is_404() {
+    let transcript = forgejo::transcript("actions-artifacts-unknown-run");
+    assert_eq!(transcript.status, 404);
+    let request = skein_forge::forgejo::request::Request::Artifacts {
+        at: skein_forge::forgejo::request::Repo { owner: Box::from(*b"fixture"), name: Box::from(*b"turn") },
+        run: 9999,
+        name: Some(Box::from(*b"tests")),
+    };
+    assert_eq!(forgejo::route(&transcript), request);
+    let encoded = client::encode(&request, &forgejo::limits()).expect("request");
+    assert_eq!(&*encoded.target, &*transcript.target);
+    assert_eq!(
+        forgejo::decode_error(&transcript.body).document,
+        Ok(Document::Error(skein_forge::forgejo::document::ErrorBody {
+            message: skein_forge::forgejo::document::Body::Kept(Box::from(
+                *b"run with id 9999: resource does not exist"
+            ))
+        }))
+    );
 }

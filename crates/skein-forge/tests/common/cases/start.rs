@@ -95,6 +95,7 @@ pub fn expected(answer: Answer) -> (Document, Vec<Row>) {
         | Answer::Protections(_)
         | Answer::Collaborators(_)
         | Answer::Tree { .. }
+        | Answer::Artifacts(_)
         | Answer::Commits { .. }
         | Answer::Permission(_)
         | Answer::Pulls(_)

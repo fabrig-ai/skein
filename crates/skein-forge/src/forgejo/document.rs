@@ -98,6 +98,7 @@ pub struct Reachable {
 }
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Row {
+    Artifact(Artifact),
     CommitMessage(CommitMessage),
     /// Retains every repository so the setup host can filter after counting the page.
     Reachable(Reachable),
@@ -573,4 +574,13 @@ pub struct CommitMessage {
     pub id: ObjectId,
     pub parents: Box<[ObjectId]>,
     pub message: Box<[u8]>,
+}
+
+/// Fields of a named run artifact retained from its listing.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Artifact {
+    pub id: u64,
+    pub name: Box<[u8]>,
+    pub run_id: u64,
+    pub size_in_bytes: u64,
 }

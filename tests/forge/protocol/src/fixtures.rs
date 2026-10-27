@@ -6,7 +6,9 @@ use skein_forge_connection::{Limits, Settings, Shared};
 use skein_forge_machine_world::{fixtures, joint::REPO};
 use skein_lib::Duration;
 
-pub const LIMITS: skein_forge_client::Limits = skein_forge_client_world::LIMITS;
+// The range story retains three commits before paging them two at a time.
+pub const LIMITS: skein_forge_client::Limits =
+    skein_forge_client::Limits { rows: 3, ..skein_forge_client_world::LIMITS };
 
 #[derive(Clone, Copy)]
 pub(crate) enum Shape {

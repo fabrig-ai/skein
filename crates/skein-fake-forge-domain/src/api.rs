@@ -40,6 +40,14 @@ pub enum Op {
 /// The reads change nothing; `ListingPermission` lets the protocol combine grants before filtering.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Read {
+    /// Lists uploads of a known run, empty until its report is available.
+    Artifacts {
+        run: u64,
+    },
+    /// Downloads one upload by its id, the run id in this fake's one-report model.
+    ArtifactById {
+        id: u64,
+    },
     /// A run's one uploaded artifact; absent until an unfaulted completion.
     Artifact {
         run: u64,
@@ -419,6 +427,7 @@ pub enum Want {
 /// The answer to a call that succeeded.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Answer {
+    Artifacts(Box<[ArtifactInfo]>),
     Artifact {
         commit: u64,
         artifact: Artifact,
@@ -1005,4 +1014,12 @@ pub struct CommitMessage {
     pub id: u64,
     pub parents: Box<[u64]>,
     pub message: Box<[u8]>,
+}
+
+/// A completed run's upload metadata; the fake uses its run id as the artifact id.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct ArtifactInfo {
+    pub id: u64,
+    pub name: Box<[u8]>,
+    pub size_in_bytes: u64,
 }

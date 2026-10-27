@@ -43,6 +43,17 @@ pub enum Sort {
 }
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Request {
+    /// Artifacts of one run, optionally filtered by name.
+    Artifacts {
+        at: Repo,
+        run: u64,
+        name: Option<Box<[u8]>>,
+    },
+    /// The complete ZIP archive, answered directly by Forgejo 17.
+    ArtifactZip {
+        at: Repo,
+        id: u64,
+    },
     /// A comparison read retaining parents and messages, with files disabled.
     Commits {
         at: Repo,

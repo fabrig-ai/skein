@@ -157,6 +157,7 @@ pub fn expected(answer: Answer) -> Document {
         | Answer::Protections(_)
         | Answer::Collaborators(_)
         | Answer::Tree { .. }
+        | Answer::Artifacts(_)
         | Answer::Commits { .. }
         | Answer::Permission(_)
         | Answer::Org(_)

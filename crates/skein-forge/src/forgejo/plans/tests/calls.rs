@@ -582,3 +582,5 @@ fn first_failures() -> [FirstFailure; 2] {
 }
 
 mod turn;
+
+mod artifact;

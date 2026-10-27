@@ -338,6 +338,7 @@ fn outcome(result: Result<Answer, Error>) -> Result<Option<u64>, Error> {
         | Answer::Commit(_)
         | Answer::GitTree { .. }
         | Answer::Tree(_)
+        | Answer::Artifacts(_)
         | Answer::Artifact { .. }
         | Answer::Commits { .. }
         | Answer::File(_)

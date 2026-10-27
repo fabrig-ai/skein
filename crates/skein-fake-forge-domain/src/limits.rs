@@ -334,6 +334,7 @@ fn answer(limits: &Limits) -> Option<u64> {
             .max(comparison)
             .max(commit_messages)
             .max(artifact_heap(limits)?)
+            .max(name.checked_add(u64::try_from(size_of::<crate::api::ArtifactInfo>()).ok()?)?)
             .max(checks)
             .max(protection)
             .max(collaborators)

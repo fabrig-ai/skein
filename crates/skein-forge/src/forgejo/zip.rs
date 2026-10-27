@@ -85,7 +85,7 @@ fn entry(bytes: &[u8]) -> Result<Entry, Error> {
     }
     Ok(entry)
 }
-fn data(bytes: &[u8], entry: &Entry) -> Result<Box<[u8]>, Error> {
+fn data(bytes: &[u8], entry: &Entry) -> Result<core::ops::Range<usize>, Error> {
     let local = bytes.get(entry.local..entry.central).ok_or(Error::InvalidAnswer)?;
     if word(local, 0) != Some(0x0403_4b50)
         || short(local, 6) != Some(entry.flags)
@@ -101,7 +101,7 @@ fn data(bytes: &[u8], entry: &Entry) -> Result<Box<[u8]>, Error> {
     }
     let start = name_end.checked_add(extra).ok_or(Error::TooLarge)?;
     let end = start.checked_add(usize::try_from(entry.compressed).or(Err(Error::TooLarge))?).ok_or(Error::TooLarge)?;
-    let payload = local.get(start..end).ok_or(Error::InvalidAnswer)?;
+    local.get(start..end).ok_or(Error::InvalidAnswer)?;
     if entry.flags & 8 == 0 {
         if word(local, 14) != Some(entry.crc)
             || word(local, 18) != Some(entry.compressed)
@@ -125,10 +125,11 @@ fn data(bytes: &[u8], entry: &Entry) -> Result<Box<[u8]>, Error> {
             return Err(Error::InvalidAnswer);
         }
     }
-    Ok(copy_of(payload))
+    Ok(entry.local.checked_add(start).ok_or(Error::TooLarge)?..entry.local.checked_add(end).ok_or(Error::TooLarge)?)
 }
 /// Reads a whole archive and checks its single entry before cutting the file.
 /// Both the archive and its inflated entry must fit `bound`, the owner's existing answer bound.
+/// The returned file is cut after its path takes its share of that bound.
 pub fn read(archive: &[u8], max_bytes: u32, bound: u32) -> Result<File, Error> {
     if archive.len() > usize::try_from(bound).expect("u32 fits") || max_bytes > bound {
         return Err(Error::TooLarge);
@@ -137,7 +138,8 @@ pub fn read(archive: &[u8], max_bytes: u32, bound: u32) -> Result<File, Error> {
     if entry.inflated > bound {
         return Err(Error::TooLarge);
     }
-    let payload = data(archive, &entry)?;
+    let range = data(archive, &entry)?;
+    let payload = archive.get(range).ok_or(Error::InvalidAnswer)?;
     let mut inflated = List::with_capacity(entry.inflated);
     match entry.method {
         0 => {
@@ -145,21 +147,100 @@ pub fn read(archive: &[u8], max_bytes: u32, bound: u32) -> Result<File, Error> {
                 return Err(Error::InvalidAnswer);
             }
             for byte in payload {
-                inflated.push(byte).or(Err(Error::InvalidAnswer))?;
+                inflated.push(*byte).or(Err(Error::InvalidAnswer))?;
             }
         }
         8 => {
-            skein_http::inflate::deflate(&payload, &mut inflated).ok_or(Error::InvalidAnswer)?;
+            skein_http::inflate::deflate(payload, &mut inflated).ok_or(Error::InvalidAnswer)?;
         }
         _ => return Err(Error::Refused),
     }
     if inflated.len() != entry.inflated || skein_http::inflate::crc(inflated.as_slice()) != entry.crc {
         return Err(Error::InvalidAnswer);
     }
-    let kept = usize::try_from(max_bytes.min(entry.inflated)).expect("u32 fits");
+    let room = usize::try_from(bound).expect("u32 fits").checked_sub(entry.name.len()).ok_or(Error::TooLarge)?;
+    let kept = usize::try_from(max_bytes.min(entry.inflated)).expect("u32 fits").min(room);
     Ok(File {
         path: entry.name,
         bytes: copy_of(inflated.as_slice().get(..kept).expect("bounded output")),
-        truncated: entry.inflated > max_bytes,
+        truncated: usize::try_from(entry.inflated).expect("u32 fits") > kept,
     })
+}
+
+/// Writes the one-file archive served by the fake, with Forgejo's signed descriptor.
+/// The complete archive must fit the caller's existing raw-answer bound.
+pub fn write(path: &[u8], bytes: &[u8], deflated: bool, bound: u32) -> Result<Box<[u8]>, Error> {
+    let bound = usize::try_from(bound).expect("u32 fits");
+    let name = u16::try_from(path.len()).or(Err(Error::TooLarge))?;
+    if path.is_empty() || path.ends_with(b"/") || bytes.len() > bound {
+        return Err(Error::TooLarge);
+    }
+    let inflated = u32::try_from(bytes.len()).or(Err(Error::TooLarge))?;
+    let payload = if deflated {
+        let length = skein_http::gzip::bound(bytes.len()).ok_or(Error::TooLarge)?;
+        let mut gzip = skein_lib::bytes::zeroed(length);
+        let length = skein_http::gzip::encode(bytes, &mut gzip).ok_or(Error::TooLarge)?;
+        let end = length.checked_sub(8).ok_or(Error::TooLarge)?;
+        copy_of(gzip.get(10..end).ok_or(Error::InvalidAnswer)?)
+    } else {
+        copy_of(bytes)
+    };
+    let compressed = u32::try_from(payload.len()).or(Err(Error::TooLarge))?;
+    // Local header, signed descriptor, central header, and end record.
+    let length = 30usize
+        .checked_add(16)
+        .ok_or(Error::TooLarge)?
+        .checked_add(46)
+        .ok_or(Error::TooLarge)?
+        .checked_add(22)
+        .ok_or(Error::TooLarge)?
+        .checked_add(path.len().checked_mul(2).ok_or(Error::TooLarge)?)
+        .ok_or(Error::TooLarge)?
+        .checked_add(payload.len())
+        .ok_or(Error::TooLarge)?;
+    if length > bound {
+        return Err(Error::TooLarge);
+    }
+    let mut out = skein_lib::Writer::new(length);
+    let method = if deflated { 8u16 } else { 0 };
+    let crc = skein_http::inflate::crc(bytes);
+    out.put(&0x0403_4b50u32.to_le_bytes()).or(Err(Error::TooLarge))?;
+    for value in [20u16, 8, method, 0, 0] {
+        out.put(&value.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    for _ in 0u8..3 {
+        out.put(&0u32.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    out.put(&name.to_le_bytes()).or(Err(Error::TooLarge))?;
+    out.put(&0u16.to_le_bytes()).or(Err(Error::TooLarge))?;
+    out.put(path).or(Err(Error::TooLarge))?;
+    out.put(&payload).or(Err(Error::TooLarge))?;
+    for value in [0x0807_4b50u32, crc, compressed, inflated] {
+        out.put(&value.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    let central = u32::try_from(out.written()).or(Err(Error::TooLarge))?;
+    out.put(&0x0201_4b50u32.to_le_bytes()).or(Err(Error::TooLarge))?;
+    for value in [20u16, 20, 8, method, 0, 0] {
+        out.put(&value.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    for value in [crc, compressed, inflated] {
+        out.put(&value.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    for value in [name, 0u16, 0, 0, 0] {
+        out.put(&value.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    for _ in 0u8..2 {
+        out.put(&0u32.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    out.put(path).or(Err(Error::TooLarge))?;
+    let size = u32::try_from(out.written()).or(Err(Error::TooLarge))?.checked_sub(central).ok_or(Error::TooLarge)?;
+    out.put(&0x0605_4b50u32.to_le_bytes()).or(Err(Error::TooLarge))?;
+    for value in [0u16, 0, 1, 1] {
+        out.put(&value.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    for value in [size, central] {
+        out.put(&value.to_le_bytes()).or(Err(Error::TooLarge))?;
+    }
+    out.put(&0u16.to_le_bytes()).or(Err(Error::TooLarge))?;
+    Ok(out.finish())
 }

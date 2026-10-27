@@ -127,6 +127,7 @@ pub fn documents(seed: u64) -> Vec<Reply> {
         | Answer::Protections(_)
         | Answer::Collaborators(_)
         | Answer::Tree { .. }
+        | Answer::Artifacts(_)
         | Answer::Commits { .. }
         | Answer::Permission(_)
         | Answer::CombinedStatus { .. } => false,
@@ -336,7 +337,8 @@ fn vary(answer: &mut Answer, seed: u64) {
                 value.id += seed;
             }
         }
-        Answer::Commits { .. }
+        Answer::Artifacts(_)
+        | Answer::Commits { .. }
         | Answer::Tree { .. }
         | Answer::Reachable(_)
         | Answer::RepoSearch { .. }
@@ -428,6 +430,7 @@ fn setup_replies(seed: u64, compact: bool) -> Vec<(&'static str, Answer, Documen
     ]
 }
 
+#[expect(clippy::too_many_lines, reason = "the fixture exhaustively names each server answer")]
 fn shorten(answer: &mut Answer) {
     match answer {
         Answer::User(value) => {
@@ -526,6 +529,7 @@ fn shorten(answer: &mut Answer) {
         | Answer::CreatedFile { .. }
         | Answer::Team(_)
         | Answer::Tree { .. }
+        | Answer::Artifacts(_)
         | Answer::Commits { .. }
         | Answer::Error(_) => {}
     }

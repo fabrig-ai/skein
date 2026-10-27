@@ -1009,8 +1009,9 @@ fn sending(down: &Down) -> bool {
 }
 fn raw_request(request: &request::Request) -> bool {
     match request {
-        request::Request::Raw { .. } | request::Request::JobLog { .. } => true,
-        request::Request::User
+        request::Request::ArtifactZip { .. } | request::Request::Raw { .. } | request::Request::JobLog { .. } => true,
+        request::Request::Artifacts { .. }
+        | request::Request::User
         | request::Request::ApiSettings
         | request::Request::RepositoryById { .. }
         | request::Request::Repository { .. }

@@ -326,3 +326,48 @@ fn dispatch_of_a_missing_branch_is_400_and_a_missing_workflow_is_404() {
     assert_eq!(crate::errors::for_request(a::Error::Missing(a::What::Branch), &dispatch, Time::ZERO).status, 400);
     assert_eq!(crate::errors::for_request(a::Error::Missing(a::What::File), &dispatch, Time::ZERO).status, 404);
 }
+
+#[test]
+fn artifact_listings_filter_names_and_count_their_matches() {
+    const RUN: u64 = 7;
+    const ARTIFACT: u64 = 7; // The fake's one-report artifact uses its run id.
+    const FILE_BYTES: u64 = 4; // a and b, each with its newline.
+    let answer = a::Answer::Artifacts(Box::new([a::ArtifactInfo {
+        id: ARTIFACT,
+        name: boxed(b"tests"),
+        size_in_bytes: FILE_BYTES,
+    }]));
+    for (name, body, count) in [
+        (
+            Some(boxed(b"tests")),
+            br#"[{"id":7,"name":"tests","size_in_bytes":4,"run_id":7}]"#.as_slice(),
+            b"1".as_slice(),
+        ),
+        (None, br#"[{"id":7,"name":"tests","size_in_bytes":4,"run_id":7}]"#.as_slice(), b"1".as_slice()),
+        (Some(boxed(b"absent")), b"[]".as_slice(), b"0".as_slice()),
+    ] {
+        let request = Request::Artifacts { at: at(), run: RUN, name };
+        let reply = response::answer(
+            &config(),
+            &crate::setup::Store::new(&limits()),
+            &limits(),
+            &request,
+            &Select::Document,
+            &answer,
+        )
+        .expect("artifact listing");
+        assert_eq!(
+            reply,
+            response::Reply {
+                status: 200,
+                body: boxed(body),
+                headers: Box::new([skein_http::Header { name: boxed(b"x-total-count"), value: boxed(count) },])
+            }
+        );
+        assert_eq!(routes::op(&config(), &request), Ok(a::Op::Read(a::Read::Artifacts { run: RUN })));
+        assert_eq!(crate::tally::route(&request), crate::Route::Artifacts);
+    }
+    let request = Request::ArtifactZip { at: at(), id: ARTIFACT };
+    assert_eq!(routes::op(&config(), &request), Ok(a::Op::Read(a::Read::ArtifactById { id: ARTIFACT })));
+    assert_eq!(crate::tally::route(&request), crate::Route::ArtifactZip);
+}

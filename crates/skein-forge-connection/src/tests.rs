@@ -1,3 +1,4 @@
+mod artifact;
 mod connection;
 mod contents;
 mod dialects;
@@ -304,32 +305,33 @@ fn duplicate_forge_numbers_are_refused_before_any_connection() {
 
 // Complete Forgejo fixture (forge-connection.md, 7.5), in bytes on the
 // 64-bit layout. Decoder = 32*128 + 8*(3*128 + 2*48 + 2*16)
-// + 2*1042 + 16*128 + 4096 + fixed decoder 272 = 16_692.
+// + 2*1042 + 16*128 + 4096 + fixed decoder 312 = 16_732.
 // Socket = 32768 + 4096 + 32768 + 4*16 = 69_696.
 // Each of two pooled connections = HTTP 44_032 + TLS 456_809 + tokenizer
-// 2082 + decoder 16_692 + raw 2*65536 + routing 5056 + send 32768
+// 2082 + decoder 16_732 + raw 2*65536 + routing 5056 + send 32768
 // + encoding (6*1042 + 1024) + socket 69_696
-// + local JSON intake/delivery 2*1024 = 767_531.
-// Four hooks = 4*(HTTP 18_418 + tokenizer 2082 + decoder 16_692
+// + local JSON intake/delivery 2*1024 = 767_571.
+// Four hooks = 4*(HTTP 18_418 + tokenizer 2082 + decoder 16_732
 // + socket 69_696 + HMAC 208 + hint 88 + text/body 1170 + queues 368
-// + head 8192 + chunks 2048) + hook slab/index 4832 = 480_680.
+// + head 8192 + chunks 2048) + hook slab/index 4832 = 480_840.
 // Common calls = 2*560 (Waiting slab slots) + 288 (holders tree)
 // + 2*16 (drive list) + 288 (call index) + 2*3*512 (operation copies)
 // + 2752 (held tree) + 2*65536 (held answers) = 138_624.
-// Forgejo's call payload = read/write boxes 1760+456, staging 64*8
+// Forgejo's call payload = read/write boxes 1896+456, staging 64*8
 // + 72*16 + 72*128, answer 65536, largest read reserve 3008,
-// texts 4*128 + 13*128 and users 8*48, commit-page reserve 8*64 = 84_712.
+// texts 4*128 + 13*128 and users 8*48, commit-page reserve 8*64 = 84_848.
 // Read reserve = ChangedFile/File/Commit rows and paths 8*(40+48+32+2*128).
 // These fixed row containers also cover Run, RunJob and Entry capacities;
-// turn text shares the answer envelope.
+// turn text shares the answer envelope. Artifact's archive and inflation use
+// the connection's two raw envelopes; its output shares the retained answer.
 // Tables = repository tree 904 + 2*3*128 + user tree 1104 + 8*128 = 3800.
 // Configured lists = 2*(Forge 168 + Start 24 + optional GitHub box 8
 // + optional token 16 + optional OwnPlan 360) = 1152. Each forge's
 // common credential/secret/send/TLS = 64 + 128 + 32768 + 456_809 = 489_769.
 // Owner/framing/answer = 2*16 + (3+9) + 16 + Answered 224 = 284.
-// Total = 2*767531 + connection index 288 + slab 2*1504 + 480680
-// + 138624 + 2*84712 + 3800 + 1152 + 489769 + 284 = 2_822_091.
-const FIXTURE_HEAP: u64 = 2_822_091;
+// Total = 2*767571 + connection index 288 + slab 2*1504 + 480840
+// + 138624 + 2*84848 + 3800 + 1152 + 489769 + 284 = 2_822_603.
+const FIXTURE_HEAP: u64 = 2_822_603;
 
 // Complete GitHub fixture: App/document overlap needs 592 per inner entry.
 // Decoder = 32*128 + 8*592 + 2*1042 + 16*128 + 4096 + 39+100
@@ -362,7 +364,7 @@ const GITHUB_FIXTURE_HEAP: u64 = 3_941_794;
 // At calls 2 -> 3 the B-tree node counts stay fixed. A slot adds Waiting's
 // slab 560 + drive-list pair 16 + 3*512 operation copies + 65536 held
 // answer bytes, plus the selected dialect's payload from the ledgers above.
-const FORGEJO_CALL_SLOT: u64 = 152_360; // 560 + 16 + 1536 + 65536 + 84712.
+const FORGEJO_CALL_SLOT: u64 = 152_496; // 560 + 16 + 1536 + 65536 + 84848.
 const GITHUB_CALL_SLOT: u64 = 278_082; // 560 + 16 + 1536 + 65536 + 210434.
 const FORGEJO: limits::Forges = limits::Forges { forgejo: 1, github: 0 };
 const GITHUB: limits::Forges = limits::Forges { forgejo: 0, github: 1 };

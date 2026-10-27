@@ -79,6 +79,7 @@ fn read_route(method: Method, target: &[u8], limits: &Limits) -> Result<Route, U
 }
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Answer {
+    Artifacts(Box<[crate::forgejo::document::Artifact]>),
     /// A comparison with full commit metadata, newest first as Forgejo sends it.
     Commits {
         commits: Box<[crate::forgejo::document::CommitMessage]>,
@@ -217,7 +218,7 @@ fn write(json: &mut writer::Encoder, answer: &Answer) -> Result<(), writer::Refu
             files::write(json, answer);
             Ok(())
         }
-        Answer::Runs { .. } | Answer::Run(_) | Answer::Job { .. } | Answer::Jobs(_) => {
+        Answer::Artifacts(_) | Answer::Runs { .. } | Answer::Run(_) | Answer::Job { .. } | Answer::Jobs(_) => {
             actions::write(json, answer);
             Ok(())
         }

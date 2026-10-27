@@ -379,6 +379,7 @@ pub fn answer(asked: &client::Op, answer: forge::Answer, l: &Limits) -> client::
         | forge::Answer::Dependencies(_)
         | forge::Answer::Labels(_)
         | forge::Answer::Tree(_)
+        | forge::Answer::Artifacts(_)
         | forge::Answer::Pages { .. }
         | forge::Answer::Page(_)
         | forge::Answer::Revision(_)

@@ -197,6 +197,8 @@ fn target(request: &Request, out: &mut Target) -> Method {
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
         | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }
@@ -227,6 +229,7 @@ fn target(request: &Request, out: &mut Target) -> Method {
         | Request::CreateUser { .. } => unreachable!("organization request selection"),
     }
 }
+#[expect(clippy::too_many_lines, reason = "the body dispatch exhaustively names every dialect request")]
 fn body(json: &mut Encoder, request: &Request) {
     match request {
         Request::AddCollaborator { permission, .. } => {
@@ -299,6 +302,8 @@ fn body(json: &mut Encoder, request: &Request) {
         | Request::Pulls { .. }
         | Request::PullFiles { .. }
         | Request::Compare { .. }
+        | Request::Artifacts { .. }
+        | Request::ArtifactZip { .. }
         | Request::Commits { .. }
         | Request::Raw { .. }
         | Request::Tree { .. }

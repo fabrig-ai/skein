@@ -68,4 +68,5 @@ mod tests;
 
 mod turn;
 
+mod artifact;
 mod commits;
