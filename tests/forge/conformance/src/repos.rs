@@ -13,10 +13,10 @@ pub(crate) fn record(r: &mut Recorder<'_>, admin: &Token) -> Result<()> {
     for login in ["alice", "bob"] {
         let password = fresh_secret().map_err(|e| crate::failure(&e))?;
         let body = json::object(&[
-            ("username", &login),
             ("email", &format!("{login}@example.invalid")),
-            ("password", &password),
             ("must_change_password", &false),
+            ("password", &password),
+            ("username", &login),
         ])?;
         r.send_new(
             &format!("setup-user-repos-{login}"),

@@ -291,3 +291,37 @@ fn a_status_keeps_its_words_and_link() {
     );
     world.finish();
 }
+
+#[test]
+fn runs_ignore_other_workflows_and_page_by_the_raw_forgejo_listing() {
+    let gate = workflow();
+    let mut other = gate.clone();
+    other.file = Box::from(b"other.yml".as_slice());
+    let mut world = World::turn(43, Box::new([gate, other]), Box::new([]));
+    let head = branch(&mut world, b"main");
+    for file in [b"other.yml".as_slice(), b"gate.yml"] {
+        world
+            .direct(raw::Op::Write(raw::Write::Dispatch {
+                workflow: Box::from(file),
+                branch: Box::from(b"main".as_slice()),
+                inputs: Box::new([]),
+            }))
+            .expect("dispatch");
+    }
+    let Answer::Runs { runs, more } = world
+        .read(Read::Runs { workflow: Box::from(b"gate.yml".as_slice()), commit: head, page: 1 })
+        .expect("locally filtered runs")
+    else {
+        panic!("runs")
+    };
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].workflow.as_ref(), b"gate.yml");
+    assert!(more, "two raw rows fill Forgejo's page");
+    assert_eq!(
+        world
+            .read(Read::Runs { workflow: Box::from(b"gate.yml".as_slice()), commit: head, page: 2 })
+            .expect("past raw page"),
+        Answer::Runs { runs: Box::new([]), more: false }
+    );
+    world.finish();
+}
