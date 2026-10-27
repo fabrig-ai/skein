@@ -96,6 +96,7 @@ impl Referee {
             | Observation::Enqueued { .. }
             | Observation::Group { .. }
             | Observation::Dequeued { .. }
+            | Observation::Rebased { .. }
             | Observation::Merged { .. }
             | Observation::Refused { .. }
             | Observation::Rejected { .. }

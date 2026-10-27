@@ -737,3 +737,51 @@ fn verdict_does_not_consume_a_pending_deletion() {
     observe(&mut judge, group(true, false));
     assert_eq!(finish(&mut judge), Verdict::Pass);
 }
+
+#[test]
+fn a_rebase_exemption_requires_the_exact_following_move() {
+    for (repository, branch, from, to, by) in [
+        (OTHER, b"work".as_slice(), HEAD, COMMIT, CLIENT),
+        (REPOSITORY, b"other", HEAD, COMMIT, CLIENT),
+        (REPOSITORY, b"work", HEAD + 1, COMMIT, CLIENT),
+        (REPOSITORY, b"work", HEAD, COMMIT + 1, CLIENT),
+        (REPOSITORY, b"work", HEAD, COMMIT, PERSON),
+    ] {
+        let mut judge = judge();
+        moved(&mut judge, b"work", None, HEAD, CLIENT, None);
+        observe(
+            &mut judge,
+            Observation::Rebased { repository: copy_of(repository), branch: copy_of(branch), from, to, by },
+        );
+        moved(&mut judge, b"work", Some(HEAD), COMMIT, CLIENT, Some(false));
+        assert_eq!(finish(&mut judge), fails(Promise::Forced, b"owner%2Frepo/work"));
+    }
+}
+
+#[test]
+fn an_intervening_observation_ends_a_rebase_exemption() {
+    let mut judge = judge();
+    moved(&mut judge, b"work", None, HEAD, CLIENT, None);
+    observe(
+        &mut judge,
+        Observation::Rebased {
+            repository: copy_of(REPOSITORY),
+            branch: copy_of(b"work"),
+            from: HEAD,
+            to: COMMIT,
+            by: CLIENT,
+        },
+    );
+    observe(
+        &mut judge,
+        Observation::Reported {
+            repository: copy_of(REPOSITORY),
+            commit: COMMIT,
+            context: copy_of(b"ci"),
+            state: crate::api::Check::Passed,
+            by: PERSON,
+        },
+    );
+    moved(&mut judge, b"work", Some(HEAD), COMMIT, CLIENT, Some(false));
+    assert_eq!(finish(&mut judge), fails(Promise::Forced, b"owner%2Frepo/work"));
+}
