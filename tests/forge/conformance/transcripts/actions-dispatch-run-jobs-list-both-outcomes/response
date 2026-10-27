@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Cache-Control: max-age=0, private, must-revalidate
+Content-Type: application/json;charset=utf-8
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+Date: Wed, 01 Jan 2020 00:00:00 GMT
+Connection: close
+Content-Length: 534
+
+[{"id":4,"run_id":3,"attempt":1,"handle":"00000000-0000-0000-0000-000000000004","repo_id":7,"owner_id":1,"name":"pass","html_url":"http://127.0.0.1:3000/fixture/turn/actions/runs/1/jobs/0/attempt/1","needs":null,"runs_on":["kit-host"],"task_id":4,"status":"success"},{"id":5,"run_id":3,"attempt":1,"handle":"00000000-0000-0000-0000-000000000005","repo_id":7,"owner_id":1,"name":"fail","html_url":"http://127.0.0.1:3000/fixture/turn/actions/runs/1/jobs/1/attempt/1","needs":null,"runs_on":["kit-host"],"task_id":5,"status":"failure"}]

@@ -255,3 +255,34 @@ holds setup-scope-delete-repo-hook-is-write-repository
 holds setup-scope-repo-search-is-read-repository
 holds setup-scope-settings-needs-no-scope
 holds setup-admin-scopes-need-each-of-the-four-categories
+holds tree-commit-id-answers-root-tree
+holds tree-entries-use-git-order
+holds tree-directory-id-answers-directory
+fails tree-pages-and-truncated: expected page lengths 2,1,0 and truncated true,false,false
+holds tree-truncated-stays-true-on-short-last-page
+fails tree-past-last-page-is-an-empty-array: Forgejo answers tree:null, truncated:false
+holds status-combined-keeps-description-and-target-url
+holds status-list-keeps-description-and-target-url
+holds merge-fast-forward-only-moves-base-to-head
+holds merge-fast-forward-only-marks-pull-merged-at-head
+holds merge-fast-forward-only-refuses-diverged-head
+fails merge-fast-forward-only-diverged-is-405: HTTP 500: {"message":"Merge DivergingFastForwardOnly Error: exit status 128: hint: Diverging branches can't be fast-forwarded, you need to either:\nhint:\nhint: \tgit merge --no-ff\nhint:\nhint: or:\nhint:\nhint: \tgit rebase\nhint:\nhint: Disable this message with \"git config advice.diverging false\"\nfatal: Not possible to fast-forward, aborting.\n\n","url":"http://127.0.0.1:3000/api/swagger"}
+holds update-rebase-rewrites-onto-base-and-keeps-messages
+holds update-rebase-containing-base-changes-nothing
+holds update-rebase-conflict-is-409-and-keeps-head
+holds actions-dispatch-missing-workflow-is-404
+fails actions-dispatch-missing-branch-is-404: HTTP 400: {"message":"could not expand reference 'absent'","url":"http://127.0.0.1:3000/api/swagger"}
+holds actions-dispatch-missing-branch-is-400
+holds actions-dispatch-is-204-with-no-body
+holds actions-rerun-running-is-400
+holds actions-dispatch-run-keeps-head-at-dispatch
+fails actions-dispatch-statuses-land-on-dispatch-head: completed dispatch has total_count:0 and statuses:null; no commit statuses
+holds actions-dispatch-only-workflow-push-starts-no-run
+fails actions-dispatch-run-names-event-and-trigger-user: expected event workflow_dispatch, trigger_user.id and created
+holds actions-dispatch-run-names-trigger-event-and-trigger-user
+holds actions-dispatch-run-jobs-list-both-outcomes
+holds actions-dispatch-job-steps-setup-first-completion-last
+holds actions-dispatch-input-reaches-job-log
+holds actions-rerun-completed-is-204
+holds actions-rerun-next-attempt-visible-on-job
+fails actions-runs-filter-workflow-and-head-newest-first: head_sha and newest order hold; workflow is ignored: page 2 also contains other.yaml

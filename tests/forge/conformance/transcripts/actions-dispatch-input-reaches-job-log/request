@@ -1,0 +1,5 @@
+GET /api/v1/repos/fixture/turn/actions/jobs/4/logs?attempt=1 HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Connection: close
+
