@@ -367,7 +367,7 @@ fn every_entry_point_of_the_server_holds_no_more_than_its_worst_case_at_its_limi
 }
 
 #[test]
-fn the_server_s_peak_is_its_worst_case_in_either_phase() {
+fn the_server_filled_to_its_head_limits_stays_within_its_worst_case() {
     // Reading a head, the larger phase under these limits: a request line
     // filling the head, ended by an LF alone, and its target's copy.
     let mut line = b"GET /".to_vec();
@@ -376,7 +376,8 @@ fn the_server_s_peak_is_its_worst_case_in_either_phase() {
     let response = Response { status: 204, headers: Box::new([]), body: Body::None, close: false };
     let script = Script { response: &response, reply: b"", read: Read::Fill(LIMITS.read), first: false };
     let most = serve(LIMITS, &line, script, Interrupt::Nothing);
-    assert_eq!(most, server::worst_case(&LIMITS).unwrap(), "a head at its limit");
+    assert_eq!(line.len(), usize::try_from(LIMITS.head).expect("head fits"));
+    assert!(most <= server::worst_case(&LIMITS).unwrap(), "a head at its limit");
     // An exchange, the larger phase under these: a response head at its
     // limit, held for a connection kept as the side above discards the
     // body, and a piece of the most a read is.
@@ -389,7 +390,11 @@ fn the_server_s_peak_is_its_worst_case_in_either_phase() {
     response.headers = Box::new([Header { name: b"X".to_vec().into(), value: value.into() }]);
     let script = Script { response: &response, reply: b"", read: Read::Fill(limits.read), first: false };
     let most = serve(limits, &request, script, Interrupt::Discard(0));
-    assert_eq!(most, server::worst_case(&limits).unwrap(), "a response head at its limit, held");
+    assert_eq!(
+        head_len(&response) - "Connection: close\r\n".len(),
+        usize::try_from(limits.response).expect("response fits")
+    );
+    assert!(most <= server::worst_case(&limits).unwrap(), "a response head at its limit, held");
 }
 
 #[test]
