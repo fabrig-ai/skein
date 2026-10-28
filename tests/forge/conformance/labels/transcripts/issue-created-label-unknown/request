@@ -1,0 +1,8 @@
+POST /api/v1/repos/fixture/labels/issues HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Content-Type: application/json
+Content-Length: 55
+Connection: close
+
+{"title":"missing label","body":"unknown","labels":[5]}

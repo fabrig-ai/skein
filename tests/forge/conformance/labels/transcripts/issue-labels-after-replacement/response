@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Cache-Control: max-age=0, private, must-revalidate
+Content-Type: application/json;charset=utf-8
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+Date: Wed, 01 Jan 2020 00:00:00 GMT
+Connection: close
+Content-Length: 1323
+
+{"id":1,"url":"http://127.0.0.1:3000/api/v1/repos/fixture/labels/issues/1","html_url":"http://127.0.0.1:3000/fixture/labels/issues/1","number":1,"user":{"id":1,"login":"fixture","login_name":"","source_id":0,"full_name":"","email":"fixture@example.invalid","avatar_url":"http://127.0.0.1:3000/avatars/a403c50e83dfc222f341e532d0f4a6e2","html_url":"http://127.0.0.1:3000/fixture","language":"","is_admin":true,"last_login":"1970-01-01T05:30:00+05:30","created":"2020-01-01T00:00:01+05:30","restricted":false,"active":true,"prohibit_login":false,"location":"","pronouns":"","website":"","description":"","visibility":"public","followers_count":0,"following_count":0,"starred_repos_count":0,"username":"fixture"},"original_author":"","original_author_id":0,"title":"finding","body":"labelled issue","ref":"","assets":[],"labels":[{"id":1,"name":"finding","exclusive":false,"is_archived":false,"color":"12abef","description":"","url":"http://127.0.0.1:3000/api/v1/repos/fixture/labels/labels/1"}],"milestone":null,"assignee":null,"assignees":null,"state":"open","is_locked":false,"comments":0,"created_at":"2020-01-01T00:00:02+05:30","updated_at":"2020-01-01T00:00:02+05:30","closed_at":null,"due_date":null,"pull_request":null,"repository":{"id":1,"name":"labels","owner":"fixture","full_name":"fixture/labels"},"pin_order":0}

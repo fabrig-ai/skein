@@ -1,0 +1,8 @@
+PUT /api/v1/repos/fixture/labels/issues/1/labels HTTP/1.1
+Host: 127.0.0.1:3000
+Authorization: token MASKED
+Content-Type: application/json
+Content-Length: 14
+Connection: close
+
+{"labels":[5]}

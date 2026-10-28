@@ -1,0 +1,10 @@
+HTTP/1.1 201 Created
+Cache-Control: max-age=0, private, must-revalidate
+Content-Type: application/json;charset=utf-8
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+Date: Wed, 01 Jan 2020 00:00:00 GMT
+Connection: close
+Content-Length: 171
+
+{"id":3,"name":"severity:high","exclusive":false,"is_archived":false,"color":"ff0000","description":"","url":"http://127.0.0.1:3000/api/v1/repos/fixture/labels/labels/3"}

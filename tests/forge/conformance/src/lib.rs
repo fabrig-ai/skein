@@ -10,6 +10,7 @@ mod fixture;
 mod hooks;
 mod job_clone;
 pub mod json;
+pub mod labels;
 pub mod mask;
 mod orgs;
 mod registration;
@@ -45,6 +46,7 @@ pub fn run(binary: &Path, runner: Option<&Path>, scratch: &Path, out: &Path) -> 
     facts.extend(setup::facts(&fixture, out)?);
     facts.extend(cli::facts(&forgejo, &mut fixture, &mut secrets)?);
     facts.extend(deliveries::record(runner, &forgejo, scratch, out, &mut secrets)?);
+    facts.extend(labels::record(&fixture, out, &mut mask, &mut secrets)?);
     let lines = facts.iter().map(facts::Fact::line).collect::<String>();
     write::check("facts.txt", b"", lines.as_bytes(), &secrets)?;
     facts::write(out, &facts)?;
