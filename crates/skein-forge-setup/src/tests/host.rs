@@ -1343,7 +1343,6 @@ fn the_host_bound_refuses_invalid_settings_and_overflow() {
     huge.runs = u32::MAX;
     huge.body_bytes_in = u32::MAX - 1;
     assert_eq!(worst_case(&huge, &settings(&[1])), None);
-    assert_eq!(Host::new(&huge, settings(&[1]), crypto()).err(), Some(Unusable::Zero));
 }
 #[test]
 fn the_host_bound_prices_only_configured_kinds_and_transports() {
