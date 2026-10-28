@@ -121,6 +121,8 @@ pub struct Machine {
     tls_addresses: Vec<skein_io::Addr>,
     fake: Option<github::Fake>,
     wall_base: Option<Wall>,
+    hold_output: bool,
+    outputs_before_requests: Vec<u32>,
     handshake_cut: Option<crate::tls::HandshakeCut>,
     flight_length: Option<usize>,
     flight_status: Option<crate::tls::CutStatus>,
@@ -224,6 +226,8 @@ impl Machine {
             tls_addresses,
             fake: github.then(|| github::Fake::new(seed)),
             wall_base,
+            hold_output: false,
+            outputs_before_requests: Vec::new(),
             handshake_cut: None,
             flight_length: None,
             flight_status: None,
@@ -530,7 +534,24 @@ impl Machine {
         self.events();
         self.component.reclaim();
     }
+    /// Delays the owner taking events while the component and peer continue.
+    pub fn hold_output(&mut self) {
+        self.hold_output = true;
+    }
+    /// Takes every output that has reached the owner's queue.
+    pub fn release_output(&mut self) {
+        self.hold_output = false;
+        self.events();
+    }
+    /// Outputs emitted before each peer request, including output the owner has not taken.
+    #[must_use]
+    pub fn outputs_before_requests(&self) -> &[u32] {
+        &self.outputs_before_requests
+    }
     fn events(&mut self) {
+        if self.hold_output {
+            return;
+        }
         while let Some(event) = self.above.pop() {
             if let Event::Connected { forge } = event {
                 self.access_event(forge, true);
@@ -706,6 +727,8 @@ impl Machine {
         }
     }
     fn respond(&mut self, owner: Token, request: Vec<u8>) {
+        let taken = self.installation_events.len() + self.facts.len() + self.git_tokens.len();
+        self.outputs_before_requests.push(u32::try_from(taken).expect("fixture output count") + self.above.len());
         let log_request;
         let (expected, response) = if let Some(answer) = self.script.pop_front() {
             (answer.request, answer.response)
