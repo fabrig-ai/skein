@@ -15,6 +15,10 @@ static HEAP: Counting = Counting;
 
 const ITEMS: usize = 128;
 
+fn output_queue() -> Queue<Request> {
+    Queue::with_capacity(MAX_OUT)
+}
+
 fn scripts() -> Box<[Script]> {
     Box::new([Script {
         cue: b"cue".as_slice().into(),
@@ -66,7 +70,7 @@ fn caps() -> skein_fake_llm_domain::Config {
 fn exact_joint_menu_script_cap_and_all_delayed_slots_include_empty_part_wrappers() {
     let config = caps();
     let bound = worst_case(&config).expect("checked bound");
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = output_queue();
     let meter = Meter::new();
     meter.start();
     let mut domain = Domain::configured(&config, 7, scripts(), menu()).expect("exact joint script/menu cap");
@@ -129,7 +133,7 @@ fn exact_joint_menu_script_cap_and_all_delayed_slots_include_empty_part_wrappers
         wall: Wall::EPOCH,
         limits: skein_fake_llm_domain::Config { answer_bytes: config.answer_bytes - 1, ..config },
     };
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = output_queue();
     let mut domain = Domain::configured(&env.limits, 7, scripts(), menu()).expect("same admitted input");
     step(
         &mut domain,
@@ -151,7 +155,7 @@ fn exact_query_cap_is_accepted_and_one_byte_less_returns_one_actual_refusal() {
         let config = caps();
         let config = Config { query_bytes: config.query_bytes - u32::from(!fits), ..config };
         let bound = worst_case(&config).expect("checked query-bound control");
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = output_queue();
         let meter = Meter::new();
         meter.start();
         let mut domain = Domain::try_scripted(&config, 7, scripts()).expect("unchanged admitted script");
@@ -237,7 +241,7 @@ fn random_and_scripted_full_and_truncated_tool_scratch_stays_within_the_bound() 
             ..caps()
         };
         let bound = worst_case(&config).expect("checked tool scratch bound");
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = output_queue();
         let meter = Meter::new();
         meter.start();
         let scripts = if scripted { tool_scripts() } else { Box::new([]) };
@@ -384,7 +388,7 @@ fn the_cache_table_reaches_its_bound_under_the_counted_domain_footprint() {
     use skein_fake_llm_domain::api::Caching;
     let config = Config { cache_entries: 3, query_bytes: caps().query_bytes + 4, ..caps() };
     let bound = worst_case(&config).unwrap();
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = output_queue();
     let meter = Meter::new();
     meter.start();
     let mut domain = Domain::new(&config, 5);

@@ -831,8 +831,8 @@ fn selective_step(
         Turn::Waiting | Turn::Done => unreachable!("only client calls are metered"),
     }
     let measured = meter.end();
-    let mut copies_above = Queue::with_capacity(client::MAX_OUT.above);
-    let mut copies_below = Queue::with_capacity(client::MAX_OUT.below);
+    let mut copies_above = Queue::with_capacity(above.capacity());
+    let mut copies_below = Queue::with_capacity(below.capacity());
     let mut handed = 0;
     while let Some(event) = above.pop() {
         let copying = Span::start();

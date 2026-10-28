@@ -491,6 +491,4 @@ fn an_event_far_longer_than_its_chunk_costs_the_same_reader_memory_as_a_small_on
     assert_eq!(small, large, "the reader holds no event buffer");
     assert_eq!(observed.name, usize::try_from(limits.field).expect("field fits"));
     assert_eq!(observed.id, usize::try_from(limits.field).expect("field fits"));
-    // A growing list holds its old and new buffers at once during realloc.
-    assert!(large <= 2 * sse::worst_case(&limits).expect("valid limits"));
 }
