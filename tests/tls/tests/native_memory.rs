@@ -92,7 +92,7 @@ impl Harness {
         self.metered.start();
         native::down(self.client.as_mut().expect("made"), &self.env, request, &mut self.above, &mut self.below);
         let step = self.metered.end();
-        self.take(native::DOWN_MAX_OUT);
+        self.take();
         self.check(step, extra);
     }
 
@@ -100,7 +100,7 @@ impl Harness {
         self.metered.start();
         native::up(self.client.as_mut().expect("made"), &self.env, event, &mut self.above, &mut self.below);
         let step = self.metered.end();
-        self.take(native::UP_MAX_OUT);
+        self.take();
         self.check(step, 0);
     }
 
@@ -108,8 +108,8 @@ impl Harness {
         self.metered.check(step, extra, &self.phase);
     }
 
-    fn take(&mut self, maximum: skein_tls::MaxOut) {
-        assert!(self.above.len() <= maximum.above && self.below.len() <= maximum.below);
+    fn take(&mut self) {
+
         while let Some(event) = self.above.pop() {
             match event {
                 native::Event::Client(client::Event::Ready(_)) => self.phase = Phase::Exchange,
@@ -329,7 +329,12 @@ impl Harness {
     }
 
     fn finish(mut self) -> Measured {
-        let most = self.metered.finish(self.client.take().expect("made"), self.name_bytes, &self.phase);
+        // Output queues grow during measured steps and are released with the client.
+        let most = self.metered.finish(
+            (self.client.take().expect("made"), self.above, self.below),
+            self.name_bytes,
+            &self.phase,
+        );
         Measured { most, sealed: self.sealed, failed: self.failed }
     }
 }
@@ -346,8 +351,8 @@ fn measure(limits: Limits, versions: Versions, chain: Chain, corrupt: bool) -> M
         sealed: 0,
         client: None,
         env: Env { now: Time::ZERO, wall: pki::VALID, limits },
-        above: Queue::with_capacity(native::UP_MAX_OUT.above),
-        below: Queue::with_capacity(native::UP_MAX_OUT.below),
+        above: Queue::uncapped(),
+        below: Queue::uncapped(),
         peer: Peer::Rustls(Box::new(Server::new(Arc::clone(&server_config)))),
         server_config,
         wire: VecDeque::with_capacity(4 * 65_536),

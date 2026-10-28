@@ -112,8 +112,8 @@ impl Pair {
             output: Output::Idle,
             last_send: None,
             cap,
-            above: Queue::with_capacity(native::UP_MAX_OUT.above),
-            below: Queue::with_capacity(native::UP_MAX_OUT.below),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
         }
     }
 
@@ -262,7 +262,7 @@ impl Pair {
     /// returning all observations above.
     pub fn down(&mut self, request: native::Request) -> Vec<native::Event> {
         native::down(&mut self.client, &self.env, request, &mut self.above, &mut self.below);
-        self.route(native::DOWN_MAX_OUT)
+        self.route()
     }
 
     /// Forward one below observation from the proxy. A queued Granted
@@ -277,7 +277,7 @@ impl Pair {
             );
         }
         native::up(&mut self.client, &self.env, event, &mut self.above, &mut self.below);
-        self.route(native::UP_MAX_OUT)
+        self.route()
     }
 
     /// Poll the independent read/output proxy. Emitting a grant commits
@@ -351,8 +351,8 @@ impl Pair {
         self.last_send
     }
 
-    fn route(&mut self, max: skein_tls::MaxOut) -> Vec<native::Event> {
-        assert!(self.above.len() <= max.above && self.below.len() <= max.below);
+    fn route(&mut self) -> Vec<native::Event> {
+
         while let Some(request) = self.below.pop() {
             match request {
                 native::LowerRequest::Stream(Down::Demand { read: Read::Nothing, room: 0 }) => {
