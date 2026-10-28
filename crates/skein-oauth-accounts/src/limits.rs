@@ -64,8 +64,7 @@ pub(crate) fn usable(limits: &Limits) -> bool {
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
     let record = u64::from(limits.client.document.record_bytes);
-    let routes = Queue::<skein_oauth::Request>::worst_case(skein_oauth::MAX_OUT)?
-        .checked_add(Queue::<skein_http::client::Event>::worst_case(ROUTES)?)?
+    let routes = Queue::<skein_http::client::Event>::worst_case(ROUTES)?
         .checked_add(Queue::<skein_http::client::Request>::worst_case(ROUTES)?)?
         .checked_add(Queue::<skein_lib::stream::Down>::worst_case(ROUTES)?.checked_mul(2)?)?
         .checked_add(Queue::<skein_tls::client::Event>::worst_case(ROUTES)?)?;

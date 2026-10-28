@@ -94,7 +94,7 @@ impl Exchange {
             next: None,
             sign_in_deadline: None,
             client,
-            above: Queue::with_capacity(oauth::MAX_OUT),
+            above: Queue::uncapped(),
             web: None,
             stage: Stage::Running,
             pending_grant,

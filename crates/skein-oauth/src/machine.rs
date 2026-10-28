@@ -13,9 +13,6 @@ use alloc::boxed::Box;
 use skein_json::writer::Encoder;
 use skein_lib::{Duration, List, Queue, Time, Wall, bytes};
 
-/// Maximum requests emitted by one step.
-pub const MAX_OUT: u32 = 1;
-
 /// Startup bounds for one client and exchange.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ClientLimits {
@@ -243,7 +240,7 @@ struct Exchange {
     keys: Box<[crate::keys::Key]>,
 }
 
-/// One sans-IO sign-in, refresh or revocation. The caller reserves `MAX_OUT` output slots.
+/// One sans-IO sign-in, refresh or revocation. The caller dispatches each entrance's output before the next.
 #[expect(missing_debug_implementations, reason = "machine retains secrets")]
 pub struct Client {
     limits: ClientLimits,
@@ -282,7 +279,7 @@ impl Client {
     }
 
     pub fn step(&mut self, event: Event, out: &mut Queue<Request>) {
-        assert!(out.room() >= MAX_OUT, "caller reserves one OAuth output");
+        assert!(out.is_empty(), "the caller dispatches an entrance's output before the next");
         match event {
             Event::SignIn {
                 registration,
