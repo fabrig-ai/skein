@@ -1,4 +1,5 @@
 //! Attaining caller-menu, script-wrapper and delayed-slot ownership controls.
+//! Output queue buffers grow in domain steps and release with the domain.
 
 use std::mem::size_of;
 
@@ -117,7 +118,8 @@ fn exact_joint_menu_script_cap_and_all_delayed_slots_include_empty_part_wrappers
     assert_eq!(terminals, config.calls);
     domain.reclaim();
     assert_eq!(domain.calls(), 0);
-    drop(domain);
+    assert!(out.is_empty());
+    drop((domain, out));
     assert_eq!(meter.held(), 0, "all owned wrappers reclaimed after actual terminals");
 
     let tight = skein_fake_llm_domain::Config { script_bytes: config.script_bytes - 1, ..config };
@@ -127,6 +129,7 @@ fn exact_joint_menu_script_cap_and_all_delayed_slots_include_empty_part_wrappers
         wall: Wall::EPOCH,
         limits: skein_fake_llm_domain::Config { answer_bytes: config.answer_bytes - 1, ..config },
     };
+    let mut out = Queue::with_capacity(MAX_OUT);
     let mut domain = Domain::configured(&env.limits, 7, scripts(), menu()).expect("same admitted input");
     step(
         &mut domain,
@@ -188,7 +191,8 @@ fn exact_query_cap_is_accepted_and_one_byte_less_returns_one_actual_refusal() {
         assert_eq!(domain.next_deadline(), None);
         domain.reclaim();
         assert_eq!(domain.calls(), 0);
-        drop(domain);
+        assert!(out.is_empty());
+        drop((domain, out));
         assert_eq!(meter.held(), 0, "query control leaves no retained or transferred ownership");
     }
 }
@@ -305,7 +309,8 @@ fn random_and_scripted_full_and_truncated_tool_scratch_stays_within_the_bound() 
         let measured = meter.end();
         meter.check(measured, bound, &"tool slots reclaimed after actual outputs");
         assert_eq!(domain.calls(), 0);
-        drop(domain);
+        assert!(out.is_empty());
+        drop((domain, out));
         assert_eq!(meter.held(), 0, "caller scripts, menus, scratch and transferred tools are all released");
     }
 }
@@ -415,8 +420,9 @@ fn the_cache_table_reaches_its_bound_under_the_counted_domain_footprint() {
         domain.reclaim();
         meter.check(measured, bound, &"real delayed answer and retained full cache");
     }
+    assert!(out.is_empty());
     meter.start();
-    drop(domain);
+    drop((domain, out));
     let measured = meter.end();
     assert_eq!(measured.held(), 0, "the cache retains no ownership after its domain is dropped");
 }

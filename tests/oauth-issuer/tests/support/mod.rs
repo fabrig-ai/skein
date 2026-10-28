@@ -313,13 +313,14 @@ impl World {
         // allocations are supplied at their configured maxima in this bound.
         self.client_live =
             self.client_live.checked_add(i64::try_from(input_bytes).expect("input")).expect("input heap");
-        let mut out = Queue::with_capacity(oauth::MAX_OUT);
         let bound = oauth::client_worst_case(&client_limits()).expect("bound");
         measured::<Option<oauth::Request>>(
             &mut self.client_live,
             bound,
             |requests| request_bytes(requests.as_ref()),
             || {
+                // The temporary output queue grows and releases inside this call.
+                let mut out = Queue::with_capacity(oauth::MAX_OUT);
                 self.client.step(event, &mut out);
                 let request = out.pop();
                 assert!(out.is_empty(), "MAX_OUT is one");

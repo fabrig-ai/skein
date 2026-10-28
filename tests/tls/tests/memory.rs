@@ -384,9 +384,11 @@ impl Harness {
         }
     }
 
-    /// The case is over: the client, dropped, frees all it held.
+    /// The case is over: the client and its empty output queues free all they held.
     fn finish(mut self) -> Measured {
-        let most = self.metered.finish(self.client.take().expect("made"), self.case.name.len(), &self.case);
+        assert!(self.events.is_empty() && self.requests.is_empty());
+        let owned = (self.client.take().expect("made"), self.events, self.requests);
+        let most = self.metered.finish(owned, self.case.name.len(), &self.case);
         Measured { most, bound: self.metered.bound(), failed: self.failed, limits: self.case.limits }
     }
 }

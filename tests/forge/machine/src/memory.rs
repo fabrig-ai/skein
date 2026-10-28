@@ -765,7 +765,9 @@ pub fn full_heap(forges: Forges) -> Full {
     w.settle();
     assert!(w.closed, "all transports closed");
     assert_eq!(w.component.diagnostics(), skein_forge_connection::Diagnostics { long_bodies: 0, malformed: 0 });
-    w.seen.owned = w.steps.finish(w.component, 0, &"full holders release all owned allocations");
+    assert!(w.above.is_empty() && w.below.is_empty());
+    // Output buffers grow inside component steps and release in the same account.
+    w.seen.owned = w.steps.finish((w.component, w.above, w.below), 0, &"full holders release all owned allocations");
     w.seen
 }
 

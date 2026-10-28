@@ -329,7 +329,10 @@ impl Harness {
     }
 
     fn finish(mut self) -> Measured {
-        let most = self.metered.finish(self.client.take().expect("made"), self.name_bytes, &self.phase);
+        assert!(self.above.is_empty() && self.below.is_empty());
+        // These output buffers grow inside the client steps and release with it.
+        let owned = (self.client.take().expect("made"), self.above, self.below);
+        let most = self.metered.finish(owned, self.name_bytes, &self.phase);
         Measured { most, sealed: self.sealed, failed: self.failed }
     }
 }
