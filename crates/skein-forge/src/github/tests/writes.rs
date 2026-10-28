@@ -630,68 +630,42 @@ fn github_open_pull_lost_find() {
 }
 
 fn create_issue(body: &[u8]) -> api::Write {
-    api::Write::CreateIssue { key: Box::from([0, 255]), title: Box::from(*b"alice"), body: Box::from(body) }
+    api::Write::CreateIssue {
+        key: Box::from([0, 255]),
+        title: Box::from(*b"alice"),
+        body: Box::from(body),
+        labels: Box::new([]),
+    }
 }
 #[test]
-fn github_create_issue_marker_and_number() {
-    let mut tables = cached_tables();
-    let mut plan = write_plan(create_issue(b"text\n\""));
-    let request = begin(&mut plan, &mut tables);
-    golden(
-        &request,
-        Method::Post,
-        b"/repos/acme/widgets/issues",
-        Some(br#"{"title":"alice","body":"<!-- example-app:key 00ff -->\ntext\n\""}"#),
-        Some(Kind::Number),
-    );
+fn github_label_writes_are_refused_before_repository_resolution() {
+    for write in [
+        create_issue(b"text"),
+        api::Write::Labels { number: NUMBER, labels: Box::new([]) },
+        api::Write::CreateLabel { name: Box::from(b"finding".as_slice()), color: [0; 3] },
+    ] {
+        let mut tables = Tables::new(1, 1);
+        let mut plan = write_plan(write);
+        assert_eq!(plan.begin(bounds(), WORD, &mut tables), Ok(Step::Done(Err(api::Error::Refused))));
+    }
+}
+#[test]
+fn github_issue_request_codec_preserves_its_body() {
+    let request = Request::CreateIssue {
+        owner: Box::from(b"acme".as_slice()),
+        name: Box::from(b"widgets".as_slice()),
+        title: Box::from(b"alice".as_slice()),
+        body: Box::from(b"text".as_slice()),
+    };
     roundtrip_body(&request);
     encoded_body_bounds(&request);
-    head(&mut plan, 201, &mut tables);
-    assert_eq!(
-        finish(&mut plan, Body::Document(Document::Number(NUMBER)), &mut tables),
-        ended(Ok(api::Answer::Created(NUMBER)))
-    );
-    for source in [b"".as_slice(), b"text"] {
-        let mut plan = write_plan(create_issue(source));
-        begin(&mut plan, &mut tables);
-        head(&mut plan, 422, &mut tables);
-        assert_eq!(
-            finish(&mut plan, refusal(b"unknown"), &mut tables),
-            ended(Err(if source.is_empty() { api::Error::Empty } else { api::Error::Refused }))
-        );
-    }
-}
-#[test]
-fn github_create_issue_marker_bounds() {
-    let size = crate::marker::length(WORD, 2).unwrap() + 1;
-    for (body_bytes, ok) in [(size, true), (size - 1, false)] {
-        let mut tables = cached_tables();
-        let mut plan = write_plan(create_issue(b"\""));
-        let result = plan.begin(Bounds { body_bytes, ..bounds() }, WORD, &mut tables);
-        assert_eq!(result.is_ok(), ok);
-        if let Ok(Step::Send(exchange)) = result {
-            encoded_body_bounds(&exchange.request);
-        }
-    }
-    let mut tables = cached_tables();
-    let mut plan = write_plan(create_issue(b""));
-    let request = begin(&mut plan, &mut tables);
-    assert!(
-        crate::github::server::write_body(request.clone(), br#"{"title":"alice","body":"x","body":"y"}"#, &limits())
-            .is_none()
-    );
     for body in [b"{}".as_slice(), br#"{"title":1,"body":"x"}"#, br#"{"title":"alice"}"#] {
         assert!(crate::github::server::write_body(request.clone(), body, &limits()).is_none());
     }
-    head(&mut plan, 201, &mut tables);
-    assert_eq!(finish(&mut plan, Body::Empty, &mut tables), ended(Err(api::Error::Timeout)));
 }
 #[test]
-fn github_create_issue_lost_find() {
+fn github_issue_markers_are_found_by_reads() {
     let mut tables = cached_tables();
-    let mut write = write_plan(create_issue(b"text"));
-    begin(&mut write, &mut tables);
-    assert_eq!(write.heard(Heard::Failed(Failure::Seen), bounds(), WORD, &mut tables), ended(Err(api::Error::Timeout)));
     for (word, writer, found) in [(WORD, NUMBER, true), (b"alice".as_slice(), NUMBER, false), (WORD, 1, false)] {
         let mut find = Plan::new(
             KEY,

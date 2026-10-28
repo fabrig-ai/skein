@@ -254,6 +254,8 @@ pub(super) fn write(json: &mut Encoder, answer: &Answer) -> Result<(), writer::R
         | Answer::CreatedFile { .. }
         | Answer::CreatedRepository(_)
         | Answer::Team(_)
+        | Answer::Labels(_)
+        | Answer::Label(_)
         | Answer::Teams(_)
         | Answer::Hook(_)
         | Answer::Hooks(_)

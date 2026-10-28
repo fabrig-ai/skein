@@ -246,6 +246,7 @@ fn a_write_body_is_read_before_its_scripted_response() {
             key: Box::from([0xab]),
             title: Box::from(*b"title"),
             body: Box::from(*b"body"),
+            labels: Box::new([]),
         }),
     );
     world.run_for(SECOND);

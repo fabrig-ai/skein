@@ -98,12 +98,16 @@ fn read(value: &Read) -> Option<u64> {
 #[must_use]
 pub fn write(value: &Write) -> Option<u64> {
     match value {
-        Write::CreateIssue { key, title, body } => bytes(key)?.checked_add(bytes(title)?)?.checked_add(bytes(body)?),
+        Write::CreateIssue { key, title, body, labels } => {
+            bytes(key)?.checked_add(bytes(title)?)?.checked_add(bytes(body)?)?.checked_add(strings(labels)?)
+        }
         Write::OpenPull { title, body, head, base } => {
             bytes(title)?.checked_add(bytes(body)?)?.checked_add(bytes(head)?)?.checked_add(bytes(base)?)
         }
         Write::Post { key, body, .. } | Write::Review { key, body, .. } => bytes(key)?.checked_add(bytes(body)?),
         Write::Edit { title, body, .. } => optional(title.as_deref())?.checked_add(optional(body.as_deref())?),
+        Write::Labels { labels, .. } => strings(labels),
+        Write::CreateLabel { name, .. } => bytes(name),
         Write::SetReviewers { reviewers, .. } => rows(reviewers.len(), ID_BYTES),
         Write::Dispatch { workflow, branch, inputs } => {
             let mut held =
@@ -273,6 +277,14 @@ pub fn run(value: &api::Run) -> Option<u64> {
         if let Some(step) = &job.step {
             held = held.checked_add(bytes(&step.name)?)?;
         }
+    }
+    Some(held)
+}
+
+fn strings(values: &[Box<[u8]>]) -> Option<u64> {
+    let mut held = rows(values.len(), STRING_BYTES)?;
+    for value in values {
+        held = held.checked_add(bytes(value)?)?;
     }
     Some(held)
 }

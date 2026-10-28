@@ -12,6 +12,7 @@ use crate::forgejo::{
 };
 use skein_json::tokenizer;
 use skein_lib::{Decimal, Writer};
+#[expect(clippy::too_many_lines, reason = "exhaustive dialect dispatch includes each label request and answer variant")]
 pub(super) fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refusal> {
     let length = match request {
         Request::RepoSearch { page } => {
@@ -65,6 +66,9 @@ pub(super) fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refu
         | Request::Pull { .. }
         | Request::PullFor { .. }
         | Request::CombinedStatus { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -179,6 +183,9 @@ fn target(request: &Request, out: &mut Writer) -> Result<(), skein_lib::Overflow
         | Request::Comments { .. }
         | Request::Pull { .. }
         | Request::PullFor { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }

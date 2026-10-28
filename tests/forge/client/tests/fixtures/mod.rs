@@ -4,6 +4,10 @@ use skein_forge_client_world::{REPO, Settings, World};
 
 #[must_use]
 pub fn issue(entry: u64) -> Entry {
+    issue_with_labels(entry, Box::new([]))
+}
+#[must_use]
+pub fn issue_with_labels(entry: u64, labels: Box<[Box<[u8]>]>) -> Entry {
     Entry {
         number: entry,
         task: 7,
@@ -13,6 +17,7 @@ pub fn issue(entry: u64) -> Entry {
                 key: Box::from(&b"\x01\x00\x03kitdeployment:goal"[..]),
                 title: Box::from(&b"goal"[..]),
                 body: Box::from(&b"plan"[..]),
+                labels,
             },
             condition: Condition::None,
         },

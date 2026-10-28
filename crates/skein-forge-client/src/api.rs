@@ -97,6 +97,8 @@ pub(crate) fn accepts(op: &Op, answer: &Answer) -> bool {
             Write::Merge { .. } => Shape::Merged,
             Write::CreateBranch { .. } => Shape::Branch,
             Write::Update { .. }
+            | Write::Labels { .. }
+            | Write::CreateLabel { .. }
             | Write::Edit { .. }
             | Write::SetReviewers { .. }
             | Write::Close { .. }

@@ -451,6 +451,7 @@ impl Plan {
             | d::Row::Reachable(_)
             | d::Row::Token(_)
             | d::Row::Hook(_)
+            | d::Row::Label { .. }
             | d::Row::Team(_)
             | d::Row::Entry { .. }
             | d::Row::File(_)

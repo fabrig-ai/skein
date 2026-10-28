@@ -20,3 +20,5 @@ mod git;
 mod admin_scopes;
 
 mod creation;
+
+mod labels;

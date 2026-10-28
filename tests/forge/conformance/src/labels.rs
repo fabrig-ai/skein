@@ -95,9 +95,36 @@ pub fn run(binary: &Path, scratch: &Path, out: &Path) -> Result<()> {
     let facts = record(&fixture, out, &mut mask, &mut secrets)?;
     crate::facts::write(out, &facts)?;
     fixture.instance.stop().map_err(|e| crate::failure(&e))?;
-    if facts.iter().any(|fact| !matches!(fact.outcome, crate::facts::Outcome::Holds)) {
+    if !matches_pin(&facts) {
         return Err("label conformance failed; see facts.txt".into());
     }
-    println!("labels: {} facts hold", facts.len());
+    println!("labels: {} facts match the pin", facts.len());
     Ok(())
+}
+
+fn matches_pin(facts: &[Fact]) -> bool {
+    // The task accepts these three negative facts as the pinned API's behavior.
+    const FACTS: usize = 9;
+    if facts.len() != FACTS {
+        return false;
+    }
+    facts.iter().all(|fact| {
+        let negative =
+            ["label-created-twice-is-409", "issue-unknown-label-is-refused", "issue-created-unknown-label-is-refused"]
+                .contains(&fact.name);
+        match fact.outcome {
+            crate::facts::Outcome::Holds | crate::facts::Outcome::Observed(_) => !negative,
+            crate::facts::Outcome::Fails(_) => negative,
+            crate::facts::Outcome::Unchecked(_) => false,
+        }
+    })
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn label_recording_replays_the_accepted_pin_facts() {
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("labels");
+        let facts = super::facts(&out).expect("recorded label facts");
+        assert!(super::matches_pin(&facts));
+    }
 }

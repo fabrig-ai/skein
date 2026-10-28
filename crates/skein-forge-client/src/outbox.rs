@@ -136,6 +136,8 @@ fn valid(entry: &Entry, l: &Limits) -> bool {
             entry.effect.condition == Condition::None && !key.is_empty()
         }
         Write::OpenPull { .. }
+        | Write::Labels { .. }
+        | Write::CreateLabel { .. }
         | Write::Edit { .. }
         | Write::SetReviewers { .. }
         | Write::Close { .. }
@@ -149,7 +151,8 @@ fn valid(entry: &Entry, l: &Limits) -> bool {
 }
 fn lane(entry: &Entry) -> Lane {
     let number = match entry.effect.write {
-        Write::Post { number, .. }
+        Write::Labels { number, .. }
+        | Write::Post { number, .. }
         | Write::Review { number, .. }
         | Write::Edit { number, .. }
         | Write::SetReviewers { number, .. }
@@ -157,7 +160,8 @@ fn lane(entry: &Entry) -> Lane {
         | Write::Reopen { number }
         | Write::Merge { number, .. }
         | Write::Update { number, .. } => Some(number),
-        Write::CreateIssue { .. }
+        Write::CreateLabel { .. }
+        | Write::CreateIssue { .. }
         | Write::OpenPull { .. }
         | Write::Status { .. }
         | Write::CreateBranch { .. }
@@ -281,13 +285,15 @@ pub(crate) fn pump(d: &mut Domain, env: &Env<Limits>, out: &mut Queue<Request>) 
             break;
         }
     }
-    let Some((number, phase)) = selected else {
+    let Some((number, mut phase)) = selected else {
         return false;
     };
     match phase {
         Phase::Find { .. } => {
             let w = d.outbox.entries.get(&number).expect("selected entry remains");
-            if is_set(&w.entry.effect.write) {
+            if label_creation(&w.entry.effect.write) {
+                phase = Phase::Make;
+            } else if is_set(&w.entry.effect.write) {
                 retry::not_found(d, env, number, out);
                 return true;
             }
@@ -349,7 +355,9 @@ fn operation(w: &Writing, phase: Phase) -> Op {
             Write::CreateBranch { branch, .. } | Write::DeleteBranch { branch } => {
                 Read::Branch { branch: branch.clone() }
             }
-            Write::Edit { .. }
+            Write::Labels { .. }
+            | Write::CreateLabel { .. }
+            | Write::Edit { .. }
             | Write::SetReviewers { .. }
             | Write::Close { .. }
             | Write::Reopen { .. }
@@ -431,12 +439,14 @@ fn wait(d: &mut Domain, number: u64, phase: Phase, until: Time) {
 }
 fn is_set(write: &Write) -> bool {
     match write {
-        Write::Edit { .. }
+        Write::Labels { .. }
+        | Write::Edit { .. }
         | Write::SetReviewers { .. }
         | Write::Close { .. }
         | Write::Reopen { .. }
         | Write::Status { .. } => true,
-        Write::CreateIssue { .. }
+        Write::CreateLabel { .. }
+        | Write::CreateIssue { .. }
         | Write::OpenPull { .. }
         | Write::Post { .. }
         | Write::Review { .. }
@@ -452,6 +462,8 @@ fn key(write: &Write) -> Option<&[u8]> {
     match write {
         Write::CreateIssue { key, .. } | Write::Post { key, .. } | Write::Review { key, .. } => Some(key),
         Write::OpenPull { .. }
+        | Write::Labels { .. }
+        | Write::CreateLabel { .. }
         | Write::Edit { .. }
         | Write::SetReviewers { .. }
         | Write::Close { .. }
@@ -499,6 +511,8 @@ pub(crate) fn echo(d: &Domain, repository: Repository, key: &[u8]) -> bool {
                 }
             }
             Write::OpenPull { .. }
+            | Write::Labels { .. }
+            | Write::CreateLabel { .. }
             | Write::Edit { .. }
             | Write::SetReviewers { .. }
             | Write::Close { .. }
@@ -522,6 +536,8 @@ fn is_merge(write: &Write) -> bool {
         | Write::OpenPull { .. }
         | Write::Post { .. }
         | Write::Review { .. }
+        | Write::Labels { .. }
+        | Write::CreateLabel { .. }
         | Write::Edit { .. }
         | Write::SetReviewers { .. }
         | Write::Close { .. }
@@ -532,5 +548,27 @@ fn is_merge(write: &Write) -> bool {
         | Write::Dispatch { .. }
         | Write::Rerun { .. }
         | Write::DeleteBranch { .. } => false,
+    }
+}
+
+fn label_creation(write: &Write) -> bool {
+    match write {
+        Write::CreateLabel { .. } => true,
+        Write::CreateIssue { .. }
+        | Write::Labels { .. }
+        | Write::OpenPull { .. }
+        | Write::Post { .. }
+        | Write::Review { .. }
+        | Write::Edit { .. }
+        | Write::SetReviewers { .. }
+        | Write::Close { .. }
+        | Write::Reopen { .. }
+        | Write::Merge { .. }
+        | Write::Update { .. }
+        | Write::Status { .. }
+        | Write::CreateBranch { .. }
+        | Write::DeleteBranch { .. }
+        | Write::Dispatch { .. }
+        | Write::Rerun { .. } => false,
     }
 }

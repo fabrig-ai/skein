@@ -36,6 +36,10 @@ pub enum Unrouted {
     Malformed,
 }
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a transient route owns its body decoder without a second heap allocation"
+)]
 pub enum Route {
     Ready(Request),
     Body(BodyDecoder),
@@ -79,6 +83,8 @@ fn read_route(method: Method, target: &[u8], limits: &Limits) -> Result<Route, U
 }
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Answer {
+    Labels(Box<[crate::forgejo::document::Label]>),
+    Label(crate::forgejo::document::Label),
     /// Encodes a page without filtering rows whose push permission is false.
     Reachable(Box<[crate::forgejo::document::Reachable]>),
     Hook(crate::forgejo::document::Hook),
@@ -158,8 +164,21 @@ pub fn encode(answer: &Answer, limits: &Limits) -> Result<Box<[u8]>, writer::Ref
     self::write(&mut write, answer)?;
     Ok(write.finish())
 }
+#[expect(clippy::too_many_lines, reason = "exhaustive dialect dispatch includes each label request and answer variant")]
 fn write(json: &mut writer::Encoder, answer: &Answer) -> Result<(), writer::Refusal> {
     match answer {
+        Answer::Labels(labels) => {
+            json.array_start();
+            for label in labels {
+                label_json(json, label);
+            }
+            json.array_end();
+            Ok(())
+        }
+        Answer::Label(label) => {
+            label_json(json, label);
+            Ok(())
+        }
         Answer::CreatedFile { commit } => {
             json.object_start();
             json.key(b"commit");
@@ -248,4 +267,13 @@ fn write(json: &mut writer::Encoder, answer: &Answer) -> Result<(), writer::Refu
         | Answer::Pull(_)
         | Answer::CombinedStatus { .. } => items::write(json, answer),
     }
+}
+
+fn label_json(json: &mut writer::Encoder, label: &crate::forgejo::document::Label) {
+    json.object_start();
+    json.key(b"id");
+    json.number(skein_lib::Decimal::of(label.id).as_bytes());
+    json.key(b"name");
+    json.string(&label.name);
+    json.object_end();
 }

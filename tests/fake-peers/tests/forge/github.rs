@@ -516,17 +516,8 @@ fn github_peer_page_routes_choose_between_the_browser_and_api() {
 fn github_peer_serves_repository_reads_and_writes_over_the_shared_forge() {
     let mut world = World::new(f::SEED);
     let token = world.token();
-    let made = world
-        .plan(
-            &token,
-            api::Op::Write(api::Write::CreateIssue {
-                title: f::boxed(b"A shared issue"),
-                body: f::boxed(b"A shared body"),
-                key: f::boxed(b"example-key"),
-            }),
-        )
-        .expect("issue created");
-    assert!(matches!(made, api::Answer::Created(1)));
+    let made = world.fetch(Method::Post, b"/repos/org/repo/issues", ISSUE, Some(&token));
+    assert_eq!(made.status, 201);
     let read = world.plan(&token, api::Op::Read(api::Read::Item { number: 1, after: 0 })).expect("issue read");
     let api::Answer::Item { item, .. } = read else { panic!("issue read") };
     assert_eq!(item.title.as_ref(), b"A shared issue");

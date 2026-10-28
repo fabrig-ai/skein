@@ -214,6 +214,8 @@ impl World {
             | Write::OpenPull { .. }
             | Write::Post { .. }
             | Write::Review { .. }
+            | Write::Labels { .. }
+            | Write::CreateLabel { .. }
             | Write::Edit { .. }
             | Write::SetReviewers { .. }
             | Write::Close { .. }

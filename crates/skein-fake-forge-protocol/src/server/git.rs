@@ -196,6 +196,7 @@ pub(super) fn down(
             | api::Answer::Permission(_)
             | api::Answer::Comment { .. }
             | api::Answer::Dependencies(_)
+            | api::Answer::LabelIds(_)
             | api::Answer::Labels(_)
             | api::Answer::GitTree { .. }
             | api::Answer::Tree(_)

@@ -571,6 +571,9 @@ fn forgejo_row_bound(request: &request::Request) -> Option<u32> {
         | Request::Jobs { .. }
         | Request::Job { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }

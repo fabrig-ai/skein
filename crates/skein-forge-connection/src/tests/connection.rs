@@ -59,6 +59,7 @@ fn a_json_response_is_decoded_through_its_body_end() {
                 date: Some(Wall::from_nanos(1_577_836_800_000_000_000)),
                 retry_after: None,
                 has_more: None,
+                total_count: None,
                 content_range: None,
                 close: false
             }

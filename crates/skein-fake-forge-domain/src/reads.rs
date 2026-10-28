@@ -31,7 +31,7 @@ use skein_lib::{Id, List, Time};
 use crate::api::{Answer, Error, File, Kind, Order, Read, State, Summary, What};
 use crate::domain::{self, Config, Domain};
 use crate::limits::Limits;
-use crate::store::{Repository, names, numbers};
+use crate::store::{Repository, numbers};
 use crate::{pulls, wiki};
 
 /// What `read` answers on the repository `id`.
@@ -56,7 +56,8 @@ pub(crate) fn read(domain: &Domain, config: &Config, id: Id<Repository>, read: &
             Ok(Answer::Comment { number, comment })
         }
         Read::Dependencies { number } => Ok(Answer::Dependencies(numbers(&repository.item(*number)?.dependencies))),
-        Read::Labels => Ok(Answer::Labels(names(&repository.labels))),
+        Read::Labels => Ok(Answer::Labels(repository.label_names())),
+        Read::LabelIds => Ok(Answer::LabelIds(repository.label_ids())),
         Read::Pull { number } => pulls::view(domain, limits, repository, *number),
         Read::PullFiles { number, page, limit } => {
             crate::next::pull_files(domain, limits, repository, *number, *page, *limit)

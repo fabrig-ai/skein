@@ -81,6 +81,8 @@ fn branch_found(d: &mut Domain, env: &Env<Limits>, number: u64, commit: Commit, 
         | Write::OpenPull { .. }
         | Write::Post { .. }
         | Write::Review { .. }
+        | Write::Labels { .. }
+        | Write::CreateLabel { .. }
         | Write::Edit { .. }
         | Write::SetReviewers { .. }
         | Write::Close { .. }
@@ -106,6 +108,8 @@ fn branch_created(
                 | Write::OpenPull { .. }
                 | Write::Post { .. }
                 | Write::Review { .. }
+                | Write::Labels { .. }
+                | Write::CreateLabel { .. }
                 | Write::Edit { .. }
                 | Write::SetReviewers { .. }
                 | Write::Close { .. }
@@ -129,7 +133,9 @@ fn done(d: &mut Domain, env: &Env<Limits>, number: u64, out: &mut Queue<Request>
             d.outbox.entries.get_mut(&number).expect("update entry remains").uncertain = true;
             super::next(d, number, Phase::AfterUpdate);
         }
-        Write::Edit { .. }
+        Write::Labels { .. }
+        | Write::CreateLabel { .. }
+        | Write::Edit { .. }
         | Write::SetReviewers { .. }
         | Write::Close { .. }
         | Write::Reopen { .. }
@@ -163,6 +169,8 @@ fn pulled(d: &mut Domain, env: &Env<Limits>, number: u64, phase: Phase, pull: ap
                         | Write::OpenPull { .. }
                         | Write::Post { .. }
                         | Write::Review { .. }
+                        | Write::Labels { .. }
+                        | Write::CreateLabel { .. }
                         | Write::Edit { .. }
                         | Write::SetReviewers { .. }
                         | Write::Close { .. }
@@ -227,6 +235,8 @@ fn pulled(d: &mut Domain, env: &Env<Limits>, number: u64, phase: Phase, pull: ap
             Write::CreateIssue { .. }
             | Write::Post { .. }
             | Write::Review { .. }
+            | Write::Labels { .. }
+            | Write::CreateLabel { .. }
             | Write::Edit { .. }
             | Write::SetReviewers { .. }
             | Write::Close { .. }
@@ -275,6 +285,8 @@ pub(super) fn merge_verified(
         | Write::OpenPull { .. }
         | Write::Post { .. }
         | Write::Review { .. }
+        | Write::Labels { .. }
+        | Write::CreateLabel { .. }
         | Write::Edit { .. }
         | Write::SetReviewers { .. }
         | Write::Close { .. }

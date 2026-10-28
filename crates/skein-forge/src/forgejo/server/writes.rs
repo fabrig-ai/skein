@@ -22,6 +22,10 @@ pub(crate) enum WriteKind {
     Dispatch,
     Inputs,
     Issue,
+    Labels,
+    LabelIds,
+    LabelId,
+    NewLabel,
     NewUser,
     NewToken,
     Scopes,
@@ -111,7 +115,17 @@ pub(crate) fn fields(kind: WriteKind) -> &'static [Field] {
                 ]
             }
         }
-        WriteKind::Issue => const { &[field(b"title", Read::Text, true), field(b"body", Read::Body, true)] },
+        WriteKind::Issue => {
+            const {
+                &[
+                    field(b"title", Read::Text, true),
+                    field(b"body", Read::Body, true),
+                    field(b"labels", Read::Array(Kind::Write(WriteKind::LabelIds)), false),
+                ]
+            }
+        }
+        WriteKind::Labels => const { &[field(b"labels", Read::Array(Kind::Write(WriteKind::LabelIds)), true)] },
+        WriteKind::NewLabel => const { &[field(b"name", Read::Text, true), field(b"color", Read::Text, true)] },
         WriteKind::Pull => {
             const {
                 &[
@@ -150,14 +164,24 @@ pub(crate) fn fields(kind: WriteKind) -> &'static [Field] {
         WriteKind::Branch => {
             const { &[field(b"new_branch_name", Read::Text, true), field(b"old_ref_name", Read::Id { empty: false }, true)] }
         }
-        WriteKind::Inputs | WriteKind::Scopes | WriteKind::Scope | WriteKind::Logins | WriteKind::Login => &[],
+        WriteKind::LabelIds
+        | WriteKind::LabelId
+        | WriteKind::Inputs
+        | WriteKind::Scopes
+        | WriteKind::Scope
+        | WriteKind::Logins
+        | WriteKind::Login => &[],
     }
 }
 pub(crate) fn element(kind: WriteKind) -> Option<Kind> {
     match kind {
+        WriteKind::LabelIds => Some(Kind::Write(WriteKind::LabelId)),
         WriteKind::Scopes => Some(Kind::Write(WriteKind::Scope)),
         WriteKind::Logins => Some(Kind::Write(WriteKind::Login)),
-        WriteKind::Dispatch
+        WriteKind::LabelId
+        | WriteKind::Labels
+        | WriteKind::NewLabel
+        | WriteKind::Dispatch
         | WriteKind::Inputs
         | WriteKind::Collaborator
         | WriteKind::HookConfig
@@ -187,9 +211,6 @@ fn zero() -> id::ObjectId {
     id::ObjectId { format: id::ObjectFormat::Sha1, bytes: [0; 32] }
 }
 pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Route, Unrouted> {
-    if method == Method::Get {
-        return Err(Unrouted::NotFound);
-    }
     let target = path::read(bytes, limits).ok().ok_or(Unrouted::Malformed)?;
     let [api, v1, repos, owner, name, tail @ ..] = target.segments.as_ref() else {
         return Err(Unrouted::NotFound);
@@ -198,6 +219,14 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
         return Err(Unrouted::NotFound);
     }
     let at = Repo { owner: owner.clone(), name: name.clone() };
+    if method == Method::Get {
+        if let [labels] = tail
+            && labels.as_ref() == b"labels"
+        {
+            return Ok(Route::Ready(Request::Labels { at, page: super::items::page(&target.query)? }));
+        }
+        return Err(Unrouted::NotFound);
+    }
     route_tail(method, at, tail, &target.query, limits)
 }
 #[expect(clippy::too_many_lines, reason = "each mutation route declares its method and body kind")]
@@ -209,6 +238,14 @@ fn route_tail(
     limits: &Limits,
 ) -> Result<Route, Unrouted> {
     let (required, kind, request) = match tail {
+        [labels] if labels.as_ref() == b"labels" => {
+            (Method::Post, WriteKind::NewLabel, Request::CreateLabel { at, name: Box::new([]), color: [0; 3] })
+        }
+        [issues, number, labels] if issues.as_ref() == b"issues" && labels.as_ref() == b"labels" => (
+            Method::Put,
+            WriteKind::Labels,
+            Request::SetLabels { at, number: number_value(number)?, labels: Box::new([]) },
+        ),
         [actions, workflows, workflow, dispatches]
             if &**actions == b"actions" && &**workflows == b"workflows" && &**dispatches == b"dispatches" =>
         {
@@ -227,9 +264,11 @@ fn route_tail(
         [contents, parts @ ..] if &**contents == b"contents" && !parts.is_empty() => {
             (Method::Post, WriteKind::NewFile, new_file(at, parts))
         }
-        [issues] if &**issues == b"issues" => {
-            (Method::Post, WriteKind::Issue, Request::CreateIssue { at, title: Box::from([]), body: Box::from([]) })
-        }
+        [issues] if &**issues == b"issues" => (
+            Method::Post,
+            WriteKind::Issue,
+            Request::CreateIssue { at, title: Box::from([]), body: Box::from([]), labels: Box::new([]) },
+        ),
         [pulls] if &**pulls == b"pulls" => (
             Method::Post,
             WriteKind::Pull,
@@ -321,6 +360,11 @@ fn route_tail(
         walk: Walk::new(Kind::Write(kind), limits),
         request,
         texts: List::with_capacity(limits.inner),
+        numbers: List::with_capacity(if kind == WriteKind::Issue || kind == WriteKind::Labels {
+            limits.inner
+        } else {
+            0
+        }),
         inputs: List::with_capacity(if kind == WriteKind::Dispatch {
             u32::try_from(crate::api::INPUTS).expect("input bound")
         } else {
@@ -335,6 +379,7 @@ pub struct BodyDecoder {
     pub(super) walk: Walk,
     pub(super) request: Request,
     pub(super) texts: List<Box<[u8]>>,
+    pub(super) numbers: List<u64>,
     pub(super) inputs: List<crate::api::Input>,
     pub(super) terminal: bool,
     pub(super) committer: crate::forgejo::request::Author,
@@ -379,6 +424,9 @@ pub fn body(decoder: &mut BodyDecoder, limits: &Limits, event: &tokenizer::Event
             {
                 return BodyStep::Malformed(Malformed::Value { field: b"committer" });
             }
+            if let Request::CreateIssue { labels, .. } | Request::SetLabels { labels, .. } = &mut decoder.request {
+                *labels = core::mem::replace(&mut decoder.numbers, List::with_capacity(0)).into_boxed();
+            }
             return BodyStep::Decoded(core::mem::replace(&mut decoder.request, Request::User));
         }
     };
@@ -421,7 +469,10 @@ impl BodyDecoder {
                 Request::RequestReviewers { reviewers, .. } | Request::RemoveReviewers { reviewers, .. } => {
                     *reviewers = logins;
                 }
-                Request::CreateIssue { .. }
+                Request::Labels { .. }
+                | Request::SetLabels { .. }
+                | Request::CreateLabel { .. }
+                | Request::CreateIssue { .. }
                 | Request::OpenPull { .. }
                 | Request::PostComment { .. }
                 | Request::PostReview { .. }
@@ -536,7 +587,14 @@ impl BodyDecoder {
                 return Ok(());
             }
             Value::Boolean(value) => return self.flag(key, value),
-            Value::Number(_) | Value::Time(_) => return Err(Malformed::Shape { field: key }),
+            Value::Number(number) => {
+                if kind != Kind::Write(WriteKind::LabelId) {
+                    return Err(Malformed::Shape { field: key });
+                }
+                self.numbers.push(number).or(Err(Malformed::Bound { field: key }))?;
+                return Ok(());
+            }
+            Value::Time(_) => return Err(Malformed::Shape { field: key }),
         };
         let text = text.expect("text field");
         if kind == Kind::Write(WriteKind::Login)
@@ -579,6 +637,14 @@ impl BodyDecoder {
             return super::hooks::text(hook, key, text);
         }
         match &mut self.request {
+            Request::CreateLabel { name, color, .. } => {
+                if key == b"name" {
+                    *name = text;
+                } else {
+                    *color = read_color(&text).ok_or(Malformed::Value { field: key })?;
+                }
+            }
+            Request::Labels { .. } | Request::SetLabels { .. } => unreachable!("numeric label fields"),
             Request::AddCollaborator { permission, .. } => {
                 *permission = crate::forgejo::request::Grant::read(&text).ok_or(Malformed::Value { field: key })?;
             }
@@ -700,6 +766,9 @@ impl BodyDecoder {
             Request::CreateBranch { from, .. } => *from = id,
             Request::Dispatch { .. }
             | Request::Rerun { .. }
+            | Request::Labels { .. }
+            | Request::SetLabels { .. }
+            | Request::CreateLabel { .. }
             | Request::CreateIssue { .. }
             | Request::OpenPull { .. }
             | Request::PostComment { .. }
@@ -841,4 +910,26 @@ fn new_file(at: Repo, parts: &[Box<[u8]>]) -> Request {
         message: Box::new([]),
         author: crate::forgejo::request::Author { name: Box::new([]), email: Box::new([]) },
     }
+}
+
+fn read_color(bytes: &[u8]) -> Option<[u8; 3]> {
+    let bytes = bytes.strip_prefix(b"#").unwrap_or(bytes);
+    if bytes.len() != 6 {
+        return None;
+    }
+    let mut color = [0; 3];
+    for (byte, digits) in color.iter_mut().zip(bytes.chunks_exact(2)) {
+        let mut value = 0u8;
+        for digit in digits {
+            let nibble = match digit {
+                b'0'..=b'9' => digit.checked_sub(b'0')?,
+                b'a'..=b'f' => digit.checked_sub(b'a')?.checked_add(10)?,
+                b'A'..=b'F' => digit.checked_sub(b'A')?.checked_add(10)?,
+                _ => return None,
+            };
+            value = value.checked_mul(16)?.checked_add(nibble)?;
+        }
+        *byte = value;
+    }
+    Some(color)
 }

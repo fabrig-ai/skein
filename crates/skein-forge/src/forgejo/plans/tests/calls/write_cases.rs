@@ -18,7 +18,12 @@ pub(in super::super) fn open_pull() -> Write {
     }
 }
 pub(in super::super) fn create_issue() -> Write {
-    Write::CreateIssue { key: Box::from(&b"k"[..]), title: Box::from(&b"t"[..]), body: Box::from(&b"b"[..]) }
+    Write::CreateIssue {
+        key: Box::from(&b"k"[..]),
+        title: Box::from(&b"t"[..]),
+        body: Box::from(&b"b"[..]),
+        labels: Box::new([]),
+    }
 }
 pub(in super::super) fn begun(write: Write) -> Run {
     let mut run = Run::known(api::Op::Write(write));

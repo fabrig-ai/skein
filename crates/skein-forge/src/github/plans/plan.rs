@@ -71,12 +71,14 @@ impl Plan {
                 | api::Read::Permission { .. } => false,
             },
             api::Op::Write(write) => match write {
-                api::Write::Dispatch { .. }
+                api::Write::CreateIssue { .. }
+                | api::Write::Labels { .. }
+                | api::Write::CreateLabel { .. }
+                | api::Write::Dispatch { .. }
                 | api::Write::Rerun { .. }
                 | api::Write::Merge { how: api::MergeHow::FastForwardOnly, .. }
                 | api::Write::Update { style: api::UpdateStyle::Rebase, .. } => true,
-                api::Write::CreateIssue { .. }
-                | api::Write::OpenPull { .. }
+                api::Write::OpenPull { .. }
                 | api::Write::Post { .. }
                 | api::Write::Review { .. }
                 | api::Write::Edit { .. }

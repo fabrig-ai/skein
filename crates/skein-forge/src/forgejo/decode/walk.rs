@@ -142,7 +142,7 @@ fn fields(kind: Kind) -> &'static [Field] {
                 ]
             }
         }
-        Kind::Item(Item::Label) => const { &[field(b"name", Read::Text)] },
+        Kind::Item(Item::Label) => const { &[field(b"name", Read::Text), optional(b"id", Read::Number)] },
         Kind::Users
         | Kind::Item(
             Item::Pulls
@@ -316,6 +316,11 @@ impl Walk {
                     self.end()
                 } else {
                     let kind = element(self.parent().expect("array element")).expect("array kind");
+                    if kind == Kind::Write(crate::forgejo::server::writes::WriteKind::LabelId) {
+                        let value = scalar(field(b"labels", Read::Number), event)?;
+                        self.want = Want::Element;
+                        return Ok(Move::Scalar { kind, key: b"labels", value });
+                    }
                     if kind == Kind::Setup(crate::forgejo::client::setup::SetupKind::Event)
                         || kind == Kind::Setup(crate::forgejo::client::setup::SetupKind::Scope)
                         || kind == Kind::Write(crate::forgejo::server::writes::WriteKind::Scope)

@@ -344,6 +344,7 @@ fn outcome(result: Result<Answer, Error>) -> Result<Option<u64>, Error> {
         | Answer::Permission(_)
         | Answer::Comment { .. }
         | Answer::Dependencies(_)
+        | Answer::LabelIds(_)
         | Answer::Labels(_)
         | Answer::Commit(_)
         | Answer::GitTree { .. }

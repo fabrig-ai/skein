@@ -213,6 +213,7 @@ impl Plan {
             | d::Row::File(_)
             | d::Row::Commit(_)
             | d::Row::Hook(_)
+            | d::Row::Label { .. }
             | d::Row::Team(_) => return Err(api::Error::InvalidAnswer),
         }
         self.count = self.count.checked_add(1).ok_or(api::Error::TooLarge)?;

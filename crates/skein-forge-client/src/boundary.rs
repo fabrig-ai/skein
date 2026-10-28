@@ -31,7 +31,7 @@ pub struct Effect {
 /// (forge-client.md, section 7.3).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Recovery {
-    /// Forgejo refuses another creation with the same identity.
+    /// The plan finds a creation by its identity before repeating it.
     Keyed,
     /// Forgejo checks the state named by the write as it applies it.
     Conditional,
@@ -63,6 +63,10 @@ pub fn recovery(write: &Write) -> Recovery {
         Write::Update { .. } => Recovery::Unrecoverable,
         // Repeating an edit writes the same title and body.
         Write::Edit { .. } => Recovery::Idempotent,
+        // Replacing the label set writes the same names.
+        Write::Labels { .. } => Recovery::Idempotent,
+        // Creation is found by name before another POST.
+        Write::CreateLabel { .. } => Recovery::Keyed,
         // Repeating the reviewer set writes the same members.
         Write::SetReviewers { .. } => Recovery::Idempotent,
         // Repeating close leaves the item closed.

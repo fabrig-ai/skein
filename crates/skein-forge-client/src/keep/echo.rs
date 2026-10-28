@@ -50,6 +50,8 @@ fn entry_resource(entry: &Entry) -> Option<Resource> {
         api::Write::Review { number, .. } => What::Pull(number),
         api::Write::CreateIssue { .. }
         | api::Write::OpenPull { .. }
+        | api::Write::Labels { .. }
+        | api::Write::CreateLabel { .. }
         | api::Write::Edit { .. }
         | api::Write::SetReviewers { .. }
         | api::Write::Close { .. }

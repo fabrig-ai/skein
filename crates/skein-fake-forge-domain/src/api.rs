@@ -77,6 +77,8 @@ pub enum Read {
     },
     /// The labels defined. Answered by [`Answer::Labels`].
     Labels,
+    /// Repository label names with stable ids for the protocol face.
+    LabelIds,
     /// The pull request `number`, its reviews and the statuses on its head.
     /// Answered by [`Answer::Pull`].
     Pull {
@@ -469,6 +471,7 @@ pub enum Answer {
     Dependencies(Box<[u64]>),
     /// Label names, in their order.
     Labels(Box<[Box<[u8]>]>),
+    LabelIds(Box<[Label]>),
     /// Where a branch is, or what a fetch fetched.
     Commit(u64),
     Tree(Box<[File]>),
@@ -983,3 +986,10 @@ pub struct Workflow {
 
 /// One named dispatch input; keys fit a name and values a body (fake-forge.md, 2.3).
 pub type WorkflowInput = (Box<[u8]>, Box<[u8]>);
+
+/// One label in the fake repository catalog.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Label {
+    pub id: u64,
+    pub name: Box<[u8]>,
+}

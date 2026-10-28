@@ -23,7 +23,12 @@ fn creation_rows() -> [CreationRow; 3] {
     [
         (
             "issue",
-            Write::CreateIssue { key: boxed(&[0xab, 0xff]), title: boxed(b"title"), body: boxed(b"body") },
+            Write::CreateIssue {
+                key: boxed(&[0xab, 0xff]),
+                title: boxed(b"title"),
+                body: boxed(b"body"),
+                labels: Box::new([]),
+            },
             b"POST /api/v1/repos/fixture/specimen/issues ".as_slice(),
             201,
             ISSUE,
@@ -153,7 +158,15 @@ fn straightforward_writes_use_their_methods_and_literal_bodies() {
 #[test]
 fn text_that_is_not_utf8_is_refused_with_nothing_written() {
     let rows = [
-        ("title", Write::CreateIssue { key: boxed(b"key"), title: boxed(&[0xff]), body: boxed(b"body") }),
+        (
+            "title",
+            Write::CreateIssue {
+                key: boxed(b"key"),
+                title: boxed(&[0xff]),
+                body: boxed(b"body"),
+                labels: Box::new([]),
+            },
+        ),
         ("comment", Write::Post { number: 7, key: boxed(b"key"), body: boxed(&[0xff]) }),
         ("review", Write::Review { number: 7, key: boxed(b"key"), verdict: Verdict::Comment, body: boxed(&[0xff]) }),
         ("edit", Write::Edit { number: 7, title: None, body: Some(boxed(&[0xff])) }),
@@ -245,7 +258,12 @@ fn a_malformed_write_answer_is_timeout() {
     h.call(
         1,
         fixtures::REPO,
-        Op::Write(Write::CreateIssue { key: boxed(b"key"), title: boxed(b"title"), body: boxed(b"body") }),
+        Op::Write(Write::CreateIssue {
+            key: boxed(b"key"),
+            title: boxed(b"title"),
+            body: boxed(b"body"),
+            labels: Box::new([]),
+        }),
     );
     h.answer(fixtures::FORGE, &fixtures::response(201, br#"{"number":7}"#));
     h.run(Duration::ZERO);
@@ -264,7 +282,12 @@ fn write_refusals_read_only_known_entire_messages() {
         h.call(
             1,
             fixtures::REPO,
-            Op::Write(Write::CreateIssue { key: boxed(b"key"), title: boxed(b"title"), body: boxed(b"body") }),
+            Op::Write(Write::CreateIssue {
+                key: boxed(b"key"),
+                title: boxed(b"title"),
+                body: boxed(b"body"),
+                labels: Box::new([]),
+            }),
         );
         h.answer(fixtures::FORGE, &fixtures::response(422, body));
         h.run(Duration::ZERO);
@@ -475,4 +498,45 @@ fn write_answers_with_another_object_format_are_uncertain() {
         let answered = h.answered(1).expect("bad format answered");
         assert_eq!((answered.cost, &answered.result), (1, &Err(Error::Timeout)), "{name}");
     }
+}
+
+const LABEL_CATALOG: &[u8] = br#"[{"id":7,"name":"finding"}]"#;
+fn label_catalog_answered(write: Write, catalog: &[u8]) -> Harness {
+    let mut h = fixtures::known();
+    h.call(1, fixtures::REPO, Op::Write(write));
+    h.run(Duration::from_millis(1));
+    h.answer(fixtures::FORGE, &fixtures::response(200, catalog));
+    h.run(Duration::ZERO);
+    h
+}
+#[test]
+fn label_creation_charges_its_catalog_and_post() {
+    let mut h =
+        label_catalog_answered(Write::CreateLabel { name: boxed(b"finding"), color: [0x12, 0xab, 0xef] }, b"[]");
+    h.answer(fixtures::FORGE, &fixtures::response(201, br#"{"id":7,"name":"finding"}"#));
+    h.run(Duration::ZERO);
+    let answer = h.answered(1).expect("creation answered");
+    assert_eq!((answer.cost, &answer.result), (2, &Ok(Answer::Done)));
+}
+#[test]
+fn finding_an_existing_label_charges_only_the_catalog() {
+    let h = label_catalog_answered(Write::CreateLabel { name: boxed(b"finding"), color: [0; 3] }, LABEL_CATALOG);
+    let answer = h.answered(1).expect("lookup answered");
+    assert_eq!((answer.cost, &answer.result), (1, &Err(Error::Exists)));
+}
+#[test]
+fn an_unknown_label_costs_one_read_and_no_write() {
+    let h = label_catalog_answered(Write::Labels { number: 7, labels: Box::new([boxed(b"absent")]) }, LABEL_CATALOG);
+    let answer = h.answered(1).expect("absence answered");
+    assert_eq!((answer.cost, &answer.result), (1, &Err(Error::Missing)));
+    assert!(h.request_lines(fixtures::FORGE).is_empty());
+}
+#[test]
+fn replacing_labels_charges_the_catalog_and_put() {
+    let mut h =
+        label_catalog_answered(Write::Labels { number: 7, labels: Box::new([boxed(b"finding")]) }, LABEL_CATALOG);
+    h.answer(fixtures::FORGE, &fixtures::response(200, LABEL_CATALOG));
+    h.run(Duration::ZERO);
+    let answer = h.answered(1).expect("replacement answered");
+    assert_eq!((answer.cost, &answer.result), (2, &Ok(Answer::Done)));
 }

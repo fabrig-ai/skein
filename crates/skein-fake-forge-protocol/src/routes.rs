@@ -125,6 +125,9 @@ pub fn repository(config: &Config, request: &Request) -> Option<Box<[u8]>> {
         | Request::Job { at, .. }
         | Request::Jobs { at, .. }
         | Request::JobLog { at, .. }
+        | Request::Labels { at, .. }
+        | Request::SetLabels { at, .. }
+        | Request::CreateLabel { at, .. }
         | Request::CreateIssue { at, .. }
         | Request::OpenPull { at, .. }
         | Request::PostComment { at, .. }
@@ -285,6 +288,9 @@ pub fn op(config: &Config, request: &Request) -> Result<Op, a::Error> {
         Request::JobLog { job, attempt, step, .. } => Read::Log { job: *job, attempt: *attempt, step: *step },
         Request::Dispatch { .. }
         | Request::Rerun { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -319,7 +325,12 @@ fn write(config: &Config, request: &Request) -> Result<Op, a::Error> {
             }))
         }
         Request::Rerun { job, .. } => Ok(Op::Write(Write::Rerun { job: *job })),
-        Request::CreateIssue { title, body, .. } => {
+        Request::Labels { .. } | Request::SetLabels { .. } => Ok(Op::Read(Read::LabelIds)),
+        Request::CreateLabel { name, .. } => Ok(Op::Write(Write::DefineLabel { name: name.clone() })),
+        Request::CreateIssue { title, body, labels, .. } => {
+            if !labels.is_empty() {
+                return Ok(Op::Read(Read::LabelIds));
+            }
             Ok(Op::Write(Write::CreateIssue { title: title.clone(), body: body.clone(), labels: Box::from([]) }))
         }
         Request::OpenPull { title, body, head, base, .. } => Ok(Op::Write(Write::OpenPull {
@@ -483,4 +494,177 @@ fn tree_id(id: &ObjectId) -> Option<[u8; 20]> {
         *out = byte;
     }
     Some(bytes)
+}
+
+pub(crate) fn resolves_labels(request: &Request) -> bool {
+    match request {
+        Request::SetLabels { .. } => true,
+        Request::CreateIssue { labels, .. } => !labels.is_empty(),
+        Request::RepoSearch { .. }
+        | Request::AddCollaborator { .. }
+        | Request::RepoHooks { .. }
+        | Request::CreateRepoHook { .. }
+        | Request::EditRepoHook { .. }
+        | Request::DeleteRepoHook { .. }
+        | Request::OrgHooks { .. }
+        | Request::CreateOrgHook { .. }
+        | Request::EditOrgHook { .. }
+        | Request::DeleteOrgHook { .. }
+        | Request::Org { .. }
+        | Request::CreateOrg { .. }
+        | Request::CreateRepository { .. }
+        | Request::CreateFile { .. }
+        | Request::Teams { .. }
+        | Request::CreateTeam { .. }
+        | Request::EditTeam { .. }
+        | Request::TeamMembers { .. }
+        | Request::AddMember { .. }
+        | Request::User
+        | Request::ApiSettings
+        | Request::RepositoryById { .. }
+        | Request::Repository { .. }
+        | Request::UserRepos { .. }
+        | Request::UserSearch { .. }
+        | Request::Issues { .. }
+        | Request::Issue { .. }
+        | Request::Comments { .. }
+        | Request::Pull { .. }
+        | Request::PullFor { .. }
+        | Request::CombinedStatus { .. }
+        | Request::Reviews { .. }
+        | Request::ReviewComments { .. }
+        | Request::Branch { .. }
+        | Request::Branches { .. }
+        | Request::Protection { .. }
+        | Request::Protections { .. }
+        | Request::Collaborators { .. }
+        | Request::Permission { .. }
+        | Request::Pulls { .. }
+        | Request::PullFiles { .. }
+        | Request::Compare { .. }
+        | Request::Contents { .. }
+        | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
+        | Request::Runs { .. }
+        | Request::Run { .. }
+        | Request::Jobs { .. }
+        | Request::Job { .. }
+        | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::CreateLabel { .. }
+        | Request::OpenPull { .. }
+        | Request::PostComment { .. }
+        | Request::PostReview { .. }
+        | Request::EditIssue { .. }
+        | Request::RequestReviewers { .. }
+        | Request::RemoveReviewers { .. }
+        | Request::Merge { .. }
+        | Request::Update { .. }
+        | Request::PostStatus { .. }
+        | Request::CreateBranch { .. }
+        | Request::DeleteBranch { .. }
+        | Request::Tokens { .. }
+        | Request::CreateToken { .. }
+        | Request::DeleteToken { .. }
+        | Request::UserOf { .. }
+        | Request::CreateUser { .. } => false,
+    }
+}
+pub(crate) fn labeled_write(request: &Request, catalog: &[a::Label]) -> Result<Op, a::Error> {
+    let write = match request {
+        Request::CreateIssue { title, body, labels, .. } => {
+            Write::CreateIssue { title: title.clone(), body: body.clone(), labels: label_names(labels, catalog)? }
+        }
+        Request::SetLabels { number, labels, .. } => {
+            Write::SetLabels { number: *number, labels: label_names(labels, catalog)? }
+        }
+        Request::RepoSearch { .. }
+        | Request::AddCollaborator { .. }
+        | Request::RepoHooks { .. }
+        | Request::CreateRepoHook { .. }
+        | Request::EditRepoHook { .. }
+        | Request::DeleteRepoHook { .. }
+        | Request::OrgHooks { .. }
+        | Request::CreateOrgHook { .. }
+        | Request::EditOrgHook { .. }
+        | Request::DeleteOrgHook { .. }
+        | Request::Org { .. }
+        | Request::CreateOrg { .. }
+        | Request::CreateRepository { .. }
+        | Request::CreateFile { .. }
+        | Request::Teams { .. }
+        | Request::CreateTeam { .. }
+        | Request::EditTeam { .. }
+        | Request::TeamMembers { .. }
+        | Request::AddMember { .. }
+        | Request::User
+        | Request::ApiSettings
+        | Request::RepositoryById { .. }
+        | Request::Repository { .. }
+        | Request::UserRepos { .. }
+        | Request::UserSearch { .. }
+        | Request::Issues { .. }
+        | Request::Issue { .. }
+        | Request::Comments { .. }
+        | Request::Pull { .. }
+        | Request::PullFor { .. }
+        | Request::CombinedStatus { .. }
+        | Request::Reviews { .. }
+        | Request::ReviewComments { .. }
+        | Request::Branch { .. }
+        | Request::Branches { .. }
+        | Request::Protection { .. }
+        | Request::Protections { .. }
+        | Request::Collaborators { .. }
+        | Request::Permission { .. }
+        | Request::Pulls { .. }
+        | Request::PullFiles { .. }
+        | Request::Compare { .. }
+        | Request::Contents { .. }
+        | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
+        | Request::Runs { .. }
+        | Request::Run { .. }
+        | Request::Jobs { .. }
+        | Request::Job { .. }
+        | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::CreateLabel { .. }
+        | Request::OpenPull { .. }
+        | Request::PostComment { .. }
+        | Request::PostReview { .. }
+        | Request::EditIssue { .. }
+        | Request::RequestReviewers { .. }
+        | Request::RemoveReviewers { .. }
+        | Request::Merge { .. }
+        | Request::Update { .. }
+        | Request::PostStatus { .. }
+        | Request::CreateBranch { .. }
+        | Request::DeleteBranch { .. }
+        | Request::Tokens { .. }
+        | Request::CreateToken { .. }
+        | Request::DeleteToken { .. }
+        | Request::UserOf { .. }
+        | Request::CreateUser { .. } => return Err(a::Error::Refused),
+    };
+    Ok(Op::Write(write))
+}
+fn label_names(ids: &[u64], catalog: &[a::Label]) -> Result<Box<[Box<[u8]>]>, a::Error> {
+    let mut labels = List::with_capacity(u32::try_from(ids.len()).or(Err(a::Error::TooLarge))?);
+    // The pin silently drops unknown ids (issue-unknown-label-is-refused in the recorded facts).
+    for id in ids {
+        for label in catalog {
+            if label.id == *id {
+                labels.push(label.name.clone()).or(Err(a::Error::TooLarge))?;
+                break;
+            }
+        }
+    }
+    Ok(labels.into_boxed())
 }

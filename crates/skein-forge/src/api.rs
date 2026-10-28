@@ -148,7 +148,11 @@ pub enum Read {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Write {
     /// Write create issue.
-    CreateIssue { key: Box<[u8]>, title: Box<[u8]>, body: Box<[u8]> },
+    CreateIssue { key: Box<[u8]>, title: Box<[u8]>, body: Box<[u8]>, labels: Box<[Box<[u8]>]> },
+    /// An issue's whole set of labels, by name.
+    Labels { number: u64, labels: Box<[Box<[u8]>]> },
+    /// A label of the repository's own.
+    CreateLabel { name: Box<[u8]>, color: [u8; 3] },
     /// Write open pull.
     OpenPull { title: Box<[u8]>, body: Box<[u8]>, head: Box<[u8]>, base: Box<[u8]> },
     /// Write post.

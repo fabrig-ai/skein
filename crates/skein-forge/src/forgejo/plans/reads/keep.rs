@@ -33,6 +33,7 @@ pub(super) fn keep_row(row: &d::Row, forge: u16, tables: &mut Tables) {
         | d::Row::TreeEntry(_)
         | d::Row::Run(_)
         | d::Row::Hook(_)
+        | d::Row::Label { .. }
         | d::Row::Team(_)
         | d::Row::Step(_)
         | d::Row::Job(_) => {}
@@ -109,6 +110,9 @@ pub(super) fn page_bound(request: &Request) -> Option<u32> {
         | Request::Job { .. }
         | Request::Jobs { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -170,6 +174,7 @@ pub fn long(heard: &Heard) -> bool {
             | d::Row::TreeEntry(_)
             | d::Row::Run(_)
             | d::Row::Hook(_)
+            | d::Row::Label { .. }
             | d::Row::Team(_)
             | d::Row::Step(_)
             | d::Row::Job(_) => false,

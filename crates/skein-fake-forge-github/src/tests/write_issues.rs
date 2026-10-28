@@ -11,7 +11,12 @@ fn github_fake_issue_writes_drive_plans_and_read_back() {
     let api::Answer::Created(number) = w::write(
         &mut h,
         &token,
-        api::Write::CreateIssue { key: f::boxed(b"issue-key"), title: f::boxed(b"first"), body: f::boxed(b"body") },
+        api::Write::CreateIssue {
+            key: f::boxed(b"issue-key"),
+            title: f::boxed(b"first"),
+            body: f::boxed(b"body"),
+            labels: Box::new([]),
+        },
     )
     .unwrap() else {
         panic!("created issue")
@@ -55,7 +60,12 @@ fn github_fake_issue_writes_drive_plans_and_read_back() {
         w::write(
             &mut h,
             &token,
-            api::Write::CreateIssue { key: f::boxed(b"empty"), title: Box::from([]), body: Box::from([]) }
+            api::Write::CreateIssue {
+                key: f::boxed(b"empty"),
+                title: Box::from([]),
+                body: Box::from([]),
+                labels: Box::new([])
+            }
         ),
         Err(api::Error::Empty)
     );

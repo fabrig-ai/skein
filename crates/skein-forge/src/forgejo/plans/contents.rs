@@ -262,6 +262,7 @@ impl Plan {
             | d::Row::TreeEntry(_)
             | d::Row::Run(_)
             | d::Row::Hook(_)
+            | d::Row::Label { .. }
             | d::Row::Team(_)
             | d::Row::Step(_)
             | d::Row::Job(_) => Err(api::Error::InvalidAnswer),

@@ -45,7 +45,14 @@ pub struct Transcript {
 }
 #[must_use]
 pub fn transcript(case: &str) -> Transcript {
-    let root = skein_scratch::paths::workspace().join("tests/forge/conformance/transcripts").join(case);
+    transcript_in("tests/forge/conformance/transcripts", case)
+}
+#[must_use]
+pub fn label_transcript(case: &str) -> Transcript {
+    transcript_in("tests/forge/conformance/labels/transcripts", case)
+}
+fn transcript_in(directory: &str, case: &str) -> Transcript {
+    let root = skein_scratch::paths::workspace().join(directory).join(case);
     let request = fs::read(root.join("request")).expect("request transcript");
     let response = fs::read(root.join("response")).expect("response transcript");
     let line = request.split(|b| *b == b'\r').next().expect("request line");
@@ -285,6 +292,7 @@ pub fn write_cases() -> Vec<(&'static str, Request)> {
                 at: specimen(),
                 title: Box::from(*b"fixture issue"),
                 body: Box::from(*b"<!-- kit:key 01000001 -->\nissue text"),
+                labels: Box::new([]),
             },
         ),
         (
@@ -522,6 +530,7 @@ pub fn setup_cases() -> Vec<(&'static str, Request)> {
                 at: specimen(),
                 title: Box::from(*b"scope probe"),
                 body: Box::from(*b"scope probe"),
+                labels: Box::new([]),
             },
         ),
         ("setup-scope-no-admin", Request::Tokens { login: Box::from(*b"bot"), page: Page { page: None, limit: None } }),
@@ -641,6 +650,7 @@ fn setup_org_cases() -> Vec<(&'static str, Request)> {
             Request::CreateIssue {
                 at: Repo { owner: org(), name: Box::from(*b"stage") },
                 title: Box::from(*b"member writes"),
+                labels: Box::new([]),
                 body: Box::from(*b"fixture"),
             },
         ),

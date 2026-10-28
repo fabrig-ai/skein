@@ -19,6 +19,7 @@ fn seeded_faults_restarts_and_keyed_effects() {
                         key: Box::new([1, 0, 3, b'k', b'i', b't', u8::try_from(entry).expect("world entry bound")]),
                         title: Box::from(&b"goal"[..]),
                         body: Box::from(&b"plan"[..]),
+                        labels: Box::new([]),
                     },
                     condition: Condition::None,
                 },

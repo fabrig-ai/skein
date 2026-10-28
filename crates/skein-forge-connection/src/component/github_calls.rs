@@ -633,6 +633,7 @@ fn admitted(op: &api::Op) -> bool {
             | api::Read::Reviews { .. } => true,
         },
         api::Op::Write(write) => match write {
+            api::Write::CreateIssue { .. } | api::Write::Labels { .. } | api::Write::CreateLabel { .. } => false,
             api::Write::SetReviewers { .. }
             | api::Write::Merge { .. }
             | api::Write::Dispatch { .. }
@@ -644,7 +645,6 @@ fn admitted(op: &api::Op) -> bool {
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. }
             | api::Write::OpenPull { .. }
-            | api::Write::CreateIssue { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
             | api::Write::Update { .. } => true,

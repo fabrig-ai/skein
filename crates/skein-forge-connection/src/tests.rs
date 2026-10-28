@@ -313,17 +313,17 @@ fn duplicate_forge_numbers_are_refused_before_any_connection() {
 // Common calls = 2*560 Waiting slots + holders tree 288 + drive lists 2*16
 // + call index 288 + operation copies 2*3*512 + held tree 2768
 // + held answers 2*65536 = 138_624.
-// Call payload = read/write boxes 1600+456 + staging 64*8+72*16+72*128
+// Call payload = read/write boxes 1600+512 + staging 64*8+72*16+72*128
 // + answer 65536 + directory backing (65536/32)*24+40
 // + ChangedFile rows/paths 8*40+8*2*128 + File/Commit rows 8*48+8*32
-// + texts 4*128+13*128 + users 8*48 = 133_232.
+// + texts 4*128+13*128 + users 8*48 = 133_288.
 // Directory names share the answer envelope; row containers cover turn rows.
 // Tables = repository tree 904+2*3*128 + user tree 1104+8*128 = 3800.
 // Configured lists = 2*(Forge168+Start24+GitHub box8+token16+OwnPlan360) = 1152.
 // Credentials/secret/send/TLS = 64+128+32768+456809 = 489769.
 // Owner/framing/answer = 2*16+(3+9)+16+Answered224 = 284.
-// Total = 2*767531+288+2*1504+480680+138624+2*133232+3800+1152+489769+284.
-const FIXTURE_HEAP: u64 = 2_919_131;
+// Total = 2*767531+288+2*1504+480680+138624+2*133288+3800+1152+489769+284.
+const FIXTURE_HEAP: u64 = 2_919_243;
 
 // Complete GitHub fixture: decoder = 32*128+8*592+2*1042+16*128+4096
 // + owner/name 39+100 + fixed decoder2416 = 19615. App overlap per entry
@@ -348,7 +348,7 @@ const GITHUB_FIXTURE_HEAP: u64 = 4_034_322;
 
 // One call slot: Waiting slab560 + drive pair16 + operation copies3*512
 // + held answer65536 + dialect payload. Tree node counts stay fixed at 2 -> 3.
-const FORGEJO_CALL_SLOT: u64 = 200_880; // 560+16+1536+65536+133232.
+const FORGEJO_CALL_SLOT: u64 = 200_936; // 560+16+1536+65536+133288.
 const GITHUB_CALL_SLOT: u64 = 324_282; // 560+16+1536+65536+256634.
 const FORGEJO: limits::Forges = limits::Forges { forgejo: 1, github: 0 };
 const GITHUB: limits::Forges = limits::Forges { forgejo: 0, github: 1 };

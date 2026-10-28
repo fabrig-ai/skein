@@ -832,6 +832,9 @@ pub fn worst_case(l: &Limits, s: &Shared, forges: Forges, owned_bytes: u64) -> O
 }
 
 // Forgejo plan boxes, operation staging, kept answer and decoded file/commit/user rows.
+// Label lookup's Option<u64> slots fit the admitted 16-byte string-list slots;
+// numeric request slots fit the other operation-staging reserve. Label lookup
+// and reviewer staging are exclusive.
 fn forgejo_call_heap(l: &Limits, s: &Shared) -> Option<u64> {
     use skein_lib::List;
     u64::try_from(size_of::<skein_forge::forgejo::plans::reads::Plan>())

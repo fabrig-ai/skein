@@ -123,7 +123,7 @@ fn each_read_route_names_one_domain_read() {
 fn write_rows() -> [(Request, Route, Write); 14] {
     [
         (
-            Request::CreateIssue { at: at(), title: boxed(b"t"), body: boxed(b"b") },
+            Request::CreateIssue { at: at(), title: boxed(b"t"), body: boxed(b"b"), labels: Box::new([]) },
             Route::CreateIssue,
             Write::CreateIssue { title: boxed(b"t"), body: boxed(b"b"), labels: Box::from([]) },
         ),

@@ -82,6 +82,7 @@ pub(super) fn user(json: &mut Encoder, user: &User) {
     json.string(&user.login);
     json.object_end();
 }
+#[expect(clippy::too_many_lines, reason = "exhaustive dialect dispatch includes each label request and answer variant")]
 pub(super) fn write(json: &mut Encoder, answer: &Answer) {
     match answer {
         Answer::Reachable(rows) => reachable(json, rows),
@@ -177,6 +178,8 @@ pub(super) fn write(json: &mut Encoder, answer: &Answer) {
         | Answer::CreatedFile { .. }
         | Answer::CreatedRepository(_)
         | Answer::Team(_)
+        | Answer::Labels(_)
+        | Answer::Label(_)
         | Answer::Teams(_)
         | Answer::Hook(_)
         | Answer::Hooks(_)

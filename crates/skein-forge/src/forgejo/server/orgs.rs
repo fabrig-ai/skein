@@ -61,6 +61,7 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
             walk: Walk::new(Kind::Write(kind), limits),
             request,
             texts: List::with_capacity(limits.inner),
+            numbers: List::with_capacity(0),
             inputs: List::with_capacity(0),
             terminal: false,
             committer: crate::forgejo::request::Author { name: Box::new([]), email: Box::new([]) },
@@ -70,6 +71,7 @@ pub(super) fn route(method: Method, bytes: &[u8], limits: &Limits) -> Result<Rou
 }
 pub(super) fn write(json: &mut Encoder, answer: &super::Answer) {
     match answer {
+        super::Answer::Labels(_) | super::Answer::Label(_) => unreachable!("label answer has its own writer"),
         super::Answer::Org(org) => {
             json.object_start();
             json.key(b"id");

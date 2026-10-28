@@ -8,7 +8,12 @@ use skein_lib::{Duration, Queue};
 fn recovery_classes_follow_forgejo_guarantees() {
     assert_eq!(recovery(&comment()), Recovery::Unrecoverable);
     assert_eq!(
-        recovery(&Write::CreateIssue { key: Box::from(&b"marker"[..]), title: Box::new([]), body: Box::new([]) }),
+        recovery(&Write::CreateIssue {
+            key: Box::from(&b"marker"[..]),
+            title: Box::new([]),
+            body: Box::new([]),
+            labels: Box::new([])
+        }),
         Recovery::Unrecoverable,
     );
     assert_eq!(recovery(&Write::Update { number: 9, style: api::UpdateStyle::Merge }), Recovery::Unrecoverable);

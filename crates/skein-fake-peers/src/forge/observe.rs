@@ -172,6 +172,7 @@ impl Heap for api::Read {
             | Self::Item { .. }
             | Self::Comment { .. }
             | Self::Dependencies { .. }
+            | Self::LabelIds
             | Self::Labels
             | Self::Pull { .. }
             | Self::PullFiles { .. }
@@ -257,6 +258,7 @@ impl Heap for api::Answer {
             Self::Comment { comment, .. } => comment.heap(),
             Self::Dependencies(numbers) => numbers.heap(),
             Self::Labels(labels) => labels.heap(),
+            Self::LabelIds(labels) => labels.heap(),
             Self::Tree(files) => files.heap(),
             Self::GitTree { entries, .. } => entries.heap(),
             Self::File(bytes) => bytes.heap(),
@@ -366,6 +368,12 @@ impl Heap for api::Collaborator {
 }
 
 impl Heap for api::Entry {
+    fn heap(&self) -> Option<u64> {
+        self.name.heap()
+    }
+}
+
+impl Heap for api::Label {
     fn heap(&self) -> Option<u64> {
         self.name.heap()
     }

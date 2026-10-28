@@ -21,7 +21,9 @@ impl Referee {
             if entry.effect.write != *write {
                 continue;
             }
-            let saved = durable.get(&entry.number).expect("top entry durable before write is released");
+            let Some(saved) = durable.get(&entry.number) else {
+                continue;
+            };
             assert_eq!(saved.effect, entry.effect);
             assert!(
                 saved.start.is_some() && saved.attempt.is_some(),

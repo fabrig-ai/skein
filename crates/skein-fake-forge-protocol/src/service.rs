@@ -265,6 +265,7 @@ pub fn worst_case(limits: &Limits, config: &Config) -> Option<u64> {
         .checked_add(u64::from(limits.documents.target_bytes).checked_mul(2)?)?
         .checked_add(u64::from(limits.raw_bytes))?
         .checked_add(listing)?
+        .checked_add(List::<u64>::worst_case(limits.documents.inner)?)?
         .checked_add(crate::git::decoder_worst_case(limits)?)?
         // Object walk: selected ids, parent rows, and two parents per
         // input asked entry or output entry, at most twice the response cap.

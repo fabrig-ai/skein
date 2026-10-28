@@ -52,6 +52,21 @@ fn target(request: &Request, out: &mut Target) -> (Method, bool) {
             out.put(b"/rerun");
             return (Method::Post, false);
         }
+        Request::Labels { at, page } => {
+            out.repo(at);
+            out.put(b"/labels");
+            out.page(*page, false);
+            return (Method::Get, false);
+        }
+        Request::SetLabels { at, number, .. } => {
+            out.numbered(at, b"/issues/", *number);
+            out.put(b"/labels");
+            return (Method::Put, true);
+        }
+        Request::CreateLabel { at, .. } => {
+            out.repo(at);
+            out.put(b"/labels");
+        }
         Request::CreateIssue { at, .. } => {
             out.repo(at);
             out.put(b"/issues");
@@ -223,10 +238,19 @@ fn write(json: &mut Encoder, request: &Request) {
             json.object_end();
         }
         Request::Rerun { .. } => unreachable!("rerun has no body"),
-        Request::CreateIssue { title, body, .. } => {
+        Request::CreateIssue { title, body, labels, .. } => {
             text(json, b"title", title);
             text(json, b"body", body);
+            if !labels.is_empty() {
+                label_ids(json, labels);
+            }
         }
+        Request::SetLabels { labels, .. } => label_ids(json, labels),
+        Request::CreateLabel { name, color, .. } => {
+            text(json, b"name", name);
+            text(json, b"color", &color_text(*color));
+        }
+        Request::Labels { .. } => unreachable!("catalog has no request body"),
         Request::OpenPull { head, base, title, body, .. } => {
             text(json, b"head", head);
             text(json, b"base", base);
@@ -380,4 +404,26 @@ fn update_target(out: &mut Target, at: &crate::forgejo::request::Repo, number: u
         out.put(b"?style=");
         out.put(update(style));
     }
+}
+
+fn label_ids(json: &mut Encoder, labels: &[u64]) {
+    json.key(b"labels");
+    json.array_start();
+    for id in labels {
+        json.number(skein_lib::Decimal::of(*id).as_bytes());
+    }
+    json.array_end();
+}
+pub(crate) fn color_text(color: [u8; 3]) -> [u8; 7] {
+    let mut out = [b'#'; 7];
+    for (pair, byte) in out.get_mut(1..).expect("color digits").chunks_exact_mut(2).zip(color) {
+        for (digit, value) in pair.iter_mut().zip([byte >> 4u32, byte & 15u8]) {
+            *digit = if value < 10 {
+                b'0'.checked_add(value).expect("decimal nibble")
+            } else {
+                b'a'.checked_add(value.checked_sub(10).expect("hex nibble")).expect("hex digit")
+            };
+        }
+    }
+    out
 }

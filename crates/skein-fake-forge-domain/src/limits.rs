@@ -191,7 +191,7 @@ fn repository(limits: &Limits) -> Option<u64> {
         // One boxed list of domain user numbers belongs to the protection.
         .checked_add(times(limits.bypassing_users, u64::try_from(size_of::<u64>()).ok()?)?)?;
     let permissions = Map::<u64, Permission>::worst_case(limits.users)?;
-    let labels = Set::<Box<[u8]>>::worst_case(limits.labels)?.checked_add(times(limits.labels, name)?)?;
+    let labels = Map::<Box<[u8]>, u64>::worst_case(limits.labels)?.checked_add(times(limits.labels, name)?)?;
     let items = Map::<u64, Item>::worst_case(limits.items)?
         .checked_add(Set::<(Time, u64)>::worst_case(limits.items)?)?
         .checked_add(Map::<u64, u64>::worst_case(comments)?)?
@@ -282,7 +282,7 @@ fn answer(limits: &Limits) -> Option<u64> {
         .checked_add(times(limits.reviews, review)?)?
         .checked_add(times(limits.contexts, status)?)?;
     let dependencies = times(limits.dependencies, number)?;
-    let labels = names(limits.labels, limits)?;
+    let labels = names(limits.labels, limits)?.checked_add(times(limits.labels, number)?)?;
     let tree = times(limits.files, file)?;
     let pages = times(limits.page_size, named)?.checked_add(name)?;
     let page = name.checked_add(content)?;

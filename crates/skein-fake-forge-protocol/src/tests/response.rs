@@ -13,7 +13,7 @@ use skein_lib::{Time, bytes};
 fn readback_rows() -> [(Request, a::Answer, a::Read, Select); 7] {
     [
         (
-            Request::CreateIssue { at: at(), title: boxed(b"title"), body: boxed(b"body") },
+            Request::CreateIssue { at: at(), title: boxed(b"title"), body: boxed(b"body"), labels: Box::new([]) },
             a::Answer::Created(9),
             a::Read::Item { number: 9, after: 0 },
             Select::Document,

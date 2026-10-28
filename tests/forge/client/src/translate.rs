@@ -143,8 +143,8 @@ fn write_op(write: &client::Write) -> forge::Write {
             inputs: inputs.iter().map(|input| (input.name.clone(), input.value.clone())).collect(),
         },
         client::Write::Rerun { attempt } => forge::Write::Rerun { job: attempt.job },
-        client::Write::CreateIssue { key, title, body } => {
-            forge::Write::CreateIssue { title: title.clone(), body: keyed(key, body), labels: Box::new([]) }
+        client::Write::CreateIssue { key, title, body, labels } => {
+            forge::Write::CreateIssue { title: title.clone(), body: keyed(key, body), labels: labels.clone() }
         }
         client::Write::OpenPull { title, body, head, base } => forge::Write::OpenPull {
             opens_empty: false,
@@ -157,6 +157,8 @@ fn write_op(write: &client::Write) -> forge::Write {
         client::Write::Review { number, key, verdict, body } => {
             forge::Write::Review { number: *number, body: keyed(key, body), verdict: Some(verdict_out(*verdict)) }
         }
+        client::Write::Labels { number, labels } => forge::Write::SetLabels { number: *number, labels: labels.clone() },
+        client::Write::CreateLabel { name, .. } => forge::Write::DefineLabel { name: name.clone() },
         client::Write::Edit { number, title, body } => {
             forge::Write::EditItem { number: *number, title: title.clone(), body: body.clone() }
         }
@@ -342,6 +344,7 @@ pub fn answer(asked: &client::Op, answer: forge::Answer, l: &Limits) -> client::
         },
         forge::Answer::Comment { .. }
         | forge::Answer::Dependencies(_)
+        | forge::Answer::LabelIds(_)
         | forge::Answer::Labels(_)
         | forge::Answer::Tree(_)
         | forge::Answer::Pages { .. }

@@ -36,7 +36,14 @@ fn identity_start_sends_user_and_returns_id() {
 
 #[test]
 fn github_rate_and_validator_are_none_in_forgejo_plans() {
-    let fields = super::Fields { date: None, retry_after: None, has_more: None, content_range: None, close: false };
+    let fields = super::Fields {
+        date: None,
+        retry_after: None,
+        has_more: None,
+        total_count: None,
+        content_range: None,
+        close: false,
+    };
     let mut plan = begun(start::Read::User);
     assert_eq!(plan.heard(Heard::Head { status: 200, fields: fields.clone() }), None);
     let user = fixtures::user(fixtures::START_USER, b"alice");
@@ -131,3 +138,5 @@ fn credential_debug_contains_no_secret() {
 mod calls;
 
 mod edges;
+
+mod labels;

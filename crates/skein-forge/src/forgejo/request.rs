@@ -294,10 +294,25 @@ pub enum Request {
         attempt: u32,
         step: Option<u32>,
     },
+    Labels {
+        at: Repo,
+        page: Page,
+    },
+    SetLabels {
+        at: Repo,
+        number: u64,
+        labels: Box<[u64]>,
+    },
+    CreateLabel {
+        at: Repo,
+        name: Box<[u8]>,
+        color: [u8; 3],
+    },
     CreateIssue {
         at: Repo,
         title: Box<[u8]>,
         body: Box<[u8]>,
+        labels: Box<[u64]>,
     },
     OpenPull {
         at: Repo,

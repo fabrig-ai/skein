@@ -25,7 +25,7 @@ pub(crate) struct Repository {
     /// The users with a permission on it.
     pub(crate) permissions: Map<u64, Permission>,
     /// The labels defined.
-    pub(crate) labels: Set<Box<[u8]>>,
+    pub(crate) labels: Map<Box<[u8]>, u64>,
     pub(crate) items: Map<u64, Item>,
     pub(crate) queue: List<crate::api::QueueEntry>,
     /// The items by when they were last updated, for listings.
@@ -158,7 +158,7 @@ impl Repository {
             default,
             styles: Styles { merge: true, rebase: true, squash: true },
             permissions: Map::with_capacity(limits.users),
-            labels: Set::with_capacity(limits.labels),
+            labels: Map::with_capacity(limits.labels),
             items: Map::with_capacity(limits.items),
             queue: List::with_capacity(limits.items),
             recent: Set::with_capacity(limits.items),
@@ -339,7 +339,7 @@ impl Repository {
     pub(crate) fn label_set(&self, limits: &Limits, labels: Box<[Box<[u8]>]>) -> Result<Set<Box<[u8]>>, Error> {
         let mut set = Set::with_capacity(limits.labels);
         for label in labels {
-            if !self.labels.contains(&*label) {
+            if !self.labels.contains_key(&*label) {
                 return Err(Error::Missing(What::Label));
             }
             if set.insert(label).is_err() {
@@ -438,4 +438,29 @@ pub(crate) fn fit_names(names: &[Box<[u8]>], count: u32, limits: &Limits) -> Res
         fits(name, limits.name_bytes)?;
     }
     Ok(())
+}
+
+impl Repository {
+    pub(crate) fn define_label(&mut self, name: Box<[u8]>) -> Result<(), Error> {
+        if self.labels.contains_key(&*name) {
+            return Err(Error::Exists);
+        }
+        let id = u64::from(self.labels.len()).checked_add(1).expect("label capacity fits u64");
+        self.labels.insert(name, id).or(Err(Error::Full))?;
+        Ok(())
+    }
+    pub(crate) fn label_ids(&self) -> Box<[crate::api::Label]> {
+        let mut labels = List::with_capacity(self.labels.len());
+        for (name, id) in &self.labels {
+            labels.push(crate::api::Label { id: *id, name: copy_of(name) }).expect("catalog capacity");
+        }
+        labels.into_boxed()
+    }
+    pub(crate) fn label_names(&self) -> Box<[Box<[u8]>]> {
+        let mut labels = List::with_capacity(self.labels.len());
+        for (name, _) in &self.labels {
+            labels.push(copy_of(name)).expect("catalog capacity");
+        }
+        labels.into_boxed()
+    }
 }

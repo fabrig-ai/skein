@@ -63,7 +63,10 @@ pub fn encode(request: &Request, limits: &Limits) -> Result<Encoded, Refusal> {
         | Request::DeleteToken { .. }
         | Request::UserOf { .. }
         | Request::CreateUser { .. } => setup::encode(request, limits),
-        Request::CreateIssue { .. }
+        Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
+        | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
         | Request::PostReview { .. }
@@ -136,6 +139,7 @@ enum DecoderState {
 #[must_use]
 pub fn decoder(request: &Request, limits: &Limits) -> Option<Decoder> {
     let kind = match request {
+        Request::Labels { .. } | Request::SetLabels { .. } => Kind::Item(Item::Labels),
         Request::CreateFile { .. } => Kind::Setup(setup::SetupKind::CreatedFile),
         Request::CreateRepository { .. } => Kind::Setup(setup::SetupKind::CreatedRepository),
         Request::Org { .. } | Request::CreateOrg { .. } => Kind::Setup(setup::SetupKind::Org),
@@ -146,7 +150,8 @@ pub fn decoder(request: &Request, limits: &Limits) -> Option<Decoder> {
         | Request::EditOrgHook { .. }
         | Request::CreateRepoHook { .. }
         | Request::EditRepoHook { .. } => Kind::Setup(setup::SetupKind::Hook),
-        Request::DeleteRepoHook { .. }
+        Request::CreateLabel { .. }
+        | Request::DeleteRepoHook { .. }
         | Request::AddCollaborator { .. }
         | Request::DeleteOrgHook { .. }
         | Request::DeleteToken { .. }

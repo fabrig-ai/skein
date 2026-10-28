@@ -87,7 +87,9 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
     repository.id = id;
     repository.workflows = workflows;
     for label in labels {
-        repository.labels.insert(label).expect("a repository's labels are within the limits");
+        if !repository.labels.contains_key(&*label) {
+            repository.define_label(label).expect("a repository's labels are within the limits");
+        }
     }
     let id = domain.repositories.insert(repository).expect("a repository's room");
     domain.names.insert(name, id).expect("as many names as repositories");

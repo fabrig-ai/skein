@@ -230,7 +230,14 @@ pub fn api_settings(cap: u32) -> Document {
 }
 
 pub fn fields() -> crate::forgejo::plans::Fields {
-    crate::forgejo::plans::Fields { date: None, retry_after: None, has_more: None, content_range: None, close: false }
+    crate::forgejo::plans::Fields {
+        date: None,
+        retry_after: None,
+        has_more: None,
+        total_count: None,
+        content_range: None,
+        close: false,
+    }
 }
 
 pub fn specimen() -> crate::forgejo::plans::tables::Repository {

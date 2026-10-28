@@ -255,6 +255,7 @@ impl Plan {
             | d::Row::Entry { .. }
             | d::Row::File(_)
             | d::Row::Hook(_)
+            | d::Row::Label { .. }
             | d::Row::Team(_)
             | d::Row::Commit(_) => Err(api::Error::InvalidAnswer),
         }

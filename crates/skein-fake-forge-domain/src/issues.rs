@@ -356,11 +356,7 @@ pub(crate) fn define(
     repository.require(user, Permission::Write)?;
     fits(&name, env.limits.limits.name_bytes)?;
     let observed = copy_of(&name);
-    match repository.labels.insert(name) {
-        Ok(true) => {}
-        Ok(false) => return Err(Error::Exists),
-        Err(_) => return Err(Error::Full),
-    }
+    repository.define_label(name)?;
     let observation = Observation::Defined { repository: copy_of(&repository.name), label: observed, by: user };
     domain.observations.push(observation);
     Ok(Answer::Done)

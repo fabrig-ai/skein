@@ -50,6 +50,8 @@ pub(super) fn looked(d: &mut Domain, env: &Env<Limits>, number: u64, pull: api::
             | api::Write::OpenPull { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }

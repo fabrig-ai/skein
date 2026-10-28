@@ -149,6 +149,9 @@ fn target(request: &Request, out: &mut Target) {
         | Request::Pull { .. }
         | Request::PullFor { .. }
         | Request::CombinedStatus { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }

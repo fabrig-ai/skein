@@ -123,6 +123,9 @@ fn target(request: &Request, out: &mut Target) {
         | Request::UserRepos { .. }
         | Request::RepoSearch { .. }
         | Request::UserSearch { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -242,6 +245,8 @@ pub(super) struct Items {
     pull: PullRequest,
     status: CommitStatus,
     combined: CombinedStatus,
+    label_id: u64,
+    label_name: Box<[u8]>,
     labels: List<Box<[u8]>>,
     reviewers: List<User>,
     inner: u32,
@@ -260,6 +265,8 @@ impl Items {
             pull: pull(),
             status: status(),
             combined: CombinedStatus { state: None, total_count: 0 },
+            label_id: 0,
+            label_name: Box::new([]),
             labels: List::with_capacity(limits.inner),
             reviewers: List::with_capacity(limits.inner),
             inner: limits.inner,
@@ -275,6 +282,14 @@ impl Items {
                     walk.skip_comment();
                 }
                 result
+            }
+            Move::End(Kind::Item(Item::Label)) => {
+                if self.root == Item::Labels {
+                    let name = core::mem::replace(&mut self.label_name, Box::new([]));
+                    let id = core::mem::replace(&mut self.label_id, 0);
+                    return Step::Row(Row::Label { id, name }, skein_json::tokenizer::Request::Next);
+                }
+                Ok(())
             }
             Move::End(Kind::User) => self.finish_user(walk),
             Move::End(Kind::Item(Item::Presence)) => {
@@ -322,9 +337,8 @@ impl Items {
                 | Item::Head
                 | Item::Base
                 | Item::Statuses
-                | Item::Combined
-                | Item::Label
                 | Item::Labels
+                | Item::Combined
                 | Item::Reviewers,
             )) => Ok(()),
             Move::End(
@@ -385,10 +399,10 @@ impl Items {
                     | Item::Pull
                     | Item::Head
                     | Item::Base
-                    | Item::Statuses
-                    | Item::Combined
                     | Item::Label
                     | Item::Labels
+                    | Item::Statuses
+                    | Item::Combined
                     | Item::Presence,
                 ),
             ) => unreachable!("item user table"),
@@ -408,24 +422,26 @@ impl Items {
             Item::Issue => Document::Issue(core::mem::replace(&mut self.issue, issue())),
             Item::Pull => Document::Pull(core::mem::replace(&mut self.pull, pull())),
             Item::Combined => Document::CombinedStatus(self.combined),
-            Item::Pulls | Item::Issues | Item::Comments => Document::Listed { skipped },
+            Item::Labels | Item::Pulls | Item::Issues | Item::Comments => Document::Listed { skipped },
             Item::Comment => Document::Comment(core::mem::replace(&mut self.comment, comment())),
             Item::Status => Document::Status(core::mem::replace(&mut self.status, status())),
-            Item::Head
-            | Item::Base
-            | Item::Statuses
-            | Item::Label
-            | Item::Labels
-            | Item::Reviewers
-            | Item::Presence => unreachable!("item root selection"),
+            Item::Head | Item::Base | Item::Statuses | Item::Label | Item::Reviewers | Item::Presence => {
+                unreachable!("item root selection")
+            }
         }
     }
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive dialect dispatch includes each label request and answer variant"
+    )]
     fn scalar(&mut self, kind: Kind, key: &'static [u8], value: Value) -> Result<(), Malformed> {
         match value {
             Value::Input(_) => unreachable!("dispatch input table"),
             Value::Number(number) => match key {
                 b"id" => {
-                    if kind == Kind::User {
+                    if kind == Kind::Item(Item::Label) {
+                        self.label_id = number;
+                    } else if kind == Kind::User {
                         self.user.id = number;
                     } else {
                         self.comment.id = number;
@@ -472,7 +488,9 @@ impl Items {
                     }
                 }
                 b"name" => {
-                    if self.labels.push(text).is_err() {
+                    if self.root == Item::Labels {
+                        self.label_name = text;
+                    } else if self.labels.push(text).is_err() {
                         return Err(Malformed::Bound { field: b"labels" });
                     }
                 }

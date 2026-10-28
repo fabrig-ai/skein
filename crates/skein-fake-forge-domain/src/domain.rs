@@ -708,6 +708,7 @@ fn authorized_read(
         | Read::File { .. }
         | Read::Pages { .. }
         | Read::Page { .. }
+        | Read::LabelIds
         | Read::Labels
         | Read::Settings
         | Read::Collaborators => {}

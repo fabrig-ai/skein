@@ -72,8 +72,13 @@ pub(crate) fn write(value: &Write, l: &Limits) -> Option<u64> {
                 return None;
             }
         }
-        Write::Rerun { .. }
-        | Write::CreateIssue { .. }
+        Write::CreateIssue { labels, .. } | Write::Labels { labels, .. } => {
+            if u64::try_from(labels.len()).ok()? > u64::from(l.rows) {
+                return None;
+            }
+        }
+        Write::CreateLabel { .. }
+        | Write::Rerun { .. }
         | Write::OpenPull { .. }
         | Write::Post { .. }
         | Write::Review { .. }

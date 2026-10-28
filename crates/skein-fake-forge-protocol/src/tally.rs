@@ -1,6 +1,6 @@
 //! Requests counted at their HTTP entrance (fake-forge.md, section 4).
 use skein_lib::Map;
-pub(crate) const ROUTES: u32 = 81;
+pub(crate) const ROUTES: u32 = 84;
 use skein_forge::forgejo::request::Request;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Route {
@@ -70,6 +70,9 @@ pub enum Route {
     Jobs,
     Job,
     JobLog,
+    Labels,
+    SetLabels,
+    CreateLabel,
     CreateIssue,
     OpenPull,
     PostComment,
@@ -146,6 +149,9 @@ impl Route {
             | Self::Jobs
             | Self::Job
             | Self::JobLog
+            | Self::Labels
+            | Self::SetLabels
+            | Self::CreateLabel
             | Self::CreateIssue
             | Self::OpenPull
             | Self::PostComment
@@ -224,6 +230,9 @@ pub fn route(request: &Request) -> Route {
         Request::Job { .. } => Route::Job,
         Request::Jobs { .. } => Route::Jobs,
         Request::JobLog { .. } => Route::JobLog,
+        Request::Labels { .. } => Route::Labels,
+        Request::SetLabels { .. } => Route::SetLabels,
+        Request::CreateLabel { .. } => Route::CreateLabel,
         Request::CreateIssue { .. } => Route::CreateIssue,
         Request::OpenPull { .. } => Route::OpenPull,
         Request::PostComment { .. } => Route::PostComment,

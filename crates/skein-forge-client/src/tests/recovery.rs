@@ -409,7 +409,12 @@ fn issue_find_requires_a_believed_key_without_provenance() {
         let mut h = writing::Harness::new();
         h.make(
             1,
-            Write::CreateIssue { key: Box::from(expected), title: Box::new([]), body: Box::new([]) },
+            Write::CreateIssue {
+                key: Box::from(expected),
+                title: Box::new([]),
+                body: Box::new([]),
+                labels: Box::new([]),
+            },
             Condition::None,
         );
         h.clock();

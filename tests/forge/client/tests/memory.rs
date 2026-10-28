@@ -197,7 +197,9 @@ fn asked(op: &api::Op) -> Asked {
             api::Write::Post { .. } => Asked::Comment,
             api::Write::Review { .. } => Asked::Review,
             api::Write::Merge { .. } => Asked::Merge,
-            api::Write::Edit { .. }
+            api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
+            | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }

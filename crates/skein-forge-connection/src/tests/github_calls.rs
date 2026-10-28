@@ -549,17 +549,6 @@ fn every_landed_write_runs_once_with_full_installation_authorization() {
             Answer::Created(7),
         ),
         (
-            "CreateIssue",
-            Write::CreateIssue {
-                key: Box::from([1]),
-                title: Box::from(b"title".as_slice()),
-                body: Box::from(b"body".as_slice()),
-            },
-            201,
-            br#"{"number":7}"#,
-            Answer::Created(7),
-        ),
-        (
             "Post",
             Write::Post { number: 7, key: Box::from([1]), body: Box::from(b"body".as_slice()) },
             201,
@@ -844,5 +833,24 @@ fn status_write() -> Write {
         check: api::Check::Passed,
         description: Box::new([]),
         link: Box::new([]),
+    }
+}
+
+#[test]
+fn github_label_writes_refuse_at_zero_cost_before_discovery() {
+    for write in [
+        Write::CreateIssue {
+            key: Box::from(b"key".as_slice()),
+            title: Box::from(b"title".as_slice()),
+            body: Box::new([]),
+            labels: Box::new([]),
+        },
+        Write::Labels { number: 7, labels: Box::new([]) },
+        Write::CreateLabel { name: Box::from(b"finding".as_slice()), color: [0; 3] },
+    ] {
+        let mut h = f::github_calls();
+        h.call(1, REPO, Op::Write(write));
+        answered(&mut h, 0, Err(Error::Refused));
+        assert!(h.request_lines(FORGE).is_empty());
     }
 }

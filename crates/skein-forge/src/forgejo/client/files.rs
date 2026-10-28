@@ -193,6 +193,9 @@ fn target(request: &Request, out: &mut Target) {
         | Request::Collaborators { .. }
         | Request::Permission { .. }
         | Request::Pulls { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }

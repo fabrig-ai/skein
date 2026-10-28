@@ -206,6 +206,9 @@ fn target(request: &Request, out: &mut Target) -> Method {
         | Request::Jobs { .. }
         | Request::Job { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -227,6 +230,7 @@ fn target(request: &Request, out: &mut Target) -> Method {
         | Request::CreateUser { .. } => unreachable!("organization request selection"),
     }
 }
+#[expect(clippy::too_many_lines, reason = "exhaustive dialect dispatch includes each label request and answer variant")]
 fn body(json: &mut Encoder, request: &Request) {
     match request {
         Request::AddCollaborator { permission, .. } => {
@@ -308,6 +312,9 @@ fn body(json: &mut Encoder, request: &Request) {
         | Request::Jobs { .. }
         | Request::Job { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }

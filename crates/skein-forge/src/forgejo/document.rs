@@ -98,6 +98,10 @@ pub struct Reachable {
 }
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Row {
+    Label {
+        id: u64,
+        name: Box<[u8]>,
+    },
     /// One directory entry; unknown kinds are omitted by the plan.
     Entry {
         name: Box<[u8]>,
@@ -569,4 +573,11 @@ pub(crate) fn run() -> Run {
 }
 pub(crate) fn job() -> Job {
     Job { id: 0, run_id: 0, attempt: 0, name: Box::new([]), status: StepStatus::Unknown }
+}
+
+/// One repository label, named independently of its wire id.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Label {
+    pub id: u64,
+    pub name: Box<[u8]>,
 }

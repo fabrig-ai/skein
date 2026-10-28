@@ -61,6 +61,7 @@ pub struct Server {
     range: Result<Option<response::Range>, api::Error>,
     call: Option<Id<Call>>,
     followed: bool,
+    resolving_labels: bool,
     listing: Option<crate::setup::repos::Listing>,
     head: Option<http::Call>,
     reply: Option<Box<[u8]>>,
@@ -98,6 +99,7 @@ impl Server {
             range: Ok(None),
             call: None,
             followed: false,
+            resolving_labels: false,
             listing: None,
             head: None,
             reply: None,
@@ -184,6 +186,7 @@ fn up_on(
     );
     resume_on(server, service, domain, env, above, below);
 }
+#[expect(clippy::too_many_lines, reason = "a domain reply can resolve label ids before the mutation and its read-back")]
 pub fn down(
     server: &mut Server,
     service: &mut Service,
@@ -239,6 +242,9 @@ pub fn down(
     if server.git.is_some() {
         git::down(server, service, env, result, above, below);
         resume(server, service, env, above, below);
+        return;
+    }
+    if resolve_labels(server, service, env, id, &result, above, below) {
         return;
     }
     let request = server.request.as_ref().expect("waiting request");
@@ -630,6 +636,7 @@ fn decoded(
         user_repos_next(server, service, env, above);
         return;
     }
+    server.resolving_labels = routes::resolves_labels(&request);
     let op = routes::op(&service.config, &request);
     let select = match server.range {
         Ok(range) => response::select(&service.config, &request, range),
@@ -722,6 +729,9 @@ fn missing_scope(request: &Request, scopes: &Scopes) -> Option<&'static [u8]> {
         | Request::Job { .. }
         | Request::Jobs { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -795,6 +805,9 @@ fn table(service: &Service, request: &Request, user: u64) -> Option<documents::A
         | Request::Job { .. }
         | Request::Jobs { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -917,4 +930,39 @@ fn malformed(server: &mut Server, env: &Env<Limits>) {
     server.json_started = false;
     server.requests.push(http::Request::Discard);
     fail(server, &env.limits, 422);
+}
+
+fn resolve_labels(
+    server: &mut Server,
+    service: &mut Service,
+    env: &Env<Limits>,
+    id: Id<Call>,
+    result: &Result<api::Answer, api::Error>,
+    above: &mut Queue<Event>,
+    below: &mut Queue<Down>,
+) -> bool {
+    let request = server.request.as_ref().expect("waiting request");
+    if server.resolving_labels {
+        server.resolving_labels = false;
+        if let Ok(api::Answer::LabelIds(catalog)) = result {
+            match routes::labeled_write(request, catalog) {
+                Ok(op) => {
+                    above.push(Event::Domain(domain::Event::Call {
+                        reply_to: ReplyTo::new(id.token()),
+                        user: server.user,
+                        repository: routes::repository(&service.config, request).expect("label write repository"),
+                        op,
+                    }));
+                    return true;
+                }
+                Err(error) => {
+                    retire(server, service);
+                    error_reply(server, env, error);
+                    resume(server, service, env, above, below);
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }

@@ -12,6 +12,8 @@ pub struct Fields {
     pub retry_after: Option<Duration>,
     /// `X-HasMore`.
     pub has_more: Option<bool>,
+    /// `X-Total-Count`, used to bound label resolution to one page.
+    pub total_count: Option<u64>,
     /// `Content-Range` of a `206`.
     pub content_range: Option<header::ContentRange>,
     /// `Connection: close`: Closed after this answer, not Idle.

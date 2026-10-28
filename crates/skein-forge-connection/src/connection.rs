@@ -716,7 +716,17 @@ impl Connection {
         };
         self.heard.push(Heard::Forgejo(plans::Heard::Head {
             status: response.status,
-            fields: Fields { date, retry_after, has_more, content_range, close },
+            fields: Fields {
+                date,
+                retry_after,
+                has_more,
+                total_count: match response.header(b"X-Total-Count") {
+                    Some(value) => skein_forge::forgejo::id::unsigned(value),
+                    None => None,
+                },
+                content_range,
+                close,
+            },
         }));
         let l = limits::documents(&env.limits);
         let request = match self.request.as_ref().expect("head belongs to a request") {
@@ -1086,6 +1096,7 @@ fn raw_request(request: &request::Request) -> bool {
         | request::Request::EditRepoHook { .. }
         | request::Request::DeleteRepoHook { .. }
         | request::Request::CreateUser { .. }
+        | request::Request::Labels { .. } | request::Request::SetLabels { .. } | request::Request::CreateLabel { .. }
         | request::Request::DeleteBranch { .. } => false,
     }
 }

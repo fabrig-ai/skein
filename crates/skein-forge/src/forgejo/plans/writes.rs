@@ -16,9 +16,10 @@ use crate::forgejo::{
 use crate::marker;
 use alloc::boxed::Box;
 use skein_lib::{Duration, List};
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Stage {
     Write,
+    Catalog,
     Head,
     Base,
     Compare,
@@ -40,6 +41,11 @@ pub struct Plan {
     add: List<Box<[u8]>>,
     remove: List<Box<[u8]>>,
     position: u32,
+    label_ids: List<Option<u64>>,
+    label_rows: u32,
+    label_bytes: u64,
+    label_found: bool,
+    label_total: Option<u64>,
     status: u16,
     retry: Option<Duration>,
     request: Option<Exchange>,
@@ -64,6 +70,11 @@ impl Plan {
             add: List::with_capacity(0),
             remove: List::with_capacity(0),
             position: 0,
+            label_ids: List::with_capacity(0),
+            label_rows: 0,
+            label_bytes: 0,
+            label_found: false,
+            label_total: None,
             status: 0,
             retry: None,
             request: None,
@@ -87,12 +98,18 @@ impl Plan {
     }
     fn initial(&mut self, bounds: Bounds, word: &[u8]) -> Result<Step, api::Error> {
         self.stage = Stage::Write;
+        if let Some(request) = self.catalog_request(bounds)? {
+            return Ok(Step::send(request));
+        }
         let at = self.at();
         let request = match self.write.clone() {
             api::Write::Dispatch { workflow, branch, inputs } => Request::Dispatch { at, workflow, branch, inputs },
             api::Write::Rerun { attempt: job } => Request::Rerun { at, job: job.job },
-            api::Write::CreateIssue { key, title, body } => {
-                Request::CreateIssue { at, title, body: marked(word, &key, &body, bounds)? }
+            api::Write::CreateIssue { key, title, body, .. } => {
+                Request::CreateIssue { at, title, body: marked(word, &key, &body, bounds)?, labels: Box::new([]) }
+            }
+            api::Write::Labels { .. } | api::Write::CreateLabel { .. } => {
+                unreachable!("label catalog precedes mutation")
             }
             api::Write::Post { number, key, body } => {
                 Request::PostComment { at, number, body: marked(word, &key, &body, bounds)? }
@@ -151,6 +168,9 @@ impl Plan {
         Ok(Step::send(request))
     }
     fn asked(&self) -> Asked {
+        if self.stage == Stage::Catalog {
+            return Asked::BeforeWrite;
+        }
         match self.write {
             api::Write::OpenPull { .. } => {
                 if self.before_write() {
@@ -167,6 +187,8 @@ impl Plan {
             | api::Write::CreateIssue { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
@@ -180,16 +202,26 @@ impl Plan {
             return 200;
         }
         match self.stage {
-            Stage::Head | Stage::Base | Stage::Compare | Stage::Reviewers | Stage::User | Stage::Merged => return 200,
+            Stage::Catalog
+            | Stage::Head
+            | Stage::Base
+            | Stage::Compare
+            | Stage::Reviewers
+            | Stage::User
+            | Stage::Merged => return 200,
             Stage::Add => return 201,
             Stage::Remove => return 204,
             Stage::Write => {}
         }
         match self.write {
-            api::Write::Update { .. } | api::Write::Merge { .. } | api::Write::Review { .. } => 200,
+            api::Write::Labels { .. }
+            | api::Write::Update { .. }
+            | api::Write::Merge { .. }
+            | api::Write::Review { .. } => 200,
             api::Write::Dispatch { .. } | api::Write::Rerun { .. } | api::Write::DeleteBranch { .. } => 204,
             api::Write::CreateIssue { .. }
             | api::Write::Post { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }
@@ -213,10 +245,15 @@ impl Plan {
         match heard {
             Heard::Head { status, fields } => {
                 self.status = status;
+                self.label_total = fields.total_count;
                 self.retry = fields.retry_after;
                 Ok(None)
             }
             Heard::Row(row) => match row {
+                d::Row::Label { id, name } => match self.label_row(id, &name, bounds) {
+                    Ok(()) => Ok(None),
+                    Err(error) => Err(self.error(error)),
+                },
                 d::Row::User(user) => {
                     tables.keep_user(self.repository.forge, user.id, user.login);
                     Ok(None)
@@ -244,8 +281,9 @@ impl Plan {
             },
             Heard::Failed(fault) => Err(self.error(failure::transport(fault))),
             Heard::Done(body) => {
-                if !self.resolving && self.status == 409 {
+                if !self.resolving && self.stage == Stage::Write && self.status == 409 {
                     match self.write {
+                        api::Write::CreateLabel { .. } => return Ok(Some(Step::Done(Err(api::Error::Exists)))),
                         api::Write::CreateBranch { .. } => {
                             return Ok(Some(Step::Done(Ok(api::Answer::Branch(api::BranchCreation::Exists)))));
                         }
@@ -255,6 +293,7 @@ impl Plan {
                         api::Write::CreateIssue { .. }
                         | api::Write::Post { .. }
                         | api::Write::Review { .. }
+                        | api::Write::Labels { .. }
                         | api::Write::Edit { .. }
                         | api::Write::Close { .. }
                         | api::Write::Reopen { .. }
@@ -309,6 +348,12 @@ impl Plan {
                     self.resolving = false;
                     return Ok(Some(self.initial(bounds, word)?));
                 }
+                if self.stage == Stage::Catalog {
+                    return match self.catalog(document, bounds, word) {
+                        Ok(step) => Ok(Some(step)),
+                        Err(error) => Err(self.error(error)),
+                    };
+                }
                 let step = match self.next(document, tables) {
                     Ok(step) => step,
                     Err(error) => return Err(self.error(error)),
@@ -359,11 +404,14 @@ impl Plan {
         Ok(())
     }
     fn before_write(&self) -> bool {
+        if self.resolving || self.stage == Stage::Catalog {
+            return true;
+        }
         match &self.write {
             api::Write::OpenPull { .. } => {
                 self.resolving
                     || match self.stage {
-                        Stage::Head | Stage::Base | Stage::Compare => true,
+                        Stage::Catalog | Stage::Head | Stage::Base | Stage::Compare => true,
                         Stage::Write | Stage::Reviewers | Stage::User | Stage::Add | Stage::Remove | Stage::Merged => {
                             false
                         }
@@ -372,6 +420,8 @@ impl Plan {
             api::Write::CreateIssue { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
@@ -428,7 +478,8 @@ impl Plan {
     pub fn error(&self, error: api::Error) -> api::Error {
         match self.stage {
             Stage::Merged => api::Error::Timeout,
-            Stage::Write
+            Stage::Catalog
+            | Stage::Write
             | Stage::Head
             | Stage::Base
             | Stage::Compare
@@ -452,6 +503,8 @@ impl Plan {
                 | api::Write::OpenPull { .. }
                 | api::Write::Post { .. }
                 | api::Write::Review { .. }
+                | api::Write::Labels { .. }
+                | api::Write::CreateLabel { .. }
                 | api::Write::Edit { .. }
                 | api::Write::SetReviewers { .. }
                 | api::Write::Close { .. }
@@ -463,6 +516,7 @@ impl Plan {
                 | api::Write::Rerun { .. }
                 | api::Write::DeleteBranch { .. } => Ok(Step::Done(Ok(self.answer(document)?))),
             },
+            Stage::Catalog => unreachable!("catalog answered before write stages"),
             Stage::Head | Stage::Base => self.branch(document),
             Stage::Compare => {
                 let Some(d::Document::Compare(compare)) = document else {
@@ -482,6 +536,8 @@ impl Plan {
                     api::Write::CreateIssue { .. }
                     | api::Write::Post { .. }
                     | api::Write::Review { .. }
+                    | api::Write::Labels { .. }
+                    | api::Write::CreateLabel { .. }
                     | api::Write::Edit { .. }
                     | api::Write::SetReviewers { .. }
                     | api::Write::Close { .. }
@@ -541,6 +597,8 @@ impl Plan {
             | api::Write::OpenPull { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }
@@ -584,6 +642,8 @@ impl Plan {
             api::Write::CreateIssue { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
@@ -607,7 +667,8 @@ impl Plan {
                 let after = self.head.expect("head branch");
                 Request::Compare { at: self.at(), before: branch.commit, after, files: false }
             }
-            Stage::Write
+            Stage::Catalog
+            | Stage::Write
             | Stage::Compare
             | Stage::Reviewers
             | Stage::User
@@ -637,6 +698,8 @@ impl Plan {
             | api::Write::OpenPull { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }
@@ -657,7 +720,8 @@ impl Plan {
                 self.stage = Stage::Remove;
             }
             Stage::Remove => {}
-            Stage::Write
+            Stage::Catalog
+            | Stage::Write
             | Stage::Head
             | Stage::Base
             | Stage::Compare
@@ -673,6 +737,7 @@ impl Plan {
     }
     fn answer(&self, document: Option<d::Document>) -> Result<api::Answer, api::Error> {
         match &self.write {
+            api::Write::Labels { .. } | api::Write::CreateLabel { .. } => Ok(api::Answer::Done),
             api::Write::CreateIssue { .. } => match document {
                 Some(d::Document::Issue(issue)) => Ok(api::Answer::Created(issue.number)),
                 Some(_) | None => Err(api::Error::Timeout),
@@ -722,6 +787,153 @@ impl Plan {
         }
     }
 }
+impl Plan {
+    fn catalog_request(&mut self, bounds: Bounds) -> Result<Option<Request>, api::Error> {
+        let wanted = match &self.write {
+            api::Write::CreateIssue { labels, .. } => {
+                if labels.is_empty() {
+                    None
+                } else {
+                    Some(labels.len())
+                }
+            }
+            api::Write::Labels { labels, .. } => Some(labels.len()),
+            api::Write::CreateLabel { .. } => Some(0),
+            api::Write::OpenPull { .. }
+            | api::Write::Post { .. }
+            | api::Write::Review { .. }
+            | api::Write::Edit { .. }
+            | api::Write::SetReviewers { .. }
+            | api::Write::Close { .. }
+            | api::Write::Reopen { .. }
+            | api::Write::Merge { .. }
+            | api::Write::Update { .. }
+            | api::Write::Status { .. }
+            | api::Write::CreateBranch { .. }
+            | api::Write::DeleteBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. } => None,
+        };
+        if let Some(count) = wanted {
+            if u64::try_from(count).or(Err(api::Error::TooLarge))? > u64::from(bounds.rows) {
+                return Err(api::Error::TooLarge);
+            }
+            self.stage = Stage::Catalog;
+            self.label_ids = List::with_capacity(u32::try_from(count).or(Err(api::Error::TooLarge))?);
+            for _ in 0..count {
+                self.label_ids.push(None).expect("desired labels capacity");
+            }
+            return Ok(Some(Request::Labels {
+                at: self.at(),
+                page: r::Page { page: Some(1), limit: Some(bounds.rows) },
+            }));
+        }
+        Ok(None)
+    }
+    fn label_row(&mut self, id: u64, name: &[u8], bounds: Bounds) -> Result<(), api::Error> {
+        if self.stage != Stage::Catalog {
+            return Ok(());
+        }
+        if id == 0 {
+            return Err(api::Error::InvalidAnswer);
+        }
+        self.label_rows = self.label_rows.checked_add(1).ok_or(api::Error::TooLarge)?;
+        self.label_bytes = self
+            .label_bytes
+            .checked_add(u64::try_from(name.len()).or(Err(api::Error::TooLarge))?)
+            .ok_or(api::Error::TooLarge)?;
+        self.label_bytes = self
+            .label_bytes
+            .checked_add(u64::try_from(crate::measure::STRING_BYTES).expect("string width fits"))
+            .ok_or(api::Error::TooLarge)?;
+        if self.label_rows > bounds.rows || self.label_bytes > u64::from(bounds.answer_bytes) {
+            return Err(api::Error::TooLarge);
+        }
+        match &self.write {
+            api::Write::CreateLabel { name: wanted, .. } => self.label_found |= wanted.as_ref() == name,
+            api::Write::CreateIssue { labels, .. } | api::Write::Labels { labels, .. } => {
+                for (index, wanted) in labels.iter().enumerate() {
+                    if wanted.as_ref() == name {
+                        let slot = self
+                            .label_ids
+                            .get_mut(u32::try_from(index).expect("bounded labels"))
+                            .expect("one slot per name");
+                        // Duplicate names are legal (label-created-twice-is-409 fails in the recorded facts).
+                        *slot = Some(match *slot {
+                            Some(previous) => previous.min(id),
+                            None => id,
+                        });
+                    }
+                }
+            }
+            api::Write::OpenPull { .. }
+            | api::Write::Post { .. }
+            | api::Write::Review { .. }
+            | api::Write::Edit { .. }
+            | api::Write::SetReviewers { .. }
+            | api::Write::Close { .. }
+            | api::Write::Reopen { .. }
+            | api::Write::Merge { .. }
+            | api::Write::Update { .. }
+            | api::Write::Status { .. }
+            | api::Write::CreateBranch { .. }
+            | api::Write::DeleteBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. } => unreachable!("label catalog belongs to label writes"),
+        }
+        Ok(())
+    }
+    fn catalog(&mut self, document: Option<d::Document>, bounds: Bounds, word: &[u8]) -> Result<Step, api::Error> {
+        let Some(d::Document::Listed { skipped }) = document else {
+            return Err(api::Error::InvalidAnswer);
+        };
+        if skipped != 0
+            || match self.label_total {
+                Some(total) => total > u64::from(self.label_rows),
+                None => false,
+            }
+        {
+            return Err(api::Error::TooLarge);
+        }
+        let mut ids = List::with_capacity(self.label_ids.len());
+        for id in &self.label_ids {
+            ids.push(id.ok_or(api::Error::Missing)?).expect("one id per desired label");
+        }
+        let at = self.at();
+        let request = match &self.write {
+            api::Write::CreateIssue { key, title, body, .. } => Request::CreateIssue {
+                at,
+                title: title.clone(),
+                body: marked(word, key, body, bounds)?,
+                labels: ids.into_boxed(),
+            },
+            api::Write::Labels { number, .. } => Request::SetLabels { at, number: *number, labels: ids.into_boxed() },
+            api::Write::CreateLabel { name, color } => {
+                if self.label_found {
+                    return Ok(Step::Done(Err(api::Error::Exists)));
+                }
+                // The pin permits duplicate names (recorded label-created-twice-is-409): another writer racing this lookup can duplicate it.
+                Request::CreateLabel { at, name: name.clone(), color: *color }
+            }
+            api::Write::OpenPull { .. }
+            | api::Write::Post { .. }
+            | api::Write::Review { .. }
+            | api::Write::Edit { .. }
+            | api::Write::SetReviewers { .. }
+            | api::Write::Close { .. }
+            | api::Write::Reopen { .. }
+            | api::Write::Merge { .. }
+            | api::Write::Update { .. }
+            | api::Write::Status { .. }
+            | api::Write::CreateBranch { .. }
+            | api::Write::DeleteBranch { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. } => unreachable!("label catalog belongs to label writes"),
+        };
+        self.stage = Stage::Write;
+        Ok(Step::send(request))
+    }
+}
 fn marked(word: &[u8], key: &[u8], body: &[u8], bounds: Bounds) -> Result<Box<[u8]>, api::Error> {
     marker::encode(word, key, body, bounds.body_bytes).ok_or(api::Error::Refused)
 }
@@ -736,7 +948,17 @@ fn text(bytes: &[u8]) -> Result<(), api::Error> {
 }
 fn validate(write: &api::Write) -> Result<(), api::Error> {
     match write {
-        api::Write::CreateIssue { title, body, .. } => {
+        api::Write::Labels { labels, .. } => {
+            for name in labels {
+                text(name)?;
+            }
+            Ok(())
+        }
+        api::Write::CreateLabel { name, .. } => text(name),
+        api::Write::CreateIssue { title, body, labels, .. } => {
+            for name in labels {
+                text(name)?;
+            }
             text(title)?;
             text(body)
         }

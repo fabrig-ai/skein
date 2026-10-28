@@ -95,6 +95,8 @@ impl Plan {
             | api::Write::OpenPull { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }
@@ -124,7 +126,7 @@ impl Plan {
             api::Write::Post { number, key, body } => {
                 Request::Post { owner, name, number: *number, body: marked(word, key, body, bounds)? }
             }
-            api::Write::CreateIssue { key, title, body } => {
+            api::Write::CreateIssue { key, title, body, .. } => {
                 Request::CreateIssue { owner, name, title: title.clone(), body: marked(word, key, body, bounds)? }
             }
             api::Write::OpenPull { title, body, head, base } => Request::OpenPull {
@@ -152,7 +154,10 @@ impl Plan {
             }
             api::Write::Reopen { number } => Request::Reopen { owner, name, number: *number },
             api::Write::Close { number } => Request::Close { owner, name, number: *number },
-            api::Write::Dispatch { .. } | api::Write::Rerun { .. } => return Err(api::Error::Refused),
+            api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
+            | api::Write::Dispatch { .. }
+            | api::Write::Rerun { .. } => return Err(api::Error::Refused),
             api::Write::DeleteBranch { branch } => Request::DeleteBranch { owner, name, branch: branch.clone() },
             api::Write::SetReviewers { number, .. } => {
                 return self.reviewers_mutation(*number);
@@ -175,7 +180,9 @@ impl Plan {
             api::Write::Review { .. } | api::Write::Post { .. } => Some(Kind::Id),
             api::Write::Dispatch { .. } | api::Write::Rerun { .. } | api::Write::DeleteBranch { .. } => None,
             api::Write::CreateIssue { .. } | api::Write::OpenPull { .. } => Some(Kind::Number),
-            api::Write::Edit { .. }
+            api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
+            | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }
@@ -197,6 +204,8 @@ impl Plan {
             | api::Write::Status { .. }
             | api::Write::CreateBranch { .. } => 201,
             api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
@@ -225,7 +234,9 @@ impl Plan {
             api::Write::Edit { title, body, .. } => {
                 Asked::Write { empty: empty(title.as_deref()) || empty(body.as_deref()) }
             }
-            api::Write::SetReviewers { .. }
+            api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
+            | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }
             | api::Write::Status { .. } => Asked::Write { empty: false },
@@ -371,6 +382,8 @@ impl Plan {
             | api::Write::OpenPull { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }
@@ -403,6 +416,8 @@ impl Plan {
             api::Write::Post { .. } => Ok(api::Answer::Commented(id)),
             api::Write::CreateIssue { .. }
             | api::Write::OpenPull { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::SetReviewers { .. }
             | api::Write::Close { .. }

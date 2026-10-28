@@ -427,6 +427,7 @@ impl Reachable {
                 | (
                     Row::Hook(_)
                     | Row::Token(_)
+                    | Row::Label { .. }
                     | Row::Team(_)
                     | Row::User(_)
                     | Row::Issue(_)

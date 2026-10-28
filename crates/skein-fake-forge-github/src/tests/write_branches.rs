@@ -137,7 +137,12 @@ fn github_fake_contents_token_writes_branches_and_issues() {
         w::write(
             &mut h,
             &token,
-            api::Write::CreateIssue { key: f::boxed(b"key"), title: f::boxed(b"title"), body: f::boxed(b"body") }
+            api::Write::CreateIssue {
+                key: f::boxed(b"key"),
+                title: f::boxed(b"title"),
+                body: f::boxed(b"body"),
+                labels: Box::new([])
+            }
         ),
         Ok(api::Answer::Created(1))
     );

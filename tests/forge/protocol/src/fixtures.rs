@@ -84,6 +84,7 @@ pub fn lost_creation(seed: u64) -> World {
                 key: effect_key(b"kit", b"lost", LIMITS.op_bytes).expect("fixture effect key"),
                 title: Box::from(b"kit".as_slice()),
                 body: Box::from(b"kit".as_slice()),
+                labels: Box::new([]),
             },
             condition: Condition::None,
         },
@@ -125,31 +126,6 @@ pub fn mixed_calls(seed: u64) -> World {
     world.checkpoint();
     world.run_for(Duration::from_secs(1));
     let _ = world.read(Read::Item { number, after: 0 });
-    world
-}
-
-/// A GitHub creation served by the fake, with its response held past the deadline.
-#[must_use]
-pub fn github_lost_creation(seed: u64) -> World {
-    let mut world = World::github(seed, 0);
-    world.startup();
-    world.lose_creation_answer(Entry {
-        number: 1,
-        task: 1,
-        repository: REPO,
-        effect: Effect {
-            write: Write::CreateIssue {
-                key: effect_key(b"kit", b"github-lost", LIMITS.op_bytes).expect("effect key"),
-                title: Box::from(b"kit".as_slice()),
-                body: Box::from(b"kit".as_slice()),
-            },
-            condition: Condition::None,
-        },
-        start: None,
-        attempt: None,
-        failures: 0,
-        queued: false,
-    });
     world
 }
 

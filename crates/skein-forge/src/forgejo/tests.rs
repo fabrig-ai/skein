@@ -463,7 +463,7 @@ fn a_write_whose_text_is_not_utf8_is_refused_before_encoding() {
     let limits = fixtures::limits();
     let at = crate::forgejo::request::Repo { owner: Box::from(*b"a"), name: Box::from(*b"b") };
     let rows = [
-        Request::CreateIssue { at: at.clone(), title: Box::from([255]), body: Box::from([]) },
+        Request::CreateIssue { at: at.clone(), title: Box::from([255]), body: Box::from([]), labels: Box::new([]) },
         Request::PostComment { at: at.clone(), number: 1, body: Box::from([255]) },
         Request::RequestReviewers { at, number: 1, reviewers: Box::from([Box::<[u8]>::from([255u8])]) },
     ];

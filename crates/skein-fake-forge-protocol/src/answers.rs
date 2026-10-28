@@ -241,6 +241,9 @@ fn pull_answer(config: &Config, setup: &Store, request: &Request, value: &a::Pul
         | Request::Job { .. }
         | Request::Jobs { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -319,6 +322,9 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
         | Request::Job { .. }
         | Request::Jobs { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -488,6 +494,7 @@ pub fn read(config: &Config, setup: &Store, request: &Request, answer: &a::Answe
         | a::Answer::Statuses(_)
         | a::Answer::Comment { .. }
         | a::Answer::Dependencies(_)
+        | a::Answer::LabelIds(_)
         | a::Answer::Labels(_)
         | a::Answer::Tree(_)
         | a::Answer::Directory(_)
@@ -563,6 +570,9 @@ fn collaborators(
         | Request::Job { .. }
         | Request::Jobs { .. }
         | Request::JobLog { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }

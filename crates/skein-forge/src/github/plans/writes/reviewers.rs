@@ -31,6 +31,8 @@ impl Plan {
             | api::Write::OpenPull { .. }
             | api::Write::Post { .. }
             | api::Write::Review { .. }
+            | api::Write::Labels { .. }
+            | api::Write::CreateLabel { .. }
             | api::Write::Edit { .. }
             | api::Write::Close { .. }
             | api::Write::Reopen { .. }

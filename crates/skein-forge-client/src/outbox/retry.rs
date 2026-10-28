@@ -18,6 +18,12 @@ pub(super) fn failed(
     if phase == Phase::Queued {
         d.outbox.entries.get_mut(&number).expect("queued look owns entry").restart_checked = true;
     }
+    if error == Error::Exists
+        && super::label_creation(&d.outbox.entries.get(&number).expect("answer owns entry").entry.effect.write)
+    {
+        super::finished(d, env, number, Made::Set, true, out);
+        return;
+    }
     if retain_uncertain(d, env, number, phase, error, out) {
         return;
     }
@@ -62,7 +68,9 @@ pub(super) fn failed(
                     | Write::Review { .. }
                     | Write::Merge { .. }
                     | Write::Update { .. } => not_found(d, env, number, out),
-                    Write::Edit { .. }
+                    Write::Labels { .. }
+                    | Write::CreateLabel { .. }
+                    | Write::Edit { .. }
                     | Write::SetReviewers { .. }
                     | Write::Close { .. }
                     | Write::Reopen { .. }
@@ -76,6 +84,8 @@ pub(super) fn failed(
                     | Write::OpenPull { .. }
                     | Write::Post { .. }
                     | Write::Review { .. }
+                    | Write::Labels { .. }
+                    | Write::CreateLabel { .. }
                     | Write::Edit { .. }
                     | Write::SetReviewers { .. }
                     | Write::Close { .. }
@@ -230,7 +240,9 @@ fn retain_uncertain(
                 | Write::Dispatch { .. }
                 | Write::Rerun { .. }
                 | Write::DeleteBranch { .. } => return false,
-                Write::Edit { .. }
+                Write::Labels { .. }
+                | Write::CreateLabel { .. }
+                | Write::Edit { .. }
                 | Write::SetReviewers { .. }
                 | Write::Close { .. }
                 | Write::Reopen { .. }

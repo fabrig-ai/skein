@@ -17,6 +17,7 @@ pub(super) fn run(f: &Fixture, h: &mut Hosted, facts: &mut Vec<Fact>) -> Result<
             key: Box::new([1, 0, 0, 1]),
             title: bytes("component issue"),
             body: bytes("component body"),
+            labels: Box::new([]),
         }
         .operation(),
     );

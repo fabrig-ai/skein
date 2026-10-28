@@ -229,6 +229,9 @@ impl Store {
             | Request::Jobs { .. }
             | Request::Job { .. }
             | Request::JobLog { .. }
+            | Request::Labels { .. }
+            | Request::SetLabels { .. }
+            | Request::CreateLabel { .. }
             | Request::CreateIssue { .. }
             | Request::OpenPull { .. }
             | Request::PostComment { .. }
@@ -303,6 +306,9 @@ impl Store {
             | Request::Jobs { .. }
             | Request::Job { .. }
             | Request::JobLog { .. }
+            | Request::Labels { .. }
+            | Request::SetLabels { .. }
+            | Request::CreateLabel { .. }
             | Request::CreateIssue { .. }
             | Request::OpenPull { .. }
             | Request::PostComment { .. }

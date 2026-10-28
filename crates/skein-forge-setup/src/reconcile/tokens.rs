@@ -188,6 +188,7 @@ impl Tokens {
                 Row::Reachable(_)
                 | Row::Found(_)
                 | Row::Hook(_)
+                | Row::Label { .. }
                 | Row::Team(_)
                 | Row::User(_)
                 | Row::Issue(_)

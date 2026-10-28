@@ -47,6 +47,7 @@ fn number(answer: &Answer) -> Option<u64> {
         | Answer::Permission(_)
         | Answer::Comment { .. }
         | Answer::Dependencies(_)
+        | Answer::LabelIds(_)
         | Answer::Labels(_)
         | Answer::Commit(_)
         | Answer::GitTree { .. }
@@ -88,6 +89,7 @@ pub fn follow(request: &Request, answer: &Answer) -> Result<Option<(a::Read, Sel
         | Request::EditRepoHook { .. }
         | Request::DeleteRepoHook { .. }
         | Request::CreateUser { .. } => return Err(a::Error::Refused),
+        Request::SetLabels { .. } | Request::CreateLabel { .. } => (a::Read::LabelIds, Select::Document),
         Request::CreateIssue { .. } => {
             (a::Read::Item { number: number(answer).ok_or(a::Error::Refused)?, after: 0 }, Select::Document)
         }
@@ -108,7 +110,8 @@ pub fn follow(request: &Request, answer: &Answer) -> Result<Option<(a::Read, Sel
         Request::CreateBranch { branch, .. } => {
             (a::Read::Branch { branch: branch.clone() }, Select::Branch(branch.clone()))
         }
-        Request::User
+        Request::Labels { .. }
+        | Request::User
         | Request::ApiSettings
         | Request::RepositoryById { .. }
         | Request::Repository { .. }
@@ -220,6 +223,9 @@ pub fn select(config: &Config, request: &Request, range: Option<Range>) -> Resul
         | Request::Run { .. }
         | Request::Job { .. }
         | Request::Jobs { .. }
+        | Request::Labels { .. }
+        | Request::SetLabels { .. }
+        | Request::CreateLabel { .. }
         | Request::CreateIssue { .. }
         | Request::OpenPull { .. }
         | Request::PostComment { .. }
@@ -236,7 +242,8 @@ pub fn select(config: &Config, request: &Request, range: Option<Range>) -> Resul
 }
 fn status(request: &Request) -> u16 {
     match crate::route(request) {
-        crate::Route::EditIssue
+        crate::Route::CreateLabel
+        | crate::Route::EditIssue
         | crate::Route::RequestReviewers
         | crate::Route::CreateIssue
         | crate::Route::OpenPull
@@ -246,7 +253,9 @@ fn status(request: &Request) -> u16 {
         crate::Route::Dispatch | crate::Route::Rerun | crate::Route::RemoveReviewers | crate::Route::DeleteBranch => {
             204
         }
-        crate::Route::UserOf
+        crate::Route::Labels
+        | crate::Route::SetLabels
+        | crate::Route::UserOf
         | crate::Route::Tokens
         | crate::Route::CreateToken
         | crate::Route::DeleteToken
@@ -336,6 +345,7 @@ fn document(
     answer: &Answer,
 ) -> Result<server::Answer, a::Error> {
     match answer {
+        Answer::LabelIds(catalog) => label_document(config, request, catalog),
         Answer::Comment { comment, .. } => Ok(server::Answer::Comment(answers::comment(config, setup, comment))),
         Answer::Permission(permission) => {
             let user = match select {
@@ -471,6 +481,7 @@ pub fn answer(
         | Answer::Permission(_)
         | Answer::Comment { .. }
         | Answer::Dependencies(_)
+        | Answer::LabelIds(_)
         | Answer::Labels(_)
         | Answer::Commit(_)
         | Answer::GitTree { .. }
@@ -491,6 +502,14 @@ pub fn answer(
     };
     let mut headers = List::with_capacity(1);
     match answer {
+        Answer::LabelIds(labels) => {
+            headers
+                .push(skein_http::Header {
+                    name: bytes::copy_of(b"X-Total-Count"),
+                    value: bytes::copy_of(Decimal::of(u64::try_from(labels.len()).expect("bounded labels")).as_bytes()),
+                })
+                .expect("one header");
+        }
         Answer::PullFiles { more, .. } => headers
             .push(skein_http::Header {
                 name: bytes::copy_of(b"x-hasmore"),
@@ -778,6 +797,17 @@ mod bounded {
         }
         let mut budget = Budget { left: usize::try_from(limits.documents.writer.length).ok()?, user };
         match answer {
+            a::Answer::LabelIds(labels) => {
+                if labels.len() > usize::try_from(limits.documents.inner).ok()? {
+                    return None;
+                }
+                for label in labels {
+                    if label.name.len() > usize::try_from(limits.documents.string_bytes).ok()? {
+                        return None;
+                    }
+                    budget.row(label.name.len())?;
+                }
+            }
             a::Answer::Items { items, .. } => {
                 for item in items {
                     budget.issue(item)?;
@@ -904,4 +934,111 @@ fn directory(limits: &Limits, select: &Select, entries: &[a::Entry]) -> Result<R
     let body =
         server::encode(&server::Answer::Entries(rows.into_boxed()), &limits.documents).or(Err(a::Error::TooLarge))?;
     Ok(Reply { status: 200, headers: Box::from([]), body })
+}
+
+fn label_document(config: &Config, request: &Request, catalog: &[a::Label]) -> Result<server::Answer, a::Error> {
+    match request {
+        Request::CreateLabel { name, .. } => {
+            for label in catalog {
+                if label.name == *name {
+                    return Ok(server::Answer::Label(d::Label { id: label.id, name: label.name.clone() }));
+                }
+            }
+            Err(a::Error::Missing(a::What::Label))
+        }
+        Request::Labels { page, .. } => {
+            let (page, size) = routes::page(config, *page);
+            label_rows(
+                catalog,
+                u64::from(page.saturating_sub(1)).saturating_mul(u64::from(size)),
+                u64::from(size),
+                None,
+            )
+        }
+        Request::SetLabels { labels, .. } => label_rows(catalog, 0, u64::MAX, Some(labels)),
+        Request::RepoSearch { .. }
+        | Request::AddCollaborator { .. }
+        | Request::RepoHooks { .. }
+        | Request::CreateRepoHook { .. }
+        | Request::EditRepoHook { .. }
+        | Request::DeleteRepoHook { .. }
+        | Request::OrgHooks { .. }
+        | Request::CreateOrgHook { .. }
+        | Request::EditOrgHook { .. }
+        | Request::DeleteOrgHook { .. }
+        | Request::Org { .. }
+        | Request::CreateOrg { .. }
+        | Request::CreateRepository { .. }
+        | Request::CreateFile { .. }
+        | Request::Teams { .. }
+        | Request::CreateTeam { .. }
+        | Request::EditTeam { .. }
+        | Request::TeamMembers { .. }
+        | Request::AddMember { .. }
+        | Request::User
+        | Request::ApiSettings
+        | Request::RepositoryById { .. }
+        | Request::Repository { .. }
+        | Request::UserRepos { .. }
+        | Request::UserSearch { .. }
+        | Request::Issues { .. }
+        | Request::Issue { .. }
+        | Request::Comments { .. }
+        | Request::Pull { .. }
+        | Request::PullFor { .. }
+        | Request::CombinedStatus { .. }
+        | Request::Reviews { .. }
+        | Request::ReviewComments { .. }
+        | Request::Branch { .. }
+        | Request::Branches { .. }
+        | Request::Protection { .. }
+        | Request::Protections { .. }
+        | Request::Collaborators { .. }
+        | Request::Permission { .. }
+        | Request::Pulls { .. }
+        | Request::PullFiles { .. }
+        | Request::Compare { .. }
+        | Request::Contents { .. }
+        | Request::Raw { .. }
+        | Request::Tree { .. }
+        | Request::WorkflowRuns { .. }
+        | Request::Dispatch { .. }
+        | Request::Rerun { .. }
+        | Request::Runs { .. }
+        | Request::Run { .. }
+        | Request::Jobs { .. }
+        | Request::Job { .. }
+        | Request::JobLog { .. }
+        | Request::CreateIssue { .. }
+        | Request::OpenPull { .. }
+        | Request::PostComment { .. }
+        | Request::PostReview { .. }
+        | Request::EditIssue { .. }
+        | Request::RequestReviewers { .. }
+        | Request::RemoveReviewers { .. }
+        | Request::Merge { .. }
+        | Request::Update { .. }
+        | Request::PostStatus { .. }
+        | Request::CreateBranch { .. }
+        | Request::DeleteBranch { .. }
+        | Request::Tokens { .. }
+        | Request::CreateToken { .. }
+        | Request::DeleteToken { .. }
+        | Request::UserOf { .. }
+        | Request::CreateUser { .. } => Err(a::Error::Refused),
+    }
+}
+fn label_rows(catalog: &[a::Label], skip: u64, count: u64, ids: Option<&[u64]>) -> Result<server::Answer, a::Error> {
+    let mut labels = List::with_capacity(u32::try_from(catalog.len()).or(Err(a::Error::TooLarge))?);
+    for (index, label) in catalog.iter().enumerate() {
+        let index = u64::try_from(index).expect("bounded catalog");
+        let wanted = match ids {
+            Some(ids) => ids.contains(&label.id),
+            None => index >= skip && index.saturating_sub(skip) < count,
+        };
+        if wanted {
+            labels.push(d::Label { id: label.id, name: label.name.clone() }).expect("catalog capacity");
+        }
+    }
+    Ok(server::Answer::Labels(labels.into_boxed()))
 }

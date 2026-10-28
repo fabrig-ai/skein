@@ -104,6 +104,8 @@ pub fn documents(seed: u64) -> Vec<Reply> {
         | Answer::Tokens(_)
         | Answer::Hooks(_)
         | Answer::Team(_)
+        | Answer::Labels(_)
+        | Answer::Label(_)
         | Answer::Teams(_)
         | Answer::Members(_)
         | Answer::Repository(_)
@@ -336,7 +338,9 @@ fn vary(answer: &mut Answer, seed: u64) {
                 value.id += seed;
             }
         }
-        Answer::Entries(_)
+        Answer::Labels(_)
+        | Answer::Label(_)
+        | Answer::Entries(_)
         | Answer::Tree { .. }
         | Answer::Reachable(_)
         | Answer::RepoSearch { .. }
@@ -428,6 +432,7 @@ fn setup_replies(seed: u64, compact: bool) -> Vec<(&'static str, Answer, Documen
     ]
 }
 
+#[expect(clippy::too_many_lines, reason = "exhaustive corpus mutation includes every label answer variant")]
 fn shorten(answer: &mut Answer) {
     match answer {
         Answer::Entries(entries) => *entries = Box::from([]),
@@ -517,7 +522,9 @@ fn shorten(answer: &mut Answer) {
         }
         Answer::Teams(values) => *values = Box::from([]),
         Answer::Hooks(values) => *values = Box::from([]),
-        Answer::Reachable(_)
+        Answer::Labels(_)
+        | Answer::Label(_)
+        | Answer::Reachable(_)
         | Answer::RepoSearch { .. }
         | Answer::ApiSettings(_)
         | Answer::Run(_)
