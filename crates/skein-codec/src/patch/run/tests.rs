@@ -973,6 +973,17 @@ fn allocations(patcher: &Patcher) -> Allocations {
     }
 }
 
+fn assert_run_rooms(patcher: &Patcher) {
+    let tables = allocations(patcher);
+    let capacity = patcher.build.tables.capacity;
+    for (room, _) in tables.entries {
+        assert!(room <= capacity.nodes, "entry room stays under the node cap");
+    }
+    assert!(tables.walk.0 <= capacity.nodes);
+    assert!(tables.opened.0 <= capacity.nodes);
+    assert!(tables.out.0 <= capacity.bytes);
+}
+
 fn list_bytes(items: u32) -> Box<[u8]> {
     // A list count followed by one byte per item; this fixture is unversioned.
     let length = usize::try_from(items).expect("items").checked_add(size_of::<u32>()).expect("wire fits usize");
@@ -1053,7 +1064,7 @@ fn nested_walks_grow_both_stacks_and_reuse_them() {
 }
 
 #[test]
-fn written_nesting_grows_live_stacks_and_reserves_old_entries() {
+fn written_nesting_grows_live_stacks_and_reuses_grown_old_entries() {
     // Six nested options and their leaf outgrow the two-node old record.
     const DEPTH: u32 = 6;
     const NEW: &str = "record D { f: option option option option option option u8 }";
@@ -1077,16 +1088,28 @@ fn written_nesting_grows_live_stacks_and_reserves_old_entries() {
     assert!(patcher.build.opened.capacity() >= DEPTH);
     assert!(patcher.build.walk.capacity() >= DEPTH);
     let before = allocations(&patcher);
-    // The new shape becomes an old record without allocating its larger index.
+    // Decoding the larger old shape fills its replacement entries for the first time.
     let identity = patcher.identity(2).expect("identity");
     patcher.start(identity, D, WIRE.into()).expect("larger old record");
-    assert_eq!(allocations(&patcher), before, "only ownership of reserved entries changes");
+    let grown = allocations(&patcher);
+    assert_eq!(grown.walk, before.walk);
+    assert_eq!(grown.opened, before.opened);
+    assert_eq!(grown.out, before.out);
+    assert_run_rooms(&patcher);
     assert_eq!(patcher.next(), Ok(Step::Done));
-    assert_eq!(allocations(&patcher), before);
+    assert_eq!(patcher.finish().expect("finish"), WIRE);
+    let before = allocations(&patcher);
+    for wire in [WIRE, &[0][..]] {
+        patcher.start(identity, D, wire.into()).expect("reuse grown entries");
+        assert_eq!(allocations(&patcher), before);
+        assert_eq!(patcher.next(), Ok(Step::Done));
+        assert_eq!(patcher.finish().expect("finish"), wire);
+        assert_eq!(allocations(&patcher), before);
+    }
 }
 
 #[test]
-fn a_larger_next_pass_uses_the_reserved_run_tables() {
+fn a_larger_next_pass_grows_tables_and_smaller_passes_reuse_them() {
     const NEW: &str = "versioned record D { f: u8 g: option u8 }";
     const LINES: &str = "add D.g option u8 some 9\n";
     const FIRST: &[u8] = &[0, 2, 7, 1, 9];
@@ -1102,12 +1125,19 @@ fn a_larger_next_pass_uses_the_reserved_run_tables() {
     patcher.start(first, D, Box::from([0, 1, 7])).expect("first");
     assert_eq!(patcher.next(), Ok(Step::Done));
     assert_eq!(patcher.finish().expect("first finish"), FIRST);
-    let before = allocations(&patcher);
     patcher.next_pass(second, D).expect("larger second pass");
-    assert_eq!(allocations(&patcher), before);
+    assert_run_rooms(&patcher);
     assert_eq!(patcher.next(), Ok(Step::Done));
     assert_eq!(patcher.finish().expect("last finish"), LAST);
-    assert_eq!(allocations(&patcher), before);
+    assert_run_rooms(&patcher);
+    let before = allocations(&patcher);
+    for wire in [FIRST, &[0, 2, 7, 0][..]] {
+        patcher.start(second, D, wire.into()).expect("same or smaller old record");
+        assert_eq!(allocations(&patcher), before);
+        assert_eq!(patcher.next(), Ok(Step::Done));
+        patcher.finish().expect("finish");
+        assert_eq!(allocations(&patcher), before);
+    }
 }
 
 #[test]
@@ -1127,11 +1157,22 @@ fn refused_growth_keeps_its_room_for_smaller_records() {
             reason: Reason::Trailing,
         })))
     );
-    let before = allocations(&patcher);
+    let old_entries = patcher.old.value.allocation();
     patcher.start(plan, D, list_bytes(ITEMS - 1)).expect("smaller record after refusal");
-    assert_eq!(allocations(&patcher), before);
+    assert_eq!(patcher.old.value.allocation(), old_entries, "refused decode's entries are reused");
+    assert_run_rooms(&patcher);
+    // The refused decode did not run the walk; let that table fill once.
     assert_eq!(patcher.next(), Ok(Step::Done));
-    assert_eq!(allocations(&patcher), before);
+    patcher.finish().expect("finish");
+    assert_run_rooms(&patcher);
+    let before = allocations(&patcher);
+    for items in [ITEMS - 1, ITEMS - 2] {
+        patcher.start(plan, D, list_bytes(items)).expect("reuse after refusal");
+        assert_eq!(allocations(&patcher), before);
+        assert_eq!(patcher.next(), Ok(Step::Done));
+        patcher.finish().expect("finish");
+        assert_eq!(allocations(&patcher), before);
+    }
 }
 
 #[test]

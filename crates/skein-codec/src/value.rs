@@ -114,7 +114,7 @@ struct Child {
 }
 
 impl Value {
-    /// Allocates the entries once, for this many nodes.
+    /// Sets the room for this many nodes; entries allocate as they fill.
     #[must_use]
     pub fn with_room(nodes: u32) -> Value {
         Value { bytes: Secret::new(Box::default()), entries: List::with_capacity(nodes), growing: None }
@@ -126,7 +126,8 @@ impl Value {
         List::<Entry>::worst_case(nodes)
     }
 
-    /// Decodes at the schema's ceilings, allocating nothing.
+    /// Decodes at the schema's ceilings, allocating only to grow tables past
+    /// what an earlier decode needed.
     pub fn decode(&mut self, schema: &Schema, root: DeclIx, bytes: Box<[u8]>) -> Result<Node, Refusal> {
         self.decode_index(schema, root, bytes, &mut List::with_capacity(0)).0
     }

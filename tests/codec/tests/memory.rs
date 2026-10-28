@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn a_value_stays_within_its_room_bound_and_decoding_allocates_nothing() {
+    fn a_value_grows_on_first_decode_and_reuses_its_tables_on_the_next() {
         use skein_codec::value::Value;
         use skein_codec_tests::every::{CEILINGS, Every};
         // Every's largest tree has 99 nodes; room also admits every other fixture.
@@ -203,15 +203,16 @@ mod tests {
         let mut value = Value::with_room(ROOM);
         let measured = meter.end();
         let bound = Value::worst_case_heap(ROOM).expect("heap bound");
-        assert!(measured.peak() <= bound, "room stays within its heap bound");
-        assert!(measured.held() <= bound, "entries stay within their heap bound");
+        assert_eq!(measured.peak(), 0, "empty room allocates nothing");
+        assert_eq!(measured.held(), 0, "empty room holds nothing");
 
         let meter = Meter::new();
         meter.start();
         value.decode(&schema, root, wire).expect("full every decodes");
         let measured = meter.end();
-        assert_eq!(measured.peak(), 0, "decoding allocates nothing");
-        assert_eq!(measured.held(), 0, "decoding holds no new allocation");
+        assert!(measured.held() <= bound, "grown entries stay within their room");
+        // Realloc counts both the old and the new buffer at the growth peak.
+        assert!(measured.peak() <= 2 * bound, "first decode growth stays bounded");
 
         // Reuse the allocated room after moving out its previous input.
         let previous = value.take();
