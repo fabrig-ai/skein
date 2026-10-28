@@ -392,6 +392,9 @@ fn events(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> u64 {
                 Down::Send(_) | Down::Finish => panic!("the reader sends nothing"),
             }
         }
+        // Queue buffers belong to the harness and are handed out with its outputs.
+        above = Queue::with_capacity(above.capacity());
+        below = Queue::with_capacity(below.capacity());
         most = most.max(meter.check(step, bound, &what));
         if closed {
             return most;

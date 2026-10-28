@@ -102,6 +102,9 @@ fn read_demand(document: &[u8], limits: Limits, interrupt: Interrupt, first: Req
             Some(other) => panic!("the tokenizer sent {other:?}"),
             None => {}
         }
+        // Empty harness queue buffers are handed out with the tokenizer's outputs.
+        above = Queue::with_capacity(above.capacity());
+        below = Queue::with_capacity(below.capacity());
         most = most.max(meter.check(step, bound, &what));
         steps += 1;
         if closed {
@@ -319,19 +322,27 @@ fn collect_memory_caps(
             collector::down(&mut collector, &env, Request::Collect, &mut above, &mut below);
         }
         let measured = meter.end();
-        most = most.max(measured.peak());
-        assert!(most <= bound, "{most} <= {bound}");
-        if let Some(event) = above.pop() {
+        let collected = if let Some(event) = above.pop() {
             assert!(matches!(event, Event::Collected(_)), "{event:?}");
             drop(event);
+            true
+        } else {
+            match below.pop().expect("unfinished collect demands bytes") {
+                Down::Demand { read, room: 0 } => demand = Some(read),
+                other @ (Down::Demand { .. } | Down::Send(_) | Down::Finish) => panic!("{other:?}"),
+            }
+            false
+        };
+        // Output documents and the harness queue buffers are handed out.
+        assert!(above.is_empty() && below.is_empty());
+        above = Queue::with_capacity(above.capacity());
+        below = Queue::with_capacity(below.capacity());
+        most = most.max(meter.check(measured, bound, &"collector entry point"));
+        if collected {
             let span = skein_heap::Span::start();
             collector.restart();
             assert_eq!(span.end(), skein_heap::Grown { peak: 0, net: 0 }, "restart keeps every buffer");
             return (most, bound);
-        }
-        match below.pop().expect("unfinished collect demands bytes") {
-            Down::Demand { read, room: 0 } => demand = Some(read),
-            other @ (Down::Demand { .. } | Down::Send(_) | Down::Finish) => panic!("{other:?}"),
         }
     }
     panic!("bounded progress")
