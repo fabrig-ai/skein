@@ -601,8 +601,8 @@ impl Checkout {
                 }
             }
             Some(Node::Directory) => {
-                let prefix = [at.as_slice(), b"/"].concat();
-                if self.nodes.keys().any(|name| name.starts_with(&prefix)) {
+                let prefix = if at.is_empty() { Vec::new() } else { [at.as_slice(), b"/"].concat() };
+                if self.nodes.keys().any(|name| name != &at && name.starts_with(&prefix)) {
                     return Err(Failure::NotEmpty);
                 }
             }

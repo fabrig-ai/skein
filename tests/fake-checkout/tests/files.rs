@@ -255,3 +255,13 @@ fn removal_refuses_escapes_links_missing_paths_and_special_nodes_without_mutatio
         assert_eq!(format!("{checkout:?}"), before);
     }
 }
+
+#[test]
+fn removal_at_the_global_root_still_counts_its_children() {
+    let mut checkout = Checkout::new();
+    let root = checkout.root(b"");
+    checkout.write(b"child", b"kept");
+    let before = format!("{checkout:?}");
+    assert_eq!(checkout.remove_current(root, b"", Expect::Absent), Err(Failure::NotEmpty));
+    assert_eq!(format!("{checkout:?}"), before);
+}
