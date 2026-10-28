@@ -562,16 +562,14 @@ impl Peer {
                 self.close(index);
             }
             let connection = &mut self.connections[index];
-            if let Some(up) = connection.plain.pop()
-            {
+            if let Some(up) = connection.plain.pop() {
                 http::up(&mut connection.http, &env, up, &mut connection.events, &mut connection.below);
             }
             if let Some(event) = connection.events.pop() {
                 self.http_event(index, event, now, wall);
             }
             let connection = &mut self.connections[index];
-            if let Some(request) = connection.requests.pop()
-            {
+            if let Some(request) = connection.requests.pop() {
                 http::down(&mut connection.http, &env, request, &mut connection.events, &mut connection.below);
             }
             if let Some(down) = connection.below.pop() {

@@ -45,8 +45,7 @@ impl Peer {
         }
     }
     fn github_post(&mut self, post: Post, now: Time) {
-        if self.github_deliveries.len() == usize::try_from(self.face.limits.connections).expect("u32 fits")
-        {
+        if self.github_deliveries.len() == usize::try_from(self.face.limits.connections).expect("u32 fits") {
             self.github_result(post, 502, Delivery::NoRoom);
             return;
         }

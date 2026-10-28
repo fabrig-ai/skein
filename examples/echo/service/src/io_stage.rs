@@ -1,9 +1,19 @@
 //! The service's io stage: ready work, completions, then deadlines.
 
-use skein_io::{self as io, kernel::{Complete, Submit}};
+use skein_io::{
+    self as io,
+    kernel::{Complete, Submit},
+};
 use skein_lib::{Env, Queue, Time};
 
-pub(crate) fn up(machine: &mut io::Io, env: &Env<io::Limits>, completions: &mut Queue<Complete>, told: &mut Queue<io::Event>, submissions: &mut Queue<Submit>, now: Time) {
+pub(crate) fn up(
+    machine: &mut io::Io,
+    env: &Env<io::Limits>,
+    completions: &mut Queue<Complete>,
+    told: &mut Queue<io::Event>,
+    submissions: &mut Queue<Submit>,
+    now: Time,
+) {
     let limits = env.limits;
     // Each entity is resumed at most once a stage, and each refusal told once.
     let entries = limits.sockets.checked_add(limits.refusals).expect("io's limits fit a u32");
@@ -41,4 +51,3 @@ pub(crate) fn up(machine: &mut io::Io, env: &Env<io::Limits>, completions: &mut 
 fn room(submissions: &Queue<Submit>, max: io::MaxOut) -> bool {
     submissions.room() >= max.submissions
 }
-

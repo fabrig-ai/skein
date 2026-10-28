@@ -1,6 +1,6 @@
 //! The service's step tests (testing-strategy.md, 2.1): `iterate` over a
-//! kernel played by hand, with queues of the smallest size its `MAX_OUT`s
-//! allow, so that a stage that reserved too little fails the test; the
+//! kernel played by hand, with the smallest kernel submission queue and
+//! uncapped layer handoffs; the
 //! startup checks of the limits; and the sum of the worst cases. The
 //! service's worlds, over the simulator and the real ring, are tests/echo.
 

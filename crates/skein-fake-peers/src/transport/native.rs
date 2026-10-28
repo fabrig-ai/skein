@@ -242,7 +242,6 @@ impl Wire {
             && !self.output_room
             && self.output.is_empty()
             && !self.tls.as_ref().is_some_and(|tls| tls.wants_write())
-           
         {
             self.closing = true;
             requests.push(io::Request::Close { entity: self.socket });

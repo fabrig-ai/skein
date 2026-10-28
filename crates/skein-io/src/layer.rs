@@ -529,7 +529,7 @@ pub fn up(io: &mut Io, env: &Env<Limits>, complete: Complete, up: &mut Queue<Eve
     conclude(io, entity, subs);
 }
 
-/// Fires the earliest deadline due at `env.now`, if one is, emitting at most
+/// Fires the earliest deadline due at `env.now`, if one is, submitting at most
 /// [`MAX_OUT_FIRE`](crate::MAX_OUT_FIRE): a graceful close it bounded becomes
 /// an abort; what waited for a retry is submitted again.
 pub fn fire(io: &mut Io, env: &Env<Limits>, up: &mut Queue<Event>, subs: &mut Queue<Submit>) {
@@ -563,7 +563,7 @@ pub fn fire(io: &mut Io, env: &Env<Limits>, up: &mut Queue<Event>, subs: &mut Qu
     conclude(io, id, subs);
 }
 
-/// Takes one request, emitting at most [`MAX_OUT_DOWN`](crate::MAX_OUT_DOWN).
+/// Takes one request, submitting at most [`MAX_OUT_DOWN`](crate::MAX_OUT_DOWN).
 /// The loop hands io a request only while it [`takes`](Io::takes) one.
 ///
 /// A request naming an entity that is gone is dropped: a token travelling
