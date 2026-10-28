@@ -76,9 +76,7 @@ pub fn extra_worst_case(
     if bounds.http.request.max(bounds.http.send) > 32768 || bounds.http.head.max(bounds.http.read) > 32768 {
         return None;
     }
-    let queues = Queue::<client::Event>::worst_case(client::MAX_OUT.above)?
-        .checked_add(Queue::<Down>::worst_case(client::MAX_OUT.below)?)?
-        .checked_add(Queue::<provider::Event>::worst_case(provider::MAX_UP)?)?
+    let queues = Queue::<provider::Event>::worst_case(provider::MAX_UP)?
         .checked_add(u64::from(provider::MAX_UP).checked_mul(provider::head_worst_case(&peer)?)?)?
         .checked_add(Queue::<Down>::worst_case(provider::MAX_DOWN)?)?
         .checked_add(Queue::<fake::Request>::worst_case(fake::MAX_OUT)?)?
@@ -88,9 +86,6 @@ pub fn extra_worst_case(
     // receiver. Queue-owned wire sends can coexist with those deliveries.
     let wire = Intake::worst_case(32768)?
         .checked_mul(4)?
-        .checked_add(
-            u64::from(client::MAX_OUT.below).checked_mul(u64::from(bounds.http.request.max(bounds.http.send)))?,
-        )?
         .checked_add(u64::from(provider::MAX_DOWN).checked_mul(u64::from(peer.http.response.max(peer.http.send)))?)?;
     provider::worst_case(&peer)?
         .checked_add(fake::worst_case(&config())?)?
@@ -443,8 +438,8 @@ impl Exchange {
             fake_env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config() },
             peer_env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: peer_limits },
             credentials,
-            client_above: Queue::with_capacity(client::MAX_OUT.above),
-            client_below: Queue::with_capacity(client::MAX_OUT.below),
+            client_above: Queue::uncapped(),
+            client_below: Queue::uncapped(),
             peer_above: Queue::with_capacity(provider::MAX_UP),
             peer_below: Queue::with_capacity(provider::MAX_DOWN),
             replies: Queue::with_capacity(fake::MAX_OUT),

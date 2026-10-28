@@ -1,6 +1,6 @@
 //! One LLM exchange over a caller-owned plaintext stream.
 //!
-//! Reserve [`MAX_OUT`] before each entry point and drain [`resume`] while
+//! Use uncapped output queues and drain [`resume`] while
 //! [`Client::has_work`] holds. `Next` demands one data event; terminal faults
 //! need no demand. On `Close`, close the real stream and acknowledge its
 //! settlement with [`closed`]. The caller owns deadlines and retry policy.
@@ -12,7 +12,7 @@ use alloc::boxed::Box;
 use core::mem;
 use core::mem::size_of;
 
-use skein_http::{Header, MaxOut, Method, client as http, sse};
+use skein_http::{Header, Method, client as http, sse};
 use skein_json::{Document, collector, tokenizer};
 use skein_lib::stream::{Down, Read, Up};
 use skein_lib::{Decimal, Env, List, Queue, Token, Writer, bytes};
@@ -175,11 +175,6 @@ pub fn request_head(endpoint: &Endpoint, credential: &CredentialLimits, limits: 
 }
 
 const ROUTES: u32 = 8;
-
-/// Each entry point's bound. Buffered output requires another `resume`.
-pub const MAX_OUT: MaxOut = MaxOut { above: 4, below: 20 };
-pub const UP_MAX_OUT: MaxOut = MAX_OUT;
-pub const DOWN_MAX_OUT: MaxOut = MAX_OUT;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Request {
@@ -759,9 +754,6 @@ pub fn resume(client: &mut Client, env: &Env<Limits>, above: &mut Queue<Event>, 
         return;
     }
     for _route in 0..ROUTES {
-        if below.room() < 2 || above.room() < 3 {
-            break;
-        }
         if !client.outputs.is_empty() {
             if !client.asked {
                 break;

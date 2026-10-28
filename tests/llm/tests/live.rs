@@ -158,8 +158,8 @@ impl Connection {
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
             wire: StreamOwned::new(tls, socket),
             intake: Intake::with_capacity(skein_http::client::largest_read(&limits.http)),
-            above: Queue::with_capacity(client::MAX_OUT.above),
-            below: Queue::with_capacity(client::MAX_OUT.below),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             demand: None,
             grant: 0,
         }
