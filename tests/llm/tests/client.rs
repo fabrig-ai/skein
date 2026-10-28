@@ -1235,3 +1235,43 @@ fn invalid_tool_identity_fails_before_a_start_in_both_dialects() {
         }
     }
 }
+
+#[test]
+fn a_paused_owner_holds_the_client_s_reads_below_however_many_events_wait() {
+    use skein_lib::stream::Read;
+    use skein_llm_world::{TINY_DELTAS, tiny_delta_response};
+    // Many more owner turns than the client's routing pass takes.
+    const PAUSE_TURNS: usize = 1024;
+    const FIRST_DATUM: usize = 1;
+    const FIRST_DELTA: &[u8] = b"000";
+    const PROGRESS_TURNS: usize = 100_000;
+    let mut world = World::new(call(1), limits(), tiny_delta_response(), 23);
+    world.request(client::Request::Start);
+    world.request(client::Request::Next);
+    for _ in 0..PROGRESS_TURNS {
+        world.tick(false);
+        if !world.seen.is_empty() {
+            break;
+        }
+    }
+    let reads = world.read_demands;
+    for _ in 0..PAUSE_TURNS {
+        world.tick(false);
+        assert_eq!(world.read_demands, reads, "no lower read is issued without Next");
+        assert!(world.demand.is_none_or(|(read, _)| read == Read::Nothing));
+        assert_eq!(world.seen.len(), FIRST_DATUM, "one demanded datum throughout the pause");
+    }
+    assert!(matches!(world.seen.as_slice(), [client::Event::Delta { delta: Delta::Text { text, .. }, .. }] if text.as_ref() == FIRST_DELTA));
+    world.run();
+    let deltas: Vec<_> = world.seen.iter().filter_map(|event| match event {
+        client::Event::Delta { delta: Delta::Text { text, .. }, .. } => Some(text.as_ref()),
+        client::Event::Delta { .. } | client::Event::Block { .. } | client::Event::Completed { .. }
+        | client::Event::Failed { .. } | client::Event::Cancelled { .. }
+        | client::Event::Reusable | client::Event::Close | client::Event::Closed => None,
+    }).collect();
+    let expected: Vec<_> = (0..TINY_DELTAS).map(|index| format!("{index:03}").into_bytes()).collect();
+    assert_eq!(deltas.len(), TINY_DELTAS);
+    assert_eq!(deltas, expected, "every tiny delta arrives once in provider order");
+    world.assert_once();
+    assert!(world.seen.iter().any(|event| matches!(event, client::Event::Completed { .. })));
+}

@@ -83,7 +83,7 @@ fn drain(queue: &mut Queue<Output>, trace: &mut Vec<Output>) {
 }
 fn stream(events: &[Event], limits: &Limits) -> Vec<Output> {
     let mut decoder = StreamDecoder::new(crate::Provider::OpenAiCodex, limits);
-    let mut out = Queue::with_capacity(crate::openai::MAX_OUT);
+    let mut out = Queue::uncapped();
     let mut trace = Vec::new();
     for event in events {
         decoder.event(event.clone(), limits, Wall::EPOCH, &mut out);
@@ -526,7 +526,7 @@ fn archived_real_provider_requests_and_answers_match_known_completions() {
         assert!(!request.input.is_empty());
         let captured = dechunk(&fixture(scenario, "response.sse"));
         let mut decoder = StreamDecoder::new(crate::Provider::OpenAiCodex, &LIMITS);
-        let mut out = Queue::with_capacity(crate::openai::MAX_OUT);
+        let mut out = Queue::uncapped();
         let mut trace = Vec::new();
         for line in core::str::from_utf8(&captured).unwrap().lines() {
             if let Some(data) = line.strip_prefix("data: ") {
@@ -604,7 +604,7 @@ fn archived_real_provider_requests_and_answers_match_known_completions() {
 #[test]
 fn out_of_order_done_waits_for_order_and_terminal_waits_for_ready_parts() {
     let mut decoder = StreamDecoder::new(crate::Provider::OpenAiCodex, &LIMITS);
-    let mut out = Queue::with_capacity(crate::openai::MAX_OUT);
+    let mut out = Queue::uncapped();
     let mut trace = Vec::new();
     for index in 0..3_u32 {
         decoder.event(
@@ -676,7 +676,7 @@ fn incomplete_and_refused_terminals_override_tools_and_absolute_reset_uses_wall(
         assert_eq!(stream(&events, &LIMITS).last(), Some(&Output::Completed { stop, usage: Usage::NONE }));
     }
     let mut decoder = StreamDecoder::new(crate::Provider::OpenAiCodex, &LIMITS);
-    let mut out = Queue::with_capacity(crate::openai::MAX_OUT);
+    let mut out = Queue::uncapped();
     decoder.event(
         Event::Failed {
             error: ProviderError {
@@ -1163,7 +1163,7 @@ fn reasoning_drop_is_opt_in_at_one_over_and_never_drops_unknown_items() {
             let mut bounds = LIMITS;
             bounds.reasoning = cap;
             let mut decoder = StreamDecoder::with_reasoning_drop(crate::Provider::OpenAiCodex, &bounds, enabled);
-            let mut out = Queue::with_capacity(crate::openai::MAX_OUT);
+            let mut out = Queue::uncapped();
             let mut trace = Vec::new();
             for event in [
                 Event::Added { index: 0, id: owned(b"r"), kind: owned(kind) },
@@ -1604,7 +1604,7 @@ fn an_opted_in_drop_interrupts_a_retained_reasoning_run_without_losing_it() {
     };
     events.push(Event::Completed { stop: Stop::EndTurn, usage: Usage::NONE });
     let mut decoder = StreamDecoder::with_reasoning_drop(crate::Provider::OpenAiCodex, &limits, true);
-    let mut out = Queue::with_capacity(crate::openai::MAX_OUT);
+    let mut out = Queue::uncapped();
     let mut trace = Vec::new();
     for event in events {
         decoder.event(event, &limits, Wall::EPOCH, &mut out);
@@ -1677,7 +1677,7 @@ fn initial_arguments_and_a_preceding_block_fit_three_outputs() {
         },
     ];
     let mut decoder = StreamDecoder::new(crate::Provider::OpenAiCodex, &LIMITS);
-    let mut out = Queue::with_capacity(super::MAX_OUT);
+    let mut out = Queue::uncapped();
     for (index, event) in events.into_iter().enumerate() {
         decoder.event(event, &LIMITS, Wall::EPOCH, &mut out);
         if index < 2 {

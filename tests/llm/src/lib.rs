@@ -125,6 +125,28 @@ pub fn text_response(chunked: bool) -> Vec<u8> {
     )
 }
 
+/// A long burst of distinct three-byte text deltas for demand-pause stories.
+pub const TINY_DELTAS: usize = 256;
+
+#[must_use]
+pub fn tiny_delta_response() -> Vec<u8> {
+    let mut documents = vec![TEXT_ADDED.to_owned()];
+    let mut text = String::new();
+    for index in 0..TINY_DELTAS {
+        let delta = format!("{index:03}");
+        text.push_str(&delta);
+        documents.push(format!(
+            r#"{{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"{delta}"}}"#
+        ));
+    }
+    documents.push(format!(
+        r#"{{"type":"response.output_item.done","output_index":0,"item":{{"id":"msg_1","type":"message","content":[{{"type":"output_text","text":"{text}"}}]}}}}"#
+    ));
+    documents.push(TERMINAL.to_owned());
+    let documents: Vec<_> = documents.iter().map(String::as_str).collect();
+    response(200, "Content-Type: text/event-stream\r\n", &events(&documents), false)
+}
+
 /// Queues are deliberately only as large as the public entry-point bound.
 #[expect(missing_debug_implementations, reason = "Client intentionally hides credential-bearing state")]
 pub struct World {
@@ -135,6 +157,8 @@ pub struct World {
     pub demand: Option<(Read, u32)>,
     pub grants: u32,
     pub source_at: usize,
+    /// Read demands observed at the lower stream boundary.
+    pub read_demands: usize,
     source: Vec<u8>,
     intake: Intake,
     above: Queue<client::Event>,
@@ -173,6 +197,7 @@ impl World {
             demand: None,
             grants: 0,
             source_at: 0,
+            read_demands: 0,
             source,
             intake: Intake::with_capacity(http::largest_read(&limits.http)),
             above: Queue::with_capacity(client::MAX_OUT.above),
@@ -231,6 +256,9 @@ impl World {
                 Down::Demand { read, room } => {
                     assert!(self.demand.is_none(), "a demand is answered before its replacement");
                     assert_eq!(self.grants, 0, "a send grant is spent before another demand");
+                    if read != Read::Nothing {
+                        self.read_demands += 1;
+                    }
                     self.demand = Some((read, room));
                 }
                 Down::Send(data) => {
