@@ -78,7 +78,7 @@ impl Client {
             component: None,
             address: None,
             transport,
-            io_events: Queue::with_capacity(ROOM),
+            io_events: Queue::uncapped(),
             events: Queue::uncapped(),
             requests: Queue::uncapped(),
             submissions: Queue::with_capacity(ROOM),
@@ -154,20 +154,20 @@ impl Host for Client {
         let io_env = Env { now, wall, limits: self.limits.io };
         let env = Env { now, wall, limits: self.limits };
         for _ in 0..ROOM {
-            if self.io_events.room() < 3 || self.submissions.room() < 2 || !self.io.is_ready() {
+            if self.submissions.room() < 2 || !self.io.is_ready() {
                 break;
             }
             io::resume(&mut self.io, &io_env, &mut self.io_events, &mut self.submissions);
         }
         for _ in 0..ROOM {
-            if self.io_events.room() < 3 || self.submissions.room() < 2 {
+            if self.submissions.room() < 2 {
                 break;
             }
             let Some(complete) = self.completions.pop() else { break };
             io::up(&mut self.io, &io_env, complete, &mut self.io_events, &mut self.submissions);
         }
         for _ in 0..ROOM {
-            if self.io_events.room() < 3 || self.submissions.room() < 2 || !self.io.is_due(now) {
+            if self.submissions.room() < 2 || !self.io.is_due(now) {
                 break;
             }
             io::fire(&mut self.io, &io_env, &mut self.io_events, &mut self.submissions);

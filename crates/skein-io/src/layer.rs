@@ -394,7 +394,7 @@ impl Ready {
     }
 }
 
-/// Takes one entry of the ready list, emitting at most
+/// Takes one entry of the ready list, submitting at most
 /// [`MAX_OUT_RESUME`](crate::MAX_OUT_RESUME): a refusal is told; a connect is
 /// told `Connecting`; an open stream is delivered what its demand asked for;
 /// an idle listener arms its accept.
@@ -423,7 +423,7 @@ pub fn resume(io: &mut Io, env: &Env<Limits>, up: &mut Queue<Event>, subs: &mut 
     }
 }
 
-/// Takes one completion, emitting at most [`MAX_OUT_UP`](crate::MAX_OUT_UP).
+/// Takes one completion, submitting at most [`MAX_OUT_UP`](crate::MAX_OUT_UP).
 /// The loop hands io completions only once its ready list is empty.
 ///
 /// A completion names an operation in flight, and its entity outlives it: a

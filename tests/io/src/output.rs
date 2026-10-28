@@ -126,7 +126,7 @@ impl Driver {
             io: Io::new(&limits),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
             subs: Queue::with_capacity(64),
-            up: Queue::with_capacity(64),
+            up: Queue::uncapped(),
             requests: Queue::with_capacity(64),
             completions: Queue::with_capacity(64),
             client: Peer::new(),
@@ -143,16 +143,15 @@ impl Driver {
     }
 
     fn room(&self, max: MaxOut) -> bool {
-        self.up.room() >= max.events && self.subs.room() >= max.submissions
+        self.subs.room() >= max.submissions
     }
 
-    fn mark(&self) -> (u32, u32) {
-        (self.up.len(), self.subs.len())
+    fn mark(&self) -> u32 {
+        self.subs.len()
     }
 
-    fn within(&self, before: (u32, u32), max: MaxOut) {
-        assert!(self.up.len().checked_sub(before.0).expect("events only append") <= max.events);
-        assert!(self.subs.len().checked_sub(before.1).expect("submissions only append") <= max.submissions);
+    fn within(&self, before: u32, max: MaxOut) {
+        assert!(self.subs.len().checked_sub(before).expect("submissions only append") <= max.submissions);
     }
 
     fn request_read(&mut self, owner: Token, bytes: u32) {

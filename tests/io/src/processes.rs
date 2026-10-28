@@ -56,14 +56,13 @@ pub struct Process {
 }
 
 impl Process {
-    fn mark(&self, max: MaxOut) -> (u32, u32) {
-        assert!(self.events.room() >= max.events && self.submissions.room() >= max.submissions);
-        (self.events.len(), self.submissions.len())
+    fn mark(&self, max: MaxOut) -> u32 {
+        assert!(self.submissions.room() >= max.submissions);
+        self.submissions.len()
     }
 
-    fn within(&self, before: (u32, u32), max: MaxOut) {
-        assert!(self.events.len().checked_sub(before.0).expect("events append") <= max.events);
-        assert!(self.submissions.len().checked_sub(before.1).expect("submissions append") <= max.submissions);
+    fn within(&self, before: u32, max: MaxOut) {
+        assert!(self.submissions.len().checked_sub(before).expect("submissions append") <= max.submissions);
     }
 
     /// Starts the actual owner; `real` requires the fixture's complete readiness line.
@@ -107,7 +106,7 @@ impl Process {
             output_deliveries: 0,
             completions: Queue::with_capacity(32),
             submissions: Queue::with_capacity(32),
-            events: Queue::with_capacity(32),
+            events: Queue::uncapped(),
             requests,
         }
     }

@@ -11,8 +11,8 @@
 //! # Driving it
 //!
 //! An [`Io`] made from its [`Limits`], and four entry points, called by the
-//! service's loop (programming-model.md, section 2), each emitting at most
-//! its `MAX_OUT` into the queues the loop reserved room in:
+//! service's loop (programming-model.md, section 2). The loop reserves each
+//! entry point's `MAX_OUT` submissions at the kernel edge; events are uncapped:
 //!
 //! - in the up pass, [`resume`] while [`Io::is_ready`], then [`up`] for each
 //!   completion the kernel handed back, then [`fire`] while a close deadline

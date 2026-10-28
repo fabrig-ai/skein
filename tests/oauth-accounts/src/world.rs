@@ -319,7 +319,7 @@ impl Client {
             io: io::Io::new(&limits.io),
             component: None,
             limits: *limits,
-            events: Queue::with_capacity(room),
+            events: Queue::uncapped(),
             requests: Queue::with_capacity(room),
             files: Queue::with_capacity(room),
             file_driver: None,
@@ -673,13 +673,13 @@ impl Host for Client {
         let io_env = Env { now, wall, limits: self.limits.io };
         self.private_io(&env);
         for _ in 0..ROOM {
-            if self.events.room() < 3 || self.submissions.room() < 2 || !self.io.is_ready() {
+            if self.submissions.room() < 2 || !self.io.is_ready() {
                 break;
             }
             io::resume(&mut self.io, &io_env, &mut self.events, &mut self.submissions);
         }
         for _ in 0..ROOM {
-            if self.events.room() < 3 || self.submissions.room() < 2 {
+            if self.submissions.room() < 2 {
                 break;
             }
             let Some(complete) = self.completions.pop() else { break };
@@ -690,7 +690,7 @@ impl Host for Client {
             }
         }
         for _ in 0..ROOM {
-            if self.events.room() < 3 || self.submissions.room() < 2 || !self.io.is_due(now) {
+            if self.submissions.room() < 2 || !self.io.is_due(now) {
                 break;
             }
             io::fire(&mut self.io, &io_env, &mut self.events, &mut self.submissions);

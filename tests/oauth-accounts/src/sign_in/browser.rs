@@ -115,7 +115,7 @@ impl Exchange {
         }
         Self {
             machine: http::Client::new(&http_limits()),
-            events: Queue::with_capacity(ROOM),
+            events: Queue::uncapped(),
             requests,
             below: Queue::with_capacity(ROOM),
             body,
@@ -238,7 +238,7 @@ impl Browser {
         }
         Self {
             io: io::Io::new(&io_limits()),
-            events: Queue::with_capacity(ROOM),
+            events: Queue::uncapped(),
             requests,
             submissions: Queue::with_capacity(ROOM),
             completions: Queue::with_capacity(ROOM),
@@ -352,20 +352,20 @@ impl Host for Browser {
     fn iterate(&mut self, now: Time, wall: Wall) {
         let env = Env { now, wall, limits: io_limits() };
         for _ in 0..ROOM {
-            if self.events.room() < 3 || self.submissions.room() < 2 || !self.io.is_ready() {
+            if self.submissions.room() < 2 || !self.io.is_ready() {
                 break;
             }
             io::resume(&mut self.io, &env, &mut self.events, &mut self.submissions);
         }
         for _ in 0..ROOM {
-            if self.events.room() < 3 || self.submissions.room() < 2 {
+            if self.submissions.room() < 2 {
                 break;
             }
             let Some(complete) = self.completions.pop() else { break };
             io::up(&mut self.io, &env, complete, &mut self.events, &mut self.submissions);
         }
         for _ in 0..ROOM {
-            if self.events.room() < 3 || self.submissions.room() < 2 || !self.io.is_due(now) {
+            if self.submissions.room() < 2 || !self.io.is_due(now) {
                 break;
             }
             io::fire(&mut self.io, &env, &mut self.events, &mut self.submissions);

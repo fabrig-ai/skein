@@ -1,8 +1,8 @@
 //! io's step tests (testing-strategy.md, 2.1): the kernel records' rules,
 //! and the cells of the listener's and the stream's transition tables (io.md,
 //! 3.2 and 3.3) driven by hand, refusals at full slabs, and stale tokens.
-//! Every entry point is called with exactly its `MAX_OUT` of room, so one that
-//! emits more fails the test.
+//! Every entry point gets its declared kernel submission room; events are
+//! collected without a cap.
 
 #![expect(clippy::disallowed_types, reason = "what a step emitted is collected in Vecs, for the test to look at")]
 
@@ -234,7 +234,7 @@ impl Rig {
     /// The completion of `submit`, handed back with `result`.
     pub(crate) fn complete(&mut self, submit: Submit, result: Result<Done, Error>) -> Out {
         assert!(!self.io.is_ready(), "the loop drains the ready list before it hands io completions");
-        let mut up = Queue::with_capacity(MAX_OUT_UP.events);
+        let mut up = Queue::uncapped();
         let mut subs = Queue::with_capacity(MAX_OUT_UP.submissions);
         let complete = Complete { op: submit.op, kind: submit.kind, result };
         crate::up(&mut self.io, &self.env, complete, &mut up, &mut subs);
@@ -248,7 +248,7 @@ impl Rig {
         self.io.reclaim();
         let mut out = Out::new();
         while self.io.is_ready() {
-            let mut up = Queue::with_capacity(MAX_OUT_RESUME.events);
+            let mut up = Queue::uncapped();
             let mut subs = Queue::with_capacity(MAX_OUT_RESUME.submissions);
             crate::resume(&mut self.io, &self.env, &mut up, &mut subs);
             out.drain(&mut up, &mut subs);
@@ -261,7 +261,7 @@ impl Rig {
         self.env.now = now;
         let mut out = Out::new();
         while self.io.is_due(now) {
-            let mut up = Queue::with_capacity(MAX_OUT_FIRE.events);
+            let mut up = Queue::uncapped();
             let mut subs = Queue::with_capacity(MAX_OUT_FIRE.submissions);
             crate::fire(&mut self.io, &self.env, &mut up, &mut subs);
             out.drain(&mut up, &mut subs);
