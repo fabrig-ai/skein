@@ -32,6 +32,8 @@
 
 extern crate alloc;
 
+mod io_stage;
+
 #[cfg(test)]
 mod tests;
 
@@ -352,44 +354,7 @@ pub fn iterate(svc: &mut Service, now: Time, wall: Wall) {
 /// once the ready list is empty, so that what the down pass made is told
 /// first: io.md, 2), then its deadlines.
 fn io_up(svc: &mut Service, now: Time) {
-    let limits = svc.io_env.limits;
-    // Each entity is resumed at most once a stage, and each refusal told once.
-    let entries = limits.sockets.checked_add(limits.refusals).expect("io's limits fit a u32");
-    for _ in 0..entries {
-        if !svc.io.is_ready() || !io_room(svc, io::MAX_OUT_RESUME) {
-            break;
-        }
-        let marks = io_marks(svc);
-        io::resume(&mut svc.io, &svc.io_env, &mut svc.told, &mut svc.submissions);
-        io_within(svc, marks, io::MAX_OUT_RESUME);
-    }
-    if svc.io.is_ready() {
-        return;
-    }
-    for _ in 0..svc.completions.capacity() {
-        if !io_room(svc, io::MAX_OUT_UP) {
-            break;
-        }
-        let Some(complete) = svc.completions.pop() else {
-            break;
-        };
-        let marks = io_marks(svc);
-        io::up(&mut svc.io, &svc.io_env, complete, &mut svc.told, &mut svc.submissions);
-        io_within(svc, marks, io::MAX_OUT_UP);
-    }
-    if !svc.completions.is_empty() {
-        return;
-    }
-    // A close's deadline and a retry's, per socket.
-    let timers = limits.sockets.checked_mul(2).expect("io's limits fit a u32");
-    for _ in 0..timers {
-        if !svc.io.is_due(now) || !io_room(svc, io::MAX_OUT_FIRE) {
-            break;
-        }
-        let marks = io_marks(svc);
-        io::fire(&mut svc.io, &svc.io_env, &mut svc.told, &mut svc.submissions);
-        io_within(svc, marks, io::MAX_OUT_FIRE);
-    }
+    io_stage::up(&mut svc.io, &svc.io_env, &mut svc.completions, &mut svc.told, &mut svc.submissions, now);
 }
 
 /// The protocol layer's stage of the up pass: its ready list, then what io
