@@ -162,7 +162,7 @@ impl Service {
     ///
     /// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
     pub fn new(config: Config, limits: &Limits) -> Result<Service, Error> {
-        if worst_case(limits).is_none()
+        if !valid(limits)
             || config.path.first() != Some(&b'/')
             || config.echo.attribution_bytes > limits.documents.openai.retained
         {
@@ -318,7 +318,7 @@ impl Server {
     ///
     /// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
     pub fn new(owner: Token, limits: &Limits) -> Result<Server, Error> {
-        if worst_case(limits).is_none() {
+        if !valid(limits) {
             return Err(Error::Limits);
         }
         let request = room(limits).ok_or(Error::Limits)?;
@@ -1026,18 +1026,37 @@ fn room(limits: &Limits) -> Option<u32> {
     u32::try_from(skein_http::gzip::bound(usize::try_from(request).ok()?)?).ok()
 }
 
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// HTTP and SSE fit their adjacent streams, native documents and gzip fit,
+/// and each text piece can have a preceding hold in the pending queue.
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    let request = limits.documents.openai.request.max(limits.documents.anthropic.request);
+    http::valid(&limits.http)
+        && limits.http.body >= u64::from(request)
+        && limits.sse.chunk > 0
+        && limits.sse.chunk <= limits.http.send
+        && limits.documents.model_ceiling > 0
+        && limits.documents.openai.answer.max(limits.documents.anthropic.answer).checked_mul(2).is_some()
+        && room(limits).is_some()
+        && document_bounds(limits).is_some()
+}
+
+fn document_bounds(limits: &Limits) -> Option<(u64, u64)> {
+    Some((openai::worst_case(&limits.documents.openai)?, anthropic::worst_case(&limits.documents.anthropic)?))
+}
+
 /// Checked maximum owned bytes under limits, or `None` when counters or containers cannot be bounded.
 ///
 /// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
-    let request = limits.documents.openai.request.max(limits.documents.anthropic.request);
-    if limits.http.body < u64::from(request)
-        || limits.sse.chunk > limits.http.send
-        || limits.documents.model_ceiling == 0
-    {
+    if !valid(limits) {
         return None;
     }
+    let (openai, anthropic) = document_bounds(limits)?;
+    let request = limits.documents.openai.request.max(limits.documents.anthropic.request);
     u64::try_from(size_of::<Server>())
         .ok()?
         .checked_add(u64::try_from(size_of::<Service>()).ok()?)?
@@ -1046,8 +1065,8 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         .checked_add(http::worst_case(&limits.http)?)?
         .checked_add(sse::worst_case(&limits.sse)?)?
         .checked_add(pieces::worst_case(&limits.documents)?)?
-        .checked_add(openai::worst_case(&limits.documents.openai)?)?
-        .checked_add(anthropic::worst_case(&limits.documents.anthropic)?)?
+        .checked_add(openai)?
+        .checked_add(anthropic)?
         // Configured echoes retain this raw request in the existing body List;
         // native codec worst_case above prices transient decoded metadata and entry scratch.
         .checked_add(List::<u8>::worst_case(room(limits)?)?)?

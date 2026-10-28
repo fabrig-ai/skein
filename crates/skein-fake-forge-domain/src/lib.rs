@@ -77,7 +77,7 @@ pub use creation::{create_file, create_repository};
 pub use domain::{Config, Domain, MAX_OUT, Metadata, Room, Skew, Tally, fire, step, step_admitted, time};
 pub use faults::{Rate, RateDenied, RateKey, rate};
 pub use git::{Object, Signature, Tree};
-pub use limits::{Limits, worst_case};
+pub use limits::{Limits, valid, worst_case};
 pub use object::object_bytes;
 pub use observe::{Branches, Observation, Operation};
 pub use scenario::{

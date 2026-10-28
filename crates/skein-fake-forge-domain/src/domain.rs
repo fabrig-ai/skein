@@ -255,7 +255,7 @@ impl Domain {
     #[must_use]
     pub fn new(config: &Config, seed: u64) -> Domain {
         let limits = &config.limits;
-        assert!(limits::worst_case(limits).is_some(), "the limits fit");
+        assert!(limits::valid(limits), "the limits fit");
         assert!(
             limits.repositories > 0 && limits.users > 0 && limits.items > 0 && limits.commits > 0,
             "a forge holds something"

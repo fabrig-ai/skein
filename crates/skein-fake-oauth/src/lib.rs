@@ -34,8 +34,34 @@ pub struct Limits {
     pub carried: u32,
 }
 
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// Codes and rotations are nonempty, request-field slots fit u32, JSON input
+/// has a representable end probe, and saved-token fields fit their schema.
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    let document = &limits.document;
+    let record = skein_oauth::v3::Limits {
+        saved_token_access_token: document.token_bytes,
+        saved_token_refresh_token_some: document.token_bytes,
+        saved_token_metadata_some: document.token_bytes,
+        saved_token_issued_client_id_some: document.issued_client_bytes,
+        saved_token_granted_scopes_some: document.granted_bytes,
+        saved_token_subject_some: document.subject_bytes,
+        saved_token_id_token_some: document.id_token_bytes,
+    };
+    limits.codes > 0
+        && limits.rotations > 0
+        && limits.carried.checked_add(10).is_some()
+        && document.document_bytes < u32::MAX
+        && skein_oauth::v3::check_limits(&record).is_ok()
+}
+
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
+    if !valid(limits) {
+        return None;
+    }
     let fields = 10_u32.checked_add(limits.carried)?;
     skein_oauth::worst_case(&limits.document)?
         .checked_add(terms::worst_case(limits)?)?
@@ -169,9 +195,7 @@ impl Issuer {
             Some(value) => value.len() > usize::try_from(limits.document.client_bytes).expect("u32 fits"),
             None => false,
         };
-        if worst_case(&limits).is_none()
-            || limits.codes == 0
-            || limits.rotations == 0
+        if !valid(&limits)
             || config.client_id.is_empty()
             || config.refresh_token.is_empty()
             || config.client_id.len() > usize::try_from(limits.document.client_bytes).expect("u32 fits")
