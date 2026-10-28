@@ -7,7 +7,7 @@ use skein_io::{Event as IoEvent, Request as IoRequest};
 use skein_lib::stream::{Down, Up};
 use skein_lib::{Duration, Env, List, Queue, Time, Token};
 use skein_llm::{Failure, Phase, client::Evidence};
-use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, MAX_OUT, Request};
+use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, Request};
 use skein_llm_connection_world::plaintext::Wire;
 use skein_tls_world::{drive::Wire as TlsWire, pki, server::Server};
 use skein_world::domain::assert_replays;
@@ -124,8 +124,8 @@ impl World {
             .expect("one endpoint");
         let mut world = World {
             component: Component::new(endpoints, &limits()).expect("component"),
-            up: Queue::with_capacity(MAX_OUT.above),
-            io: Queue::with_capacity(MAX_OUT.below),
+            up: Queue::uncapped(),
+            io: Queue::uncapped(),
             wire: if handshake {
                 TransportWire::Handshake(Box::new(TlsWire::new(Server::new(pki::Server::plain().config()))))
             } else {

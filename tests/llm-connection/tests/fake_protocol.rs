@@ -11,7 +11,7 @@ use skein_lib::Wall;
 use skein_lib::stream::{Down, Read, Up};
 use skein_lib::{Duration, Env, Intake, List, Queue, Time, Token};
 use skein_llm::{Credential, Provider};
-use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, MAX_OUT, Request};
+use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, Request};
 use skein_llm_connection_world::plaintext::Wire;
 use skein_world::domain::assert_replays;
 
@@ -100,8 +100,8 @@ fn run(dialect: Provider, seed: u64) -> (Vec<String>, (u32, u32)) {
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
     let peer_env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: peer_limits };
     let fake_env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: fake_limits };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let mut peer_up = Queue::with_capacity(provider::MAX_UP);
     let mut peer_down = Queue::with_capacity(provider::MAX_DOWN);
     let mut replies = Queue::with_capacity(fake::MAX_OUT);
