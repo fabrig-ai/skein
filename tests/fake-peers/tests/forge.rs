@@ -528,3 +528,33 @@ fn tls_admission_reserves_the_longest_https_origin() {
         assert_eq!(peer.tls(), expected);
     }
 }
+
+#[test]
+fn pipelined_requests_reach_the_forgejo_host_one_head_each_in_wire_order() {
+    use skein_fake_peers::forge::Observation;
+    // Six local refusals exercise repeated reuse of the resume pass's head slot.
+    const TARGETS: [&str; 6] =
+        ["/missing-one", "/missing-two", "/missing-three", "/missing-four", "/missing-five", "/missing-six"];
+    let mut world = World::new();
+    world.bind();
+    let fd = world.open();
+    let mut wire = Vec::new();
+    for (at, target) in TARGETS.iter().enumerate() {
+        let connection = if at + 1 == TARGETS.len() { "close" } else { "keep-alive" };
+        wire.extend(format!("GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: {connection}\r\n\r\n").bytes());
+    }
+    world.send(fd, &wire);
+    let _replies = world.response(fd);
+    let heads = world
+        .peer
+        .observations()
+        .iter()
+        .filter_map(|record| match record {
+            Observation::Head { call, .. } => Some(call.target.as_ref()),
+            Observation::Connection { .. } | Observation::Call { .. } | Observation::Delivery { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(heads, TARGETS.iter().map(|target| target.as_bytes()).collect::<Vec<_>>());
+    world.close(fd);
+    world.settle();
+}
