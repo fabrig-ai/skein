@@ -168,12 +168,6 @@ pub struct Counts {
     pub skipped: u64,
 }
 
-/// One event above and one stream request below per entry point.
-pub const UP_MAX_OUT: json::MaxOut = json::MaxOut { above: 1, below: 1 };
-
-/// One event above and one stream request below per entry point.
-pub const DOWN_MAX_OUT: json::MaxOut = json::MaxOut { above: 1, below: 1 };
-
 /// The reusable state of one collector, owned by its connection.
 #[derive(Debug)]
 pub struct Collector {
@@ -230,7 +224,7 @@ impl Collector {
             tagged::projection_limits(limits, &plan.tags).expect("the filter's projection capacities fit u32");
         Ok(Collector {
             tokenizer: Tokenizer::new(&limits.tokenizer),
-            events: Queue::with_capacity(1),
+            events: Queue::uncapped(),
             walk: Stack::with_capacity(limits.tokenizer.depth),
             document: Builder::new(capacity),
             state: State::Idle,
