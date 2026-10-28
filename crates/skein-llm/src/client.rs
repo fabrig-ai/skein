@@ -557,15 +557,15 @@ impl Client {
             sse_events: Queue::with_capacity(SSE_EVENTS),
             outputs: Queue::with_capacity(dialect::MAX_OUT),
             requests: Queue::with_capacity(REQUESTS),
-            sse_below: Queue::with_capacity(1),
+            sse_below: Queue::uncapped(),
             collector: collector::Collector::new(
                 dialect::event_filter(provider),
                 &filter::collector(limits),
                 &filter::caps(limits),
             )
             .expect("the dialect's static filter is unambiguous"),
-            collector_events: Queue::with_capacity(1),
-            collector_below: Queue::with_capacity(1),
+            collector_events: Queue::uncapped(),
+            collector_below: Queue::uncapped(),
             event_data: EventData::Idle,
             error: List::with_capacity(limits.error_bytes),
             status: 0,

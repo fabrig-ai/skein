@@ -46,8 +46,8 @@ impl Json {
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: bounded };
         let mut machine = collector::Collector::new(collector::Filter { root: collector::Keep::Value }, &bounded, &[])
             .expect("valid filter");
-        let mut above = Queue::with_capacity(1);
-        let mut below = Queue::with_capacity(1);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         collector::down(&mut machine, &env, collector::Request::Collect, &mut above, &mut below);
         let mut at: usize = 0;
         let ticks = input.len().saturating_mul(4).saturating_add(16);

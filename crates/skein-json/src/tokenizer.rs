@@ -130,8 +130,8 @@ pub fn validate(input: &[u8], limits: &Limits) -> Result<(), Error> {
     let bounded = Limits { string: 0, ..*limits };
     let env = Env { now: skein_lib::Time::ZERO, wall: skein_lib::Wall::EPOCH, limits: bounded };
     let mut machine = Tokenizer::new(&bounded);
-    let mut above = Queue::with_capacity(1);
-    let mut below = Queue::with_capacity(1);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     down(&mut machine, &env, Request::Skip, &mut above, &mut below);
     let mut at = 0_usize;
     let ticks = input.len().saturating_mul(4).saturating_add(16);
