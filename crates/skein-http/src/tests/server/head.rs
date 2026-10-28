@@ -51,16 +51,11 @@ fn framed(head: &[u8]) -> Body {
 }
 
 #[test]
-fn limits_that_cannot_be_honoured_have_no_worst_case() {
-    assert!(crate::server::worst_case(&LIMITS).is_some());
-    assert_eq!(crate::server::worst_case(&Limits { head: 1, ..LIMITS }), None);
-    assert_eq!(crate::server::worst_case(&Limits { read: 0, ..LIMITS }), None, "a read of nothing");
-    assert_eq!(crate::server::worst_case(&Limits { send: 0, ..LIMITS }), None, "room for nothing of a body");
-    assert_eq!(crate::server::worst_case(&Limits { response: 122, ..LIMITS }), None, "no room for a 431's answer");
-    assert!(crate::server::worst_case(&Limits { response: 123, ..LIMITS }).is_some(), "room for every answer");
-    assert_eq!(crate::server::worst_case(&Limits { send: u32::MAX, ..LIMITS }), None, "a chunk's room past a u32");
+fn valid_accepts_test_and_largest_limits() {
+    assert!(crate::server::valid(&LIMITS));
+    assert!(crate::server::valid(&Limits { response: 123, ..LIMITS }), "room for every answer");
     let largest = Limits { head: u32::MAX, read: u32::MAX, response: u32::MAX, send: u32::MAX - 12, ..LIMITS };
-    assert!(crate::server::worst_case(&largest).is_some(), "the largest limits fit a u64");
+    assert!(crate::server::valid(&largest), "the largest limits fit a u64");
 }
 
 #[test]
@@ -436,4 +431,44 @@ fn a_head_after_a_kept_connection_is_read_within_a_budget_of_its_own() {
         let (events, _) = machine.down(Request::Respond(response));
         assert_eq!(events, [Event::Done(crate::server::Reuse::Keep)]);
     }
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_a_head_shorter_than_a_blank_line() {
+    let limits = Limits { head: 1, ..LIMITS };
+    assert!(!crate::server::valid(&limits));
+    let _machine = crate::server::Server::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_a_zero_read() {
+    let limits = Limits { read: 0, ..LIMITS };
+    assert!(!crate::server::valid(&limits));
+    let _machine = crate::server::Server::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_a_zero_send() {
+    let limits = Limits { send: 0, ..LIMITS };
+    assert!(!crate::server::valid(&limits));
+    let _machine = crate::server::Server::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_an_answer_below_its_bound() {
+    let limits = Limits { response: 122, ..LIMITS };
+    assert!(!crate::server::valid(&limits));
+    let _machine = crate::server::Server::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_chunk_room_past_u32() {
+    let limits = Limits { send: u32::MAX, ..LIMITS };
+    assert!(!crate::server::valid(&limits));
+    let _machine = crate::server::Server::new(&limits);
 }
