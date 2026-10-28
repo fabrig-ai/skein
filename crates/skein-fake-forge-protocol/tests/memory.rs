@@ -12,7 +12,7 @@ mod fixtures;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use skein_fake_forge_protocol::{git, worst_case};
+    use skein_fake_forge_protocol::git;
     use skein_heap::{Counting, Meter};
     use skein_lib::{List, Writer};
     #[global_allocator]
@@ -37,18 +37,20 @@ mod tests {
         }
         files.into_boxed()
     }
+    // Bounds the hosted git scenario, including its driver and shared domain.
+    const FAKE_FORGEJO_GIT_SCENARIO_PEAK_CEILING: u64 = 560_000;
+
     #[test]
-    fn maximal_trees_and_merge_history_fit_the_protocol_envelope() {
+    fn maximal_trees_and_merge_history_stay_under_the_scenario_peak_ceiling() {
         let meter = Meter::new();
         meter.start();
         let mut config = fixtures::config();
         let domain_limits = fixtures::fake_config().limits;
         config.max_response_items = domain_limits.commits;
-        let bound = worst_case(&fixtures::limits(), &config)
-            .expect("protocol bound")
+        let bound = FAKE_FORGEJO_GIT_SCENARIO_PEAK_CEILING
             .checked_add(domain::worst_case(&domain_limits).expect("domain bound"))
             .expect("combined bound");
-        // The driver buffers are counted too, with no deduction from the envelope.
+        // Driver buffers and the shared domain are included in the scenario peak.
         let mut h = fixtures::Harness::new(config);
         let mut tip = 1_u64;
         for _ in 1..domain_limits.commits {
@@ -72,7 +74,8 @@ mod tests {
         assert_eq!(h.status(), 200);
         assert!(skein_lib::bytes::find(&h.body(), b"\"graph\":[{\"commit\":15,").is_some());
         let measured = meter.end();
-        meter.check(measured, bound, &"maximal git trees and both-parent frontier");
+        let peak = meter.check(measured, bound, &"maximal git trees and both-parent frontier");
+        assert!(peak <= FAKE_FORGEJO_GIT_SCENARIO_PEAK_CEILING);
     }
     #[test]
     fn client_objects_decoder_fits_its_priced_scratch() {

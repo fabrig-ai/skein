@@ -166,11 +166,3 @@ impl Store {
 fn document(team: &Team) -> skein_forge::forgejo::document::Team {
     skein_forge::forgejo::document::Team { id: team.id, spec: team.spec.clone() }
 }
-pub(super) fn worst_case(limits: &Limits) -> Option<u64> {
-    let cap = limits.documents.inner;
-    let text = u64::from(limits.documents.string_bytes);
-    List::<Organization>::worst_case(cap)?
-        .checked_add(List::<Team>::worst_case(cap)?)?
-        .checked_add(u64::from(cap).checked_mul(text.checked_mul(4)?.checked_add(List::<u64>::worst_case(cap)?)?)?)?
-        .checked_mul(2)
-}

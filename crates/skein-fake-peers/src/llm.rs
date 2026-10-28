@@ -503,7 +503,10 @@ pub fn valid(limits: &Limits, peer: &provider::Limits) -> bool {
     face::valid(limits)
         && provider::valid(peer)
         && skein_http::server::largest_read(&peer.http) <= limits.plaintext
-        && limits.ciphertext.checked_sub(1024).is_some_and(|room| skein_http::server::largest_room(&peer.http) <= room)
+        && limits.ciphertext.checked_sub(1024).is_some_and(|room| {
+            skein_http::server::largest_room(&peer.http) <= room
+                && peer.http.send.checked_add(32).is_some_and(|send| peer.http.response.max(send) <= room)
+        })
 }
 
 fn query_bytes(query: &api::Query) -> Option<u64> {
