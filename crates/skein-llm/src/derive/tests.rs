@@ -79,8 +79,8 @@ fn response_head(bytes: u32, fields: u32) -> Vec<u8> {
 fn read_head(limits: http::Limits, wire: &[u8]) -> Result<http::Response, http::Error> {
     let mut machine = http::Client::new(&limits);
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(http::UP_MAX_OUT.above.max(http::DOWN_MAX_OUT.above));
-    let mut below = Queue::with_capacity(http::UP_MAX_OUT.below.max(http::DOWN_MAX_OUT.below));
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let mut intake = Intake::with_capacity(u32::try_from(wire.len()).unwrap());
     intake.append(wire).unwrap();
     http::down(
