@@ -390,12 +390,11 @@ fn event_memory(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> Event
         let mut closed = false;
         while let Some(event) = above.pop() {
             match event {
-                sse::Event::Opened => {}
                 sse::Event::Data(Up::Bytes(bytes)) => {
                     observed.chunk = observed.chunk.max(bytes.len());
                     drop(bytes);
                 }
-                sse::Event::Data(Up::Room | Up::End | Up::Failed(_)) => {}
+                sse::Event::Opened | sse::Event::Data(Up::Room | Up::End | Up::Failed(_)) => {}
                 sse::Event::Dispatched(dispatch) => {
                     observed.name = observed.name.max(dispatch.name.len());
                     observed.id = observed.id.max(dispatch.id.len());
