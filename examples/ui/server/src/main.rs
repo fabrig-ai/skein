@@ -147,7 +147,7 @@ struct Web {
 }
 impl Web {
     fn new(address: SocketAddr, bundle: Bundle, now: Time, wall: Wall) -> Self {
-        let mut requests = Queue::with_capacity(QUEUE);
+        let mut requests = Queue::uncapped();
         requests.push(Request::Listen { owner: LISTENER, addr: Addr::Ip(address) });
         Self {
             io: Io::new(&io_limits()),
@@ -157,8 +157,8 @@ impl Web {
             submissions: Queue::with_capacity(QUEUE),
             events: Queue::uncapped(),
             requests,
-            above: Queue::with_capacity(32),
-            below: Queue::with_capacity(32),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             connections: BTreeMap::new(),
             next_owner: 2,
             state: State::new(),
@@ -254,6 +254,7 @@ impl Web {
         server::down(&mut conn.server, &self.env, request, &mut self.above, &mut self.below);
         self.drain_connection(owner);
     }
+    // One HTTP entrance has a finite body/reply chain; drain its handoffs whole.
     fn drain_connection(&mut self, owner: Token) {
         let socket = self.connections.get(&owner).expect("live connection").socket;
         while let Some(down) = self.below.pop() {
@@ -374,21 +375,22 @@ impl Web {
         }
     }
     fn sse_down(&mut self, owner: Token, request: sse::Request) {
-        let mut above = Queue::with_capacity(4);
-        let mut below = Queue::with_capacity(4);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         let env = Env { now: self.env.now, wall: self.env.wall, limits: sse_limits() };
         let conn = self.connections.get_mut(&owner).expect("live stream");
         sse::down(conn.writer.as_mut().expect("stream writer"), &env, request, &mut above, &mut below);
         self.drain_sse(owner, &mut above, &mut below);
     }
     fn sse_up(&mut self, owner: Token, up: stream::Up) {
-        let mut above = Queue::with_capacity(4);
-        let mut below = Queue::with_capacity(4);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         let env = Env { now: self.env.now, wall: self.env.wall, limits: sse_limits() };
         let conn = self.connections.get_mut(&owner).expect("live stream");
         sse::up(conn.writer.as_mut().expect("stream writer"), &env, up, &mut above, &mut below);
         self.drain_sse(owner, &mut above, &mut below);
     }
+    // One SSE entrance emits a finite HTTP reply chain, bounded by its event.
     fn drain_sse(&mut self, owner: Token, above: &mut Queue<sse::Event>, below: &mut Queue<stream::Down>) {
         while let Some(down) = below.pop() {
             self.down(owner, server::Request::Reply(down));
@@ -437,7 +439,8 @@ impl Host for Web {
             } else {
                 break;
             }
-            while let Some(event) = self.events.pop() {
+            for _ in 0..self.events.len() {
+                let event = self.events.pop().expect("this io entrance's events");
                 self.event(event);
             }
         }
