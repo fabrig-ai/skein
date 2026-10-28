@@ -129,3 +129,46 @@ fn overflow_keeps_a_later_accepted_installation() {
     assert!(world.script_done());
     assert!(world.close());
 }
+
+#[test]
+fn held_installation_changes_reach_the_owner_before_the_next_page_is_asked() {
+    use skein_forge_machine_world::machine::Response;
+    // Twenty retained rows exceed the sixteen-event entry-point allowance; one more makes an Unkept fact.
+    const RETAINED: u32 = 20;
+    const ROWS: u32 = RETAINED + 1;
+    const OUTPUTS: u32 = RETAINED + 1;
+    const MISSING_ACCOUNT: u64 = 100;
+    let body = (1..=ROWS).map(|id| format!(
+        r#"{{"id":{id},"account":{{"id":{id},"login":"account{id}","type":"User"}},"created_at":"1970-01-01T00:00:01Z","suspended_at":null}}"#
+    )).collect::<Vec<_>>().join(",");
+    let body = format!("[{body}]");
+    let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nLink: <https://api.github.test/app/installations?per_page=100&page=2>; rel=\"next\"\r\n\r\n{body}", body.len()).into_bytes();
+    let mut world = Machine::github(
+        SEED,
+        skein_forge_connection::Limits { installations: RETAINED, ..fixtures::limits() },
+        settings(),
+        vec![
+            Answer { request: PAGE_ONE, response: Response::Bytes(response) },
+            Answer { request: PAGE_TWO, response: Response::Bytes(fixtures::response(200, b"[]")) },
+            Answer { request: PAGE_ONE, response: Response::Silent },
+        ],
+    );
+    world.hold_output();
+    world.run_for(SECOND);
+    world.action(Request::Installations { forge: FORGE, accepted: Box::from([MISSING_ACCOUNT]) });
+    world.run_for(SECOND);
+    assert_eq!(world.outputs_before_requests().get(1), Some(&1), "the held overflow fact precedes page two");
+    assert_eq!(
+        world.outputs_before_requests().get(2),
+        Some(&OUTPUTS.saturating_add(1)),
+        "all changes and Connected precede the refresh page"
+    );
+    world.release_output();
+    assert_eq!(world.installation_events().len(), usize::try_from(RETAINED).expect("rows"));
+    assert_eq!(world.facts().len(), 1);
+    assert_eq!(
+        changes(&world).iter().map(|row| row.0).collect::<Vec<_>>(),
+        (1..=u64::from(RETAINED)).collect::<Vec<_>>()
+    );
+    assert!(world.close());
+}
