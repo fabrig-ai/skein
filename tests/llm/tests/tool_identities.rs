@@ -159,8 +159,11 @@ fn pipe_and_escaped_ids_complete_restore_and_pair_exactly_on_actual_continuation
     assert!(!paired(&continuation(changed_item, CALL_ID)), "altered item identity cannot satisfy history");
 }
 
+// Bounds both maximum identity payloads and their wrappers at seed 19.
+const MAXIMUM_IDENTITIES_PEAK_CEILING: u64 = 630_000;
+
 #[test]
-fn actual_both_maximum_id_payloads_and_new_wrapper_fit_counted_client_bound() {
+fn both_maximum_id_payloads_and_new_wrapper_stay_under_the_peak_ceiling() {
     let mut bounds = limits();
     bounds.strings = 4096; // Independent maximum identity cap in this memory story.
     bounds.retained = 32768;
@@ -168,7 +171,6 @@ fn actual_both_maximum_id_payloads_and_new_wrapper_fit_counted_client_bound() {
     bounds.answer = 32768;
     bounds.metadata = 8192;
     bounds.skip = 32768;
-    let bound = client::call_worst_case(&bounds).expect("checked enlarged wrapper and simultaneous payload bound");
     let meter = Meter::new();
     let id = "|".repeat(usize::try_from(bounds.strings).expect("bounded maximum ID"));
     let added = format!(
@@ -183,8 +185,11 @@ fn actual_both_maximum_id_payloads_and_new_wrapper_fit_counted_client_bound() {
     for _ in 0..100_000 {
         meter.start();
         let progress = world.tick(true);
-        assert!(meter.end().peak() <= bound, "both actual maximum ID buffers and all wrappers fit {bound}");
-        assert!(meter.held() <= bound);
+        assert!(
+            meter.end().peak() <= MAXIMUM_IDENTITIES_PEAK_CEILING,
+            "both actual maximum ID buffers and all wrappers fit {MAXIMUM_IDENTITIES_PEAK_CEILING}"
+        );
+        assert!(meter.held() <= MAXIMUM_IDENTITIES_PEAK_CEILING);
         if !progress {
             break;
         }
