@@ -2,7 +2,6 @@
 use super::{Purpose, States};
 use crate::{
     github::{
-        self,
         accept::Accept,
         convert::Convert,
         given::{Given, URL_BYTES},

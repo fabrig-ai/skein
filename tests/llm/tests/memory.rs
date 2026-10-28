@@ -425,6 +425,7 @@ const ANTHROPIC_REPLAY_PEAK_CEILING: u64 = 2_000_000;
 
 #[test]
 fn anthropic_signed_thinking_tool_input_and_replay_stay_under_the_peak_ceiling() {
+    let ceiling = ANTHROPIC_REPLAY_PEAK_CEILING;
     // Synthetic Messages documents exercise accumulation into signed replay
     // and tool arguments; they are not captured subscription traffic.
     for chunked in [false, true] {
@@ -436,10 +437,7 @@ fn anthropic_signed_thinking_tool_input_and_replay_stay_under_the_peak_ceiling()
             let span = Span::start();
             let prepared = client::Client::prepare(input, &bounds).ok().unwrap();
             let grown = span.end();
-            assert!(
-                grown.peak <= i64::try_from(ANTHROPIC_REPLAY_PEAK_CEILING).unwrap(),
-                "Anthropic preparation exceeds {ANTHROPIC_REPLAY_PEAK_CEILING}"
-            );
+            assert!(grown.peak <= i64::try_from(ceiling).unwrap(), "Anthropic preparation exceeds {ceiling}");
             drop(prepared);
 
             let meter = Meter::new();
@@ -484,7 +482,7 @@ fn anthropic_signed_thinking_tool_input_and_replay_stay_under_the_peak_ceiling()
             let mut world = World::new(input, bounds, wire, 37);
             world.fragmentation(fragment, 5);
             world.request(client::Request::Start);
-            drive_anthropic_memory(&mut world, &meter, ANTHROPIC_REPLAY_PEAK_CEILING);
+            drive_anthropic_memory(&mut world, &meter, ceiling);
             world.assert_once();
             assert!(
                 !world.seen.iter().any(|event| matches!(event, client::Event::Failed { .. })),
@@ -514,14 +512,8 @@ fn anthropic_signed_thinking_tool_input_and_replay_stay_under_the_peak_ceiling()
             let span = Span::start();
             let prepared = client::Client::prepare(replay, &bounds).ok().unwrap();
             let grown = span.end();
-            assert!(
-                grown.peak <= i64::try_from(ANTHROPIC_REPLAY_PEAK_CEILING).unwrap(),
-                "signed replay preparation exceeds {ANTHROPIC_REPLAY_PEAK_CEILING}"
-            );
-            assert!(
-                meter.held() <= ANTHROPIC_REPLAY_PEAK_CEILING,
-                "replay and fixture storage stays within {ANTHROPIC_REPLAY_PEAK_CEILING}"
-            );
+            assert!(grown.peak <= i64::try_from(ceiling).unwrap(), "signed replay preparation exceeds {ceiling}");
+            assert!(meter.held() <= ceiling, "replay and fixture storage stays within {ceiling}");
             drop(prepared);
             drop(thinking);
             drop(signature);
