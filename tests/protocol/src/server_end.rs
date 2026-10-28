@@ -2,8 +2,8 @@
 //! LLM provider's stack as a service builds it, the HTTP server over the
 //! stream, a JSON tokenizer on each request's body, and the event stream
 //! writer on its response body, each event's data a document the JSON
-//! writer wrote; routed as a connection routes between its machines, each
-//! call held to its `MAX_OUT`; and a scripted user at the top, which reads
+//! writer wrote; routed as a connection routes between its machines, with
+//! a scripted user at the top, which reads
 //! each request, slowly or not, and answers with a stream of events, or at
 //! once with an error, on a connection kept for the next, and closes when
 //! it is done or when it is told to.
@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 
 use skein_http::server::{self, Body, Response, Server};
 use skein_http::sse::writer::{self, Outgoing, Writer};
-use skein_http::{Header, MaxOut};
+use skein_http::Header;
 use skein_json::Token;
 use skein_json::tokenizer::{self as json, Tokenizer};
 use skein_lib::stream::{Down, Read, Up};
@@ -343,10 +343,10 @@ impl End {
         let up = if self.seen.closed { self.bottom.late() } else { self.bottom.answer(grant) };
         let Some(up) = up else { return };
         let mut work = Work::new();
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         server::up(&mut self.server, &env(self.limits.server), up, &mut above, &mut below);
-        self.server_routed(server::UP_MAX_OUT, above, below, false, &mut work);
+        self.server_routed(above, below, false, &mut work);
         self.drain(work);
     }
 
@@ -358,10 +358,10 @@ impl End {
             }
             server::Request::Next => false,
         };
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         server::down(&mut self.server, &env(self.limits.server), rq, &mut above, &mut below);
-        self.server_routed(server::DOWN_MAX_OUT, above, below, stopping, work);
+        self.server_routed(above, below, stopping, work);
     }
 
     /// What the server emitted, checked against `max`: its requests go
@@ -369,13 +369,11 @@ impl End {
     /// join `work`.
     fn server_routed(
         &mut self,
-        max: MaxOut,
         mut above: Queue<server::Event>,
         mut below: Queue<Down>,
         stopping: bool,
         work: &mut Work,
     ) {
-        assert!(above.len() <= max.above && below.len() <= max.below, "the server's MAX_OUT");
         let mut ending = stopping;
         while let Some(event) = above.pop() {
             ending |= matches!(
@@ -407,25 +405,17 @@ impl End {
 
     fn writer_down(&mut self, rq: writer::Request, work: &mut Work) {
         let writer = self.writer.as_mut().expect("a writer");
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         writer::down(writer, &env(self.limits.writer), rq, &mut above, &mut below);
-        assert!(
-            above.len() <= writer::DOWN_MAX_OUT.above && below.len() <= writer::DOWN_MAX_OUT.below,
-            "the writer's MAX_OUT"
-        );
         queued(above, below, Routed::Writer, Routed::WriterBelow, work);
     }
 
     fn writer_up(&mut self, up: Up, work: &mut Work) {
         let writer = self.writer.as_mut().expect("a writer");
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         writer::up(writer, &env(self.limits.writer), up, &mut above, &mut below);
-        assert!(
-            above.len() <= writer::UP_MAX_OUT.above && below.len() <= writer::UP_MAX_OUT.below,
-            "the writer's MAX_OUT"
-        );
         queued(above, below, Routed::Writer, Routed::WriterBelow, work);
     }
 

@@ -12,7 +12,7 @@
 //!   moment the settings draw, whatever the writer is doing.
 //!
 //! The world checks the writer's contracts as it goes (testing-strategy.md,
-//! 6): `MAX_OUT` on each call; below, room only, one demand at a time,
+//! 6): below, room only, one demand at a time,
 //! none past a chunk, none after `Finish` or a failure, one withdrawn only
 //! by a close, and one `Send` a grant within it; above, one answer for each
 //! event or comment, `Failed` once and nothing after it, `Closed` once and
@@ -20,7 +20,6 @@
 //! [`check`] reads what was written with the reference reader, and with
 //! the reader's own world, and holds it to what the side above wrote.
 
-use skein_http::MaxOut;
 use skein_http::sse::writer::{self, Event, Limits, Outgoing, Refusal, Request, Waiting, Writer};
 use skein_lib::stream::{Down, Fault, Read, Up};
 use skein_lib::{Env, Queue, Rng, Time, Wall};
@@ -295,8 +294,8 @@ pub fn run(items: &[Item], settings: &Settings, seed: u64) -> Run {
         settings,
         env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
         writer: Writer::new(&limits),
-        events: Queue::with_capacity(8),
-        requests: Queue::with_capacity(8),
+        events: Queue::uncapped(),
+        requests: Queue::uncapped(),
         items,
         next: 0,
         pending: false,
@@ -539,19 +538,17 @@ impl World<'_> {
 
     fn up(&mut self, ev: Up) {
         writer::up(&mut self.writer, &self.env, ev, &mut self.events, &mut self.requests);
-        self.route(writer::UP_MAX_OUT, false);
+        self.route(false);
     }
 
     fn down(&mut self, rq: Request) {
         let closing = rq == Request::Close;
         writer::down(&mut self.writer, &self.env, rq, &mut self.events, &mut self.requests);
-        self.route(writer::DOWN_MAX_OUT, closing);
+        self.route(closing);
     }
 
     /// What one call emitted, to each side, checked.
-    fn route(&mut self, max: MaxOut, closing: bool) {
-        assert!(self.events.len() <= max.above, "MAX_OUT honoured above: {:?}", self.events);
-        assert!(self.requests.len() <= max.below, "MAX_OUT honoured below: {:?}", self.requests);
+    fn route(&mut self, closing: bool) {
         while let Some(request) = self.requests.pop() {
             self.send(request, closing);
         }

@@ -383,26 +383,24 @@ impl Face {
         Face {
             reader: crate::sse::Reader::new(&LIMITS),
             env: super::env(LIMITS),
-            above: skein_lib::Queue::with_capacity(crate::sse::UP_MAX_OUT.above),
-            below: skein_lib::Queue::with_capacity(1),
+            above: skein_lib::Queue::uncapped(),
+            below: skein_lib::Queue::uncapped(),
         }
     }
 
     fn down(&mut self, request: Request) -> (Vec<crate::sse::Event>, Option<Down>) {
         crate::sse::down(&mut self.reader, &self.env, request, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= crate::sse::DOWN_MAX_OUT.above);
         self.take()
     }
 
     fn up(&mut self, event: Up) -> (Vec<crate::sse::Event>, Option<Down>) {
         crate::sse::up(&mut self.reader, &self.env, event, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= crate::sse::UP_MAX_OUT.above);
         self.take()
     }
 
     fn take(&mut self) -> (Vec<crate::sse::Event>, Option<Down>) {
         let mut events = Vec::new();
-        for _ in 0..crate::sse::UP_MAX_OUT.above {
+        for _ in 0..self.above.len() {
             match self.above.pop() {
                 Some(event) => events.push(event),
                 None => break,

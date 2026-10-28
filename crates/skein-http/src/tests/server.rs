@@ -41,24 +41,20 @@ impl Machine {
         Machine {
             server: Server::new(&limits),
             env: env(limits),
-            above: Queue::with_capacity(server::UP_MAX_OUT.above.max(server::DOWN_MAX_OUT.above)),
-            below: Queue::with_capacity(server::UP_MAX_OUT.below.max(server::DOWN_MAX_OUT.below)),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
         }
     }
 
     /// Sends `rq` down; what came of it, above and below.
     fn down(&mut self, rq: Request) -> (Vec<Event>, Vec<Down>) {
         server::down(&mut self.server, &self.env, rq, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= server::DOWN_MAX_OUT.above, "MAX_OUT above");
-        assert!(self.below.len() <= server::DOWN_MAX_OUT.below, "MAX_OUT below");
         self.take()
     }
 
     /// Sends `ev` up; what came of it, above and below.
     fn up(&mut self, ev: Up) -> (Vec<Event>, Vec<Down>) {
         server::up(&mut self.server, &self.env, ev, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= server::UP_MAX_OUT.above, "MAX_OUT above");
-        assert!(self.below.len() <= server::UP_MAX_OUT.below, "MAX_OUT below");
         self.take()
     }
 

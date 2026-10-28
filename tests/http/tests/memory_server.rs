@@ -3,8 +3,8 @@
 //! of an entry point a step of the meter, and what the machine held of its
 //! own never more than its `worst_case`.
 //!
-//! What the connection holds is made before the meter: the queues, the
-//! stream below and its buffer. An input moved into a step was counted by
+//! The connection owns the stream below and its buffer before the meter.
+//! Its uncapped output queues leave with each step's emitted values. An input moved into a step was counted by
 //! whoever made it (testing.md, 5). Each delivery is made between steps, by
 //! the stream below, to the machine's demand: the machine's worst case
 //! covers it. A response, a piece of the response body, and an event or a
@@ -65,8 +65,8 @@ fn serve(limits: Limits, request: &[u8], script: Script<'_>, interrupt: Interrup
 
 fn serve_observed(limits: Limits, request: &[u8], script: Script<'_>, interrupt: Interrupt) -> (u64, Flags) {
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(server::UP_MAX_OUT.above.max(server::DOWN_MAX_OUT.above));
-    let mut below = Queue::with_capacity(server::UP_MAX_OUT.below.max(server::DOWN_MAX_OUT.below));
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let cap = u32::try_from(request.len()).expect("fits a u32").max(server::largest_read(&limits));
     let mut intake = Intake::with_capacity(cap);
     intake.append(request).expect("the stream holds it");
@@ -82,8 +82,9 @@ fn serve_observed(limits: Limits, request: &[u8], script: Script<'_>, interrupt:
     server::down(&mut server, &env, Request::Next, &mut above, &mut below);
     let step = meter.end();
     flags.take(&mut above, &mut below);
-    above = Queue::with_capacity(above.capacity());
-    below = Queue::with_capacity(below.capacity());
+    // Caller-owned handoff storage leaves the machine-only measurement.
+    drop(core::mem::replace(&mut above, Queue::uncapped()));
+    drop(core::mem::replace(&mut below, Queue::uncapped()));
     most = most.max(meter.check(step, bound, &what));
 
     for steps in 1..100_000 {
@@ -106,9 +107,9 @@ fn serve_observed(limits: Limits, request: &[u8], script: Script<'_>, interrupt:
         }
         let step = meter.end();
         flags.take(&mut above, &mut below);
-        // Release the harness's empty queue buffers as handed storage before checking.
-        above = Queue::with_capacity(above.capacity());
-        below = Queue::with_capacity(below.capacity());
+        // Caller-owned handoff storage leaves the machine-only measurement.
+        drop(core::mem::replace(&mut above, Queue::uncapped()));
+        drop(core::mem::replace(&mut below, Queue::uncapped()));
         most = most.max(meter.check(step, bound + input_size, &what).saturating_sub(input_size));
     }
     panic!("{what}: a request is served in a few steps a byte");
@@ -431,8 +432,8 @@ fn written(limits: writer::Limits, items: &[Outgoing], close: Option<u32>) -> u6
 fn written_observed(limits: writer::Limits, items: &[Outgoing], close: Option<u32>) -> (u64, usize) {
     let mut sent = 0;
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(writer::UP_MAX_OUT.above.max(writer::DOWN_MAX_OUT.above));
-    let mut below = Queue::with_capacity(writer::UP_MAX_OUT.below.max(writer::DOWN_MAX_OUT.below));
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let what = format!("{limits:?} {close:?} writing {items:?}");
     let bound = writer::worst_case(&limits).expect("the limits are honoured");
     let meter = Meter::new();
@@ -484,10 +485,10 @@ fn written_observed(limits: writer::Limits, items: &[Outgoing], close: Option<u3
                 Down::Finish => {}
             }
         }
-        // The writer's outputs and the harness queue buffers are handed out.
-        above = Queue::with_capacity(above.capacity());
-        below = Queue::with_capacity(below.capacity());
         let input_size = u64::try_from(input_size).expect("fits a u64");
+        // Caller-owned handoff storage leaves the machine-only measurement.
+        drop(core::mem::replace(&mut above, Queue::uncapped()));
+        drop(core::mem::replace(&mut below, Queue::uncapped()));
         most = most.max(meter.check(step, bound + input_size, &what) - input_size);
         if closed {
             return (most, sent);

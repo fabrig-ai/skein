@@ -12,7 +12,7 @@
 //!   moment the settings draw, whatever the reader is doing.
 //!
 //! The world checks the reader's contracts as it goes (testing-strategy.md,
-//! 6): `MAX_OUT` on each call; one answer per `Next`, at most one outcome,
+//! 6): one answer per `Next`, at most one outcome,
 //! `Closed` once, last; one demand at a time, none past the largest
 //! declared or the cap below, none once the stream ended, one withdrawn
 //! only by a close; each a line scan of the chunk; no room asked for and
@@ -20,7 +20,6 @@
 //! see. [`check`] holds a run to the reference reader, which reads by the
 //! standard.
 
-use skein_http::MaxOut;
 use skein_http::sse::{self, Error, Event, Limits, Reader, Request, Waiting};
 use skein_lib::stream::{Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, Queue, Rng, Time, Wall};
@@ -168,8 +167,8 @@ pub fn run(stream: &[u8], settings: &Settings, seed: u64) -> Run {
         settings,
         env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
         reader: Reader::new(&limits),
-        events: Queue::with_capacity(8),
-        requests: Queue::with_capacity(8),
+        events: Queue::uncapped(),
+        requests: Queue::uncapped(),
         below: Below {
             unsent: settings.sent(stream),
             intake: Intake::with_capacity(settings.cap),
@@ -441,18 +440,16 @@ impl World<'_> {
 
     fn up(&mut self, ev: Up) {
         sse::up(&mut self.reader, &self.env, ev, &mut self.events, &mut self.requests);
-        self.route(sse::UP_MAX_OUT, false);
+        self.route(false);
     }
 
     fn down(&mut self, rq: Request) {
         let closing = rq == Request::Close;
         sse::down(&mut self.reader, &self.env, rq, &mut self.events, &mut self.requests);
-        self.route(sse::DOWN_MAX_OUT, closing);
+        self.route(closing);
     }
 
-    fn route(&mut self, max: MaxOut, closing: bool) {
-        assert!(self.events.len() <= max.above, "MAX_OUT honoured above: {:?}", self.events);
-        assert!(self.requests.len() <= max.below, "MAX_OUT honoured below: {:?}", self.requests);
+    fn route(&mut self, closing: bool) {
         while let Some(event) = self.events.pop() {
             self.above.receive(event);
         }

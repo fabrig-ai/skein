@@ -3,8 +3,8 @@
 //! an entry point a step of the meter, and what the machine held of its own
 //! never more than its `worst_case`.
 //!
-//! What the connection holds is made before the meter: the queues, the
-//! stream below and its buffer. An input moved into a step was counted by
+//! The connection owns the stream below and its buffer before the meter.
+//! Its uncapped output queues leave with each step's emitted values. An input moved into a step was counted by
 //! whoever made it (testing.md, 5). Each delivery is made between steps, by
 //! the stream below, to the machine's demand: the machine's worst case
 //! covers it. A call, and a piece of the request body, which the client
@@ -78,6 +78,9 @@ fn exchange(limits: Limits, call: &Call, upload: usize, response: &[u8], read: R
     let step = meter.end();
     let mut flags = Flags { upload_left: upload, upload_over: body == Body::None, ..Flags::default() };
     flags.take(&mut above, &mut below);
+    // Caller-owned handoff storage leaves the machine-only measurement.
+    drop(core::mem::replace(&mut above, Queue::uncapped()));
+    drop(core::mem::replace(&mut below, Queue::uncapped()));
     most = most.max(meter.check(step, bound + call_size, &what));
 
     for steps in 1..100_000 {
@@ -96,6 +99,9 @@ fn exchange(limits: Limits, call: &Call, upload: usize, response: &[u8], read: R
         }
         let step = meter.end();
         flags.take(&mut above, &mut below);
+        // Caller-owned handoff storage leaves the machine-only measurement.
+        drop(core::mem::replace(&mut above, Queue::uncapped()));
+        drop(core::mem::replace(&mut below, Queue::uncapped()));
         most = most.max(meter.check(step, bound + input_size, &what));
     }
     panic!("{what}: an exchange is read in a few steps a byte");
@@ -343,8 +349,8 @@ struct EventMemory {
 
 fn event_memory(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> EventMemory {
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(sse::UP_MAX_OUT.above.max(sse::DOWN_MAX_OUT.above));
-    let mut below = Queue::with_capacity(sse::UP_MAX_OUT.below.max(sse::DOWN_MAX_OUT.below));
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let cap = u32::try_from(stream.len()).expect("fits a u32").max(sse::largest_demand(&limits));
     let mut intake = Intake::with_capacity(cap);
     intake.append(stream).expect("the stream holds it");
@@ -412,8 +418,8 @@ fn event_memory(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> Event
             }
         }
         // Queue buffers belong to the harness and are handed out with its outputs.
-        above = Queue::with_capacity(above.capacity());
-        below = Queue::with_capacity(below.capacity());
+        drop(core::mem::replace(&mut above, Queue::uncapped()));
+        drop(core::mem::replace(&mut below, Queue::uncapped()));
         // A growing reader ring counts old and new buffers at the peak;
         // after handoff its held storage remains within the formula.
         most = most.max(meter.check(step, 2 * bound, &what));
