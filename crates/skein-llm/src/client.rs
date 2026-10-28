@@ -174,9 +174,6 @@ pub fn request_head(endpoint: &Endpoint, credential: &CredentialLimits, limits: 
     }
 }
 
-const HTTP_EVENTS: u32 = 4;
-const SSE_EVENTS: u32 = 2;
-const REQUESTS: u32 = 4;
 const ROUTES: u32 = 8;
 
 /// Each entry point's bound. Buffered output requires another `resume`.
@@ -553,10 +550,10 @@ impl Client {
             upload: Some(body),
             upload_offset: 0,
             upload_end: end,
-            http_events: Queue::with_capacity(HTTP_EVENTS),
-            sse_events: Queue::with_capacity(SSE_EVENTS),
-            outputs: Queue::with_capacity(dialect::MAX_OUT),
-            requests: Queue::with_capacity(REQUESTS),
+            http_events: Queue::uncapped(),
+            sse_events: Queue::uncapped(),
+            outputs: Queue::uncapped(),
+            requests: Queue::uncapped(),
             sse_below: Queue::uncapped(),
             collector: collector::Collector::new(
                 dialect::event_filter(provider),
@@ -1483,7 +1480,7 @@ fn error_cut(client: &mut Client, env: &Env<Limits>, above: &mut Queue<Event>) {
 }
 
 fn clear_requests(client: &mut Client) {
-    for _request in 0..client.requests.capacity() {
+    for _request in 0..client.requests.len() {
         if client.requests.pop().is_none() {
             break;
         }
@@ -1494,7 +1491,7 @@ fn close_sse(client: &mut Client, env: &Env<Limits>) {
     if client.sse_closed {
         return;
     }
-    for _event in 0..client.sse_events.capacity() {
+    for _event in 0..client.sse_events.len() {
         drop(client.sse_events.pop());
     }
     clear_requests(client);
@@ -1521,10 +1518,10 @@ fn close_machines(client: &mut Client, env: &Env<Limits>, below: &mut Queue<Down
     }
     close_sse(client, env);
     clear_requests(client);
-    for _event in 0..client.http_events.capacity() {
+    for _event in 0..client.http_events.len() {
         drop(client.http_events.pop());
     }
-    for _event in 0..client.outputs.capacity() {
+    for _event in 0..client.outputs.len() {
         drop(client.outputs.pop());
     }
     client.upload = None;
@@ -1533,7 +1530,7 @@ fn close_machines(client: &mut Client, env: &Env<Limits>, below: &mut Queue<Down
     client.decoder = None;
     client.error.clear();
     http_down(client, env, http::Request::Close, below);
-    for _event in 0..client.http_events.capacity() {
+    for _event in 0..client.http_events.len() {
         drop(client.http_events.pop());
     }
     client.close_sent = true;
@@ -1604,18 +1601,9 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
                 collector::worst_case(&filter::collector(limits), &filter::caps(limits), &anthropic::filter::EVENT)?,
             ),
         )?
-        .checked_add(Queue::<collector::Event>::worst_case(1)?)?
-        .checked_add(Queue::<Down>::worst_case(1)?)?
         .checked_add(u64::from(limits.error_bytes).checked_mul(4)?)?
         .checked_add(u64::from(limits.error_bytes).checked_add(1)?)?
         .checked_add(crate::document::worst_case(&error_document(limits))?)?
-        .checked_add(Queue::<http::Event>::worst_case(HTTP_EVENTS)?)?
-        .checked_add(Queue::<sse::Event>::worst_case(SSE_EVENTS)?)?
-        .checked_add(Queue::<dialect::Output>::worst_case(dialect::MAX_OUT)?)?
-        .checked_add(Queue::<openai::Output>::worst_case(openai::MAX_OUT)?)?
-        .checked_add(Queue::<anthropic::Output>::worst_case(anthropic::MAX_OUT)?)?
-        .checked_add(Queue::<http::Request>::worst_case(REQUESTS)?)?
-        .checked_add(Queue::<Down>::worst_case(1)?)?
         .checked_add(u64::from(REPORT_BYTES).checked_mul(3)?)
 }
 /// One borrowed request's fixed encoder/grammar scratch, excluding its reserved bytes.

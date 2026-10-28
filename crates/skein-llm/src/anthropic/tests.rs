@@ -1,5 +1,5 @@
 #![expect(clippy::disallowed_macros, reason = "ordinary tests format synthetic provider documents")]
-use super::{DecodeError, Event, Failure, Json, Limits, MAX_OUT, Output, Part, Stop, StreamDecoder, Usage};
+use super::{DecodeError, Event, Failure, Json, Limits, Output, Part, Stop, StreamDecoder, Usage};
 use alloc::format;
 use skein_lib::{Queue, Wall, bytes};
 
@@ -64,7 +64,7 @@ fn failure(out: &mut Queue<Output>, expected: Failure) {
 #[test]
 fn text_stream_preserves_initial_text_deltas_and_cumulative_usage() {
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &LIMITS, &mut out);
     progress(
         &mut decoder,
@@ -118,7 +118,7 @@ fn text_stream_preserves_initial_text_deltas_and_cumulative_usage() {
 #[test]
 fn signed_and_redacted_thinking_preserve_replay_material() {
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &LIMITS, &mut out);
     progress(
         &mut decoder,
@@ -156,7 +156,7 @@ fn signed_and_redacted_thinking_preserve_replay_material() {
 #[test]
 fn tool_fragments_replace_start_placeholder_and_keep_malformed_json() {
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &LIMITS, &mut out);
     progress(
         &mut decoder,
@@ -218,7 +218,7 @@ fn oversized_tool_input_is_signaled_without_retaining_fragments() {
     let mut limits = LIMITS;
     limits.input = 3;
     let mut decoder = StreamDecoder::new(&limits);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &limits, &mut out);
     progress(
         &mut decoder,
@@ -261,7 +261,7 @@ fn malformed_stream_order_and_delta_types_fail_once() {
         STOP,
     ] {
         let mut decoder = StreamDecoder::new(&LIMITS);
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = Queue::uncapped();
         progress(&mut decoder, START, &LIMITS, &mut out);
         progress(&mut decoder, TEXT_START, &LIMITS, &mut out);
         feed(&mut decoder, bad, &LIMITS, &mut out);
@@ -271,7 +271,7 @@ fn malformed_stream_order_and_delta_types_fail_once() {
         assert_eq!(out.len(), 0);
     }
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     feed(&mut decoder, TEXT_START, &LIMITS, &mut out);
     failure(&mut out, Failure::Protocol);
 }
@@ -279,7 +279,7 @@ fn malformed_stream_order_and_delta_types_fail_once() {
 #[test]
 fn conflicting_stop_and_missing_terminal_fail() {
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &LIMITS, &mut out);
     progress(&mut decoder, END, &LIMITS, &mut out);
     feed(
@@ -302,7 +302,7 @@ fn conflicting_stop_and_missing_terminal_fail() {
 #[test]
 fn unsigned_thinking_and_invalid_redacted_metadata_reject() {
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &LIMITS, &mut out);
     progress(
         &mut decoder,
@@ -329,7 +329,7 @@ fn answer_and_part_budgets_bound_aggregate_stream() {
     let mut limits = LIMITS;
     limits.answer = 3;
     let mut decoder = StreamDecoder::new(&limits);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &limits, &mut out);
     progress(&mut decoder, TEXT_START, &limits, &mut out);
     feed(
@@ -359,7 +359,7 @@ fn provider_error_classification_and_detail_truncation() {
     let error = super::decode_error(&value, &limits).expect("provider error schema");
     assert_eq!(error.message.as_ref(), "é".as_bytes());
     let mut decoder = StreamDecoder::new(&limits);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     decoder.event(Event::Failed { error }, &limits, Wall::EPOCH, &mut out);
     assert_eq!(
         out.pop(),
@@ -370,7 +370,7 @@ fn provider_error_classification_and_detail_truncation() {
 #[test]
 fn signed_thinking_extension_head_survives_fragments_and_terminal() {
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &LIMITS, &mut out);
     progress(&mut decoder, br#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":"","provider_hint":{"signed":true}}}"#, &LIMITS, &mut out);
     progress(
@@ -466,7 +466,7 @@ fn unknown_opaque_native_head_keeps_nested_proof_before_kind_cap_and_delta_negat
         .expect("actual opaque native parser");
     assert_eq!(parsed, event);
     let mut decoder = StreamDecoder::new(&LIMITS);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &LIMITS, &mut out);
     decoder.event(parsed, &LIMITS, Wall::EPOCH, &mut out);
     assert_eq!(out.pop(), Some(Output::Progress));
@@ -543,7 +543,7 @@ fn native_array_text_is_exactly_measured_for_system_and_tool_results() {
 fn output_cap_cuts_the_last_tool_block_with_or_without_block_stop() {
     for closed in [false, true] {
         let mut decoder = StreamDecoder::new(&LIMITS);
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = Queue::uncapped();
         progress(&mut decoder, START, &LIMITS, &mut out);
         progress(&mut decoder, br#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"c","name":"read","input":{}}}"#, &LIMITS, &mut out);
         feed(
@@ -608,7 +608,7 @@ fn anthropic_usage_preserves_omission_zero_and_cumulative_reports() {
             ("output_tokens", Usage { output: Some(amount), ..Usage::NONE }),
         ] {
             let mut decoder = StreamDecoder::new(&LIMITS);
-            let mut out = Queue::with_capacity(MAX_OUT);
+            let mut out = Queue::uncapped();
             progress(
                 &mut decoder,
                 br#"{"type":"message_start","message":{"type":"message","role":"assistant","content":[]}}"#,
@@ -625,7 +625,7 @@ fn anthropic_usage_preserves_omission_zero_and_cumulative_reports() {
     }
     for usage in ["", r#", "usage":null"#, r#", "usage":{}"#] {
         let mut decoder = StreamDecoder::new(&LIMITS);
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = Queue::uncapped();
         let document = format!(
             r#"{{"type":"message_start","message":{{"type":"message","role":"assistant","content":[]{usage}}}}}"#
         );
@@ -640,7 +640,7 @@ fn anthropic_usage_preserves_omission_zero_and_cumulative_reports() {
 fn consecutive_thinking_items_form_one_replay_block_before_text() {
     let limits = Limits { output_items: 2, ..LIMITS };
     let mut decoder = StreamDecoder::new(&limits);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &limits, &mut out);
     for index in 0..3 {
         thinking_item(&mut decoder, index, &limits, &mut out);
@@ -681,7 +681,7 @@ fn thinking_item(decoder: &mut StreamDecoder, index: u32, limits: &Limits, out: 
 fn thinking_run_past_the_completion_share_names_its_limit() {
     let limits = Limits { output_items: 2, reasoning: 64, ..LIMITS };
     let mut decoder = StreamDecoder::new(&limits);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &limits, &mut out);
     for index in 0..2 {
         thinking_item(&mut decoder, index, &limits, &mut out);
@@ -695,7 +695,7 @@ fn thinking_run_past_the_completion_share_names_its_limit() {
 fn thinking_run_past_one_blocks_retained_tokens_names_its_limit() {
     let limits = Limits { output_items: 2, tokens: 32, ..LIMITS };
     let mut decoder = StreamDecoder::new(&limits);
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     progress(&mut decoder, START, &limits, &mut out);
     thinking_item(&mut decoder, 0, &limits, &mut out);
     assert_eq!(out.pop(), Some(Output::Progress));
