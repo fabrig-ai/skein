@@ -574,7 +574,7 @@ impl ConnectionHarness {
         }
     }
     pub fn pump(&mut self) {
-        self.connection.pump(&self.env, &mut self.io, 16);
+        self.connection.pump(&self.env, &mut self.io);
     }
     pub fn answer(&mut self, response: &[u8]) -> List<skein_forge::forgejo::plans::Heard> {
         let mut heard = List::with_capacity(16);
@@ -899,7 +899,7 @@ impl HookHarness {
         let mut up = Queue::with_capacity(16);
         let mut io = Queue::with_capacity(16);
         for _ in 0_u32..1024 {
-            self.connection.pump(skein_lib::Token::new(1), &self.env, &self.settings, &mut up, &mut io, (16, 16));
+            self.connection.pump(skein_lib::Token::new(1), &self.env, &self.settings, &mut up, &mut io);
             for _ in 0..io.len() {
                 match io.pop().expect("queued request") {
                     skein_io::Request::Stream { down, .. } => {

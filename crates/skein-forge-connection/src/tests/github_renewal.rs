@@ -4,7 +4,7 @@ use super::{
     github_installation_loss::{commit, public_ready, requests, row},
     github_start::{CONTENTS, EXPIRES, FULL, LIVE, VIEWER, accepted, contains, mint, tokens},
 };
-use crate::{Event, MAX_OUT, Request, Stopped, installations::Tokens};
+use crate::{Event, Request, Stopped, installations::Tokens};
 use alloc::boxed::Box;
 use skein_forge::github::request::Scope;
 use skein_lib::{Duration, Queue, Time, Wall};
@@ -564,20 +564,20 @@ fn replacement_drops_held_renewed_contents() {
     replace(Stage::Held);
 }
 #[test]
-fn renewed_contents_shares_output_and_resumes_once() {
+fn renewed_contents_follows_changes_once() {
     let mut h = stage(Stage::Held);
     let mut renamed = row(1, false);
     renamed.login = Box::from(b"new-account".as_slice());
     commit(&mut h, Box::from([renamed, row(2, false)]));
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
-    h.component.test_room(&h.env, &mut up, &mut io, 1, 0);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
+    h.component.test_local(&h.env, &mut up);
     assert_eq!(up.len(), 1);
     assert!(h.component.test_github().held.is_some());
     drop(up.pop());
-    h.component.test_room(&h.env, &mut up, &mut io, 1, 0);
+    h.component.test_local(&h.env, &mut up);
     drop(up.pop());
-    h.component.test_room(&h.env, &mut up, &mut io, 1, 0);
+    h.component.test_local(&h.env, &mut up);
     assert!(h.component.test_github().held.is_none());
     assert_eq!(up.len(), 1);
     match up.pop().expect("held renewal") {

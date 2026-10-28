@@ -74,7 +74,7 @@ pub enum Request {
     /// An answer the root returned undecided in its drain (`Request::Busy`): kept until
     /// `Close`, never offered again (forge-connection.md, 2).
     Returned(Answered),
-    /// The root admits again: held answers go up again, at most `MAX_OUT.above`.
+    /// The root admits again: held answers awaiting an offer go up again.
     Offer,
     /// After the root's drain: calls in flight end with their connections and no answer
     /// goes up; `Event::Closed` answers it.

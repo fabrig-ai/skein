@@ -767,7 +767,6 @@ pub fn worst_case(l: &Limits, s: &Shared, forges: Forges, owned_bytes: u64) -> O
         // HTTP already counts the incoming refill's box.
         .checked_add(Intake::worst_case(l.chunk.max(5))?)?
         .checked_add(u64::from(l.chunk.max(5)))?
-        .checked_add(crate::connection::routing_bytes()?)?
         .checked_add(u64::from(l.tls.send.max(s.io.output)))?
         .checked_add(u64::from(l.body_bytes).checked_mul(6)?.checked_add(1024)?)?
         .checked_add(socket)?;
@@ -957,7 +956,6 @@ fn github_tables_heap(l: &Limits, repositories: u32, users: u32) -> Option<u64> 
 }
 
 fn hook_heap(l: &Limits, decoder: u64, socket: u64) -> Option<u64> {
-    use skein_lib::Queue;
     skein_http::server::worst_case(&hook_http(l))?
         .checked_add(tokenizer::worst_case(&hook_documents(l).json)?)?
         .checked_add(decoder)?
@@ -965,10 +963,6 @@ fn hook_heap(l: &Limits, decoder: u64, socket: u64) -> Option<u64> {
         .checked_add(u64::try_from(size_of::<skein_lib::sha256::Hmac>()).ok()?)?
         .checked_add(u64::try_from(size_of::<api::Hint>()).ok()?)?
         .checked_add(u64::from(l.string_bytes).checked_add(u64::from(l.body_bytes))?)?
-        .checked_add(Queue::<skein_http::server::Event>::worst_case(4)?)?
-        .checked_add(Queue::<skein_lib::stream::Down>::worst_case(4)?)?
-        .checked_add(Queue::<tokenizer::Event>::worst_case(1)?)?
-        .checked_add(Queue::<skein_lib::stream::Down>::worst_case(1)?)?
         .checked_add(u64::from(l.hook_head_bytes))?
         .checked_add(u64::from(l.chunk).checked_mul(2)?)?
         .checked_mul(u64::from(l.hooks))?

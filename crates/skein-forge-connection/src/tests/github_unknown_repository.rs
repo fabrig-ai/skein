@@ -460,10 +460,10 @@ fn repository_id_above_the_vocabulary_bound_is_too_large() {
 }
 
 #[test]
-fn discovery_shares_remaining_output_with_installation_changes_and_git_tokens() {
+fn discovery_waits_for_installation_changes_and_git_tokens() {
     use super::github_installation_loss::{commit, row};
     use crate::{
-        Event, MAX_OUT,
+        Event,
         installations::{HeldToken, Selected},
     };
     use skein_lib::Queue;
@@ -480,12 +480,11 @@ fn discovery_shares_remaining_output_with_installation_changes_and_git_tokens() 
         token: Secret::new(Box::from(b"artificial-contents".as_slice())),
         expires: skein_lib::Wall::from_nanos(3_600_000_000_000),
     });
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
-    h.component.test_room(&h.env, &mut up, &mut io, 1, 2);
+    let mut up = Queue::uncapped();
+    h.component.test_local(&h.env, &mut up);
     assert_eq!(up.len(), 1);
     assert!(h.component.test_github().held.is_some());
-    match up.pop().expect("change consumes the remaining slot") {
+    match up.pop().expect("first lifecycle change") {
         Event::Installation { change, .. } => assert_eq!(change, crate::Change::Renamed),
         Event::GitToken { .. }
         | Event::Fact { .. }
@@ -497,10 +496,10 @@ fn discovery_shares_remaining_output_with_installation_changes_and_git_tokens() 
         | Event::Stopped { .. }
         | Event::Closed => unreachable!("installation change"),
     }
-    h.component.test_room(&h.env, &mut up, &mut io, 1, 2);
+    h.component.test_local(&h.env, &mut up);
     assert_eq!(up.len(), 1);
     assert!(h.component.test_github().held.is_none());
-    match up.pop().expect("git token consumes the remaining slot") {
+    match up.pop().expect("token follows changes") {
         Event::GitToken { .. } => {}
         Event::Installation { .. }
         | Event::Fact { .. }
@@ -512,9 +511,8 @@ fn discovery_shares_remaining_output_with_installation_changes_and_git_tokens() 
         | Event::Stopped { .. }
         | Event::Closed => unreachable!("git token"),
     }
-    h.component.test_room(&h.env, &mut up, &mut io, 1, 2);
+    h.component.test_local(&h.env, &mut up);
     assert!(up.is_empty());
-    assert!(io.is_empty());
     let row = h.component.test_github_mut().rows.get_mut(&1).expect("row");
     row.full.expiry = Time::from_nanos(3_600_000_000_000);
     row.api = Some(Secret::new(Box::from(b"renewed-full".as_slice())));
