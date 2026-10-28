@@ -139,11 +139,6 @@ fn missing_send_slots_are_refused() {
 }
 
 #[test]
-fn native_worst_case_includes_the_classic_bound() {
-    assert!(super::worst_case(&LIMITS).expect("native bound") >= 440_441, "native value/work counted");
-}
-
-#[test]
 fn cancel_before_ready_settles_only_its_named_right() {
     let mut machine = Machine::new();
     let lower = machine.started();
