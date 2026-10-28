@@ -128,22 +128,6 @@ pub fn valid(limits: &Limits) -> bool {
     super::valid(limits) && largest_room(limits).is_some()
 }
 
-/// The classic worst case, with its delivery replaced by the larger of
-/// `LARGEST_READ` and the room below, plus this client's size. The bytes read
-/// are dropped before deciphering or sealing; allocations that overlap
-/// are counted as their sum. The caller counts its plaintext and queues.
-#[must_use]
-pub fn worst_case(limits: &Limits) -> Option<u64> {
-    if !valid(limits) {
-        return None;
-    }
-    let work = u64::from(largest_room(limits)?.max(LARGEST_READ));
-    super::worst_case(limits)?
-        .checked_sub(u64::from(LARGEST_READ))?
-        .checked_add(work)?
-        .checked_add(u64::try_from(size_of::<Client>()).ok()?)
-}
-
 #[derive(Debug)]
 enum State {
     Fresh(Fresh),

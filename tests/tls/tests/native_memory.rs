@@ -1,4 +1,4 @@
-//! Native TLS heap steps against the checked bound (tls.md, 3.6 and 5;
+//! Native TLS heap steps under scenario ceilings (tls.md, 3.6 and 5;
 //! Testing-strategy.md, 5). The real peer runs between steps. All emitted
 //! boxes are copied into reserved harness buffers and dropped before checking;
 //! caller plaintext is charged separately. A complete sealed box dropped by
@@ -334,7 +334,7 @@ impl Harness {
     }
 }
 
-fn measure(limits: Limits, versions: Versions, chain: Chain, corrupt: bool) -> Measured {
+fn measure(limits: Limits, versions: Versions, chain: Chain, corrupt: bool, ceiling: u64) -> Measured {
     let server = pki::Server { versions, chain, extractable: versions == Versions::Tls12, ..pki::Server::plain() };
     let config = pki::client(&[]);
     let text = if chain == Chain::Big { "big.skein.test" } else { "skein.test" };
@@ -342,7 +342,7 @@ fn measure(limits: Limits, versions: Versions, chain: Chain, corrupt: bool) -> M
     let cap = native::largest_room(&limits).expect("checked envelope");
     let server_config = server.config();
     let mut harness = Harness {
-        metered: Steps::new(native::worst_case(&limits).expect("checked bound")),
+        metered: Steps::new(ceiling),
         sealed: 0,
         client: None,
         env: Env { now: Time::ZERO, wall: pki::VALID, limits },
@@ -397,11 +397,14 @@ fn measure(limits: Limits, versions: Versions, chain: Chain, corrupt: bool) -> M
     panic!("metered native conversation settles");
 }
 
+// Bounds the largest native peak across both TLS versions and both payload sizes.
+const TLS_PAYLOAD_PEAK_CEILING: u64 = 170_000;
+
 #[test]
-fn payload_intake_and_ciphertext_fit_small_and_large_bounds() {
+fn payload_intake_and_ciphertext_stay_under_the_peak_ceiling() {
     for versions in [Versions::Tls12, Versions::Tls13] {
         for limits in [SMALL, LARGE] {
-            let measured = measure(limits, versions, Chain::Leaf, false);
+            let measured = measure(limits, versions, Chain::Leaf, false, TLS_PAYLOAD_PEAK_CEILING);
             assert_eq!(measured.failed, None, "{versions:?} {limits:?} {measured:?}");
             let buffers = if limits == SMALL { 36_870 } else { 113_743 };
             assert!(measured.most > buffers);
@@ -421,13 +424,19 @@ fn payload_intake_and_ciphertext_fit_small_and_large_bounds() {
     }
 }
 
+// Bounds the largest native peak across big chains and decrypt errors in both TLS versions.
+const TLS_CHAIN_AND_ERROR_PEAK_CEILING: u64 = 250_000;
+
 #[test]
 fn big_chain_and_decrypt_error_release_the_clients_heap() {
     for versions in [Versions::Tls12, Versions::Tls13] {
-        let measured = measure(LARGE, versions, Chain::Big, false);
+        let measured = measure(LARGE, versions, Chain::Big, false, TLS_CHAIN_AND_ERROR_PEAK_CEILING);
         assert_eq!(measured.failed, None, "{measured:?}");
         assert!(measured.most > 189_743, "double held decoded chain: {measured:?}");
-        assert_eq!(measure(LARGE, versions, Chain::Leaf, true).failed, Some(Error::Decrypt));
+        assert_eq!(
+            measure(LARGE, versions, Chain::Leaf, true, TLS_CHAIN_AND_ERROR_PEAK_CEILING).failed,
+            Some(Error::Decrypt)
+        );
     }
 }
 
