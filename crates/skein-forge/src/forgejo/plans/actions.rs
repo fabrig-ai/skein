@@ -1,4 +1,4 @@
-//! Actions reads: failing checks' job attempts and a verified attempt's bounded log.
+//! Actions reads: checks' job attempts and a verified attempt's bounded log.
 use crate::api;
 use crate::forgejo::plans::{
     Body, Heard,
@@ -12,6 +12,7 @@ use skein_lib::List;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Mode {
     Checks(api::Commit),
+    Statuses { head: api::Commit, ci: api::Ci, more: bool },
     Job { attempt: api::JobAttempt, max: u32 },
 }
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -44,16 +45,18 @@ pub struct Plan {
 }
 impl Plan {
     pub fn new(read: api::Read, row: Repository, bounds: Bounds) -> Result<Self, api::Error> {
-        let (mode, stage) = match read {
-            api::Read::Checks { commit } => (Mode::Checks(commit), Stage::Checks),
-            api::Read::Job { attempt, max_bytes } => (Mode::Job { attempt, max: max_bytes }, Stage::Run),
+        let (mode, stage, page) = match read {
+            api::Read::Checks { commit } => (Mode::Checks(commit), Stage::Checks, 1),
+            api::Read::Statuses { commit, page } => {
+                (Mode::Statuses { head: commit, ci: api::Ci::None, more: false }, Stage::Checks, page)
+            }
+            api::Read::Job { attempt, max_bytes } => (Mode::Job { attempt, max: max_bytes }, Stage::Run, 1),
             api::Read::Locate { .. }
             | api::Read::Items { .. }
             | api::Read::Item { .. }
             | api::Read::Pull { .. }
             | api::Read::PullFor { .. }
             | api::Read::Reviews { .. }
-            | api::Read::Statuses { .. }
             | api::Read::Remarks { .. }
             | api::Read::Branch { .. }
             | api::Read::Branches { .. }
@@ -69,14 +72,18 @@ impl Plan {
             .answer_bytes
             .checked_div(u32::try_from(crate::measure::STATUS_BYTES).expect("status width"))
             .expect("nonzero width");
-        let capacity = if stage == Stage::Checks { bounds.rows.min(room) } else { 0 };
+        let capacity = match mode {
+            Mode::Checks(_) => bounds.rows.min(room),
+            Mode::Statuses { .. } => bounds.page_size.min(bounds.rows).min(room),
+            Mode::Job { .. } => 0,
+        };
         Ok(Self {
             mode,
             stage,
             row,
             statuses: List::with_capacity(capacity),
             count: 0,
-            page: 1,
+            page,
             limit: bounds.page_size,
             position: 0,
             run_number: 0,
@@ -102,7 +109,7 @@ impl Plan {
     }
     pub fn begin(&mut self) -> Step {
         match self.mode {
-            Mode::Checks(commit) => self.send(r::Request::CombinedStatus {
+            Mode::Checks(commit) | Mode::Statuses { head: commit, .. } => self.send(r::Request::CombinedStatus {
                 at: self.at(),
                 commit: self.id(commit),
                 page: r::Page { page: Some(self.page), limit: Some(self.limit) },
@@ -134,7 +141,7 @@ impl Plan {
                 if status == 404 {
                     match self.mode {
                         Mode::Job { .. } => return Err(api::Error::MissingJob),
-                        Mode::Checks(_) => {}
+                        Mode::Checks(_) | Mode::Statuses { .. } => {}
                     }
                 }
                 if status != 200 && !(self.stage == Stage::Log && status == 206) {
@@ -204,7 +211,7 @@ impl Plan {
                 let commit =
                     reading::commit(run.commit_sha, self.row.object_format).ok_or(api::Error::InvalidAnswer)?;
                 match self.mode {
-                    Mode::Checks(head) => {
+                    Mode::Checks(head) | Mode::Statuses { head, .. } => {
                         if commit == head && run.index_in_repo == self.run_number {
                             self.run = Some(run.id);
                         }
@@ -215,7 +222,7 @@ impl Plan {
             }
             d::Row::Job(job) => {
                 match self.mode {
-                    Mode::Checks(head) => {
+                    Mode::Checks(head) | Mode::Statuses { head, .. } => {
                         if self.stage != Stage::JobsLookup {
                             return Err(api::Error::InvalidAnswer);
                         }
@@ -257,11 +264,20 @@ impl Plan {
     #[expect(clippy::manual_map, reason = "Step functions use explicit matches without closures")]
     fn done(&mut self, document: d::Document) -> Result<Option<Step>, api::Error> {
         match document {
-            d::Document::CombinedStatus(_) => {
+            d::Document::CombinedStatus(combined) => {
                 if self.stage != Stage::Checks {
                     return Err(api::Error::InvalidAnswer);
                 }
-                if self.count == self.limit {
+                if let Mode::Statuses { head, .. } = self.mode {
+                    let read = u64::from(self.page.saturating_sub(1))
+                        .saturating_mul(u64::from(self.limit))
+                        .saturating_add(u64::from(self.count));
+                    self.mode = Mode::Statuses {
+                        head,
+                        ci: reading::ci(combined.state, combined.total_count),
+                        more: read < combined.total_count,
+                    };
+                } else if self.count == self.limit {
                     self.page = self.page.checked_add(1).ok_or(api::Error::TooLarge)?;
                     return Ok(Some(self.begin()));
                 }
@@ -282,7 +298,7 @@ impl Plan {
             d::Document::Run(run) => {
                 let attempt = match self.mode {
                     Mode::Job { attempt, .. } => attempt,
-                    Mode::Checks(_) => return Err(api::Error::InvalidAnswer),
+                    Mode::Checks(_) | Mode::Statuses { .. } => return Err(api::Error::InvalidAnswer),
                 };
                 if self.stage != Stage::Run {
                     return Err(api::Error::InvalidAnswer);
@@ -306,7 +322,7 @@ impl Plan {
                 }
                 let (attempt, max) = match self.mode {
                     Mode::Job { attempt, max } => (attempt, max),
-                    Mode::Checks(_) => return Err(api::Error::InvalidAnswer),
+                    Mode::Checks(_) | Mode::Statuses { .. } => return Err(api::Error::InvalidAnswer),
                 };
                 if job.id != attempt.job || job.run_id != attempt.run || job.attempt != attempt.attempt {
                     return Err(api::Error::MissingJob);
@@ -348,28 +364,32 @@ impl Plan {
             | d::Document::Error(_) => Err(api::Error::InvalidAnswer),
         }
     }
+    fn checks_answer(&self, statuses: Box<[api::Status]>) -> Result<api::Answer, api::Error> {
+        match self.mode {
+            Mode::Checks(_) => Ok(api::Answer::Checks(statuses)),
+            Mode::Statuses { ci, more, .. } => Ok(api::Answer::Statuses { ci, statuses, more }),
+            Mode::Job { .. } => Err(api::Error::InvalidAnswer),
+        }
+    }
     fn next_check(&mut self) -> Result<Option<Step>, api::Error> {
         if !self.resolve_jobs {
             let statuses = core::mem::replace(&mut self.statuses, List::with_capacity(0)).into_boxed();
-            return Ok(Some(Step::Done(Ok(api::Answer::Checks(statuses)))));
+            return Ok(Some(Step::Done(Ok(self.checks_answer(statuses)?))));
         }
         for _ in 0..self.statuses.len().saturating_add(1) {
             if self.position == self.statuses.len() {
                 let statuses = core::mem::replace(&mut self.statuses, List::with_capacity(0)).into_boxed();
-                return Ok(Some(Step::Done(Ok(api::Answer::Checks(statuses)))));
+                return Ok(Some(Step::Done(Ok(self.checks_answer(statuses)?))));
             }
             let status = self.statuses.get(self.position).expect("check position");
             self.position = self.position.saturating_add(1);
-            if status.check != api::Check::Failed {
-                continue;
-            }
             if let Some((run_number, job_index)) = header::job_link(&status.url, &self.row.html_url) {
                 self.run_number = run_number;
                 self.job_index = job_index;
                 self.run = None;
                 self.stage = Stage::RunLookup;
                 let head = match self.mode {
-                    Mode::Checks(head) => head,
+                    Mode::Checks(head) | Mode::Statuses { head, .. } => head,
                     Mode::Job { .. } => return Err(api::Error::InvalidAnswer),
                 };
                 return Ok(Some(self.send(r::Request::Runs {
@@ -396,7 +416,7 @@ impl Plan {
         }
         let attempt = match self.mode {
             Mode::Job { attempt, .. } => attempt,
-            Mode::Checks(_) => return Err(api::Error::InvalidAnswer),
+            Mode::Checks(_) | Mode::Statuses { .. } => return Err(api::Error::InvalidAnswer),
         };
         let truncated = more || self.truncated;
         Ok(Some(Step::Done(Ok(api::Answer::Job { attempt, step: self.step.take(), log, truncated }))))

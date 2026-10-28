@@ -419,7 +419,7 @@ pub struct Status {
     pub url: Box<[u8]>,
     pub job: Option<JobAttempt>,
 }
-/// A Forgejo Actions job attempt whose failing status belongs to `head`.
+/// A Forgejo Actions job attempt whose status belongs to `head`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct JobAttempt {
     pub head: Commit,

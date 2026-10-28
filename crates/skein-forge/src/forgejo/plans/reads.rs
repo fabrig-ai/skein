@@ -12,7 +12,6 @@ pub mod size;
 use crate::api;
 use crate::forgejo::{
     document as d,
-    id::ObjectId,
     request::{self as r, Request},
 };
 use alloc::boxed::Box;
@@ -36,7 +35,6 @@ enum Rows {
     Items(List<api::Summary>),
     Comments(List<api::Comment>),
     Reviews(List<api::Review>),
-    Statuses(List<api::Status>),
     Remarks(List<api::Remark>),
     Branches(List<Box<[u8]>>),
     Collaborators(List<api::Collaborator>),
@@ -182,10 +180,6 @@ impl Plan {
                 self.rows = Rows::Reviews(List::with_capacity(bounds.page_size));
                 Request::Reviews { at, number, page: self.paged(page, bounds) }
             }
-            api::Read::Statuses { commit, page } => {
-                self.rows = Rows::Statuses(List::with_capacity(bounds.page_size));
-                Request::CombinedStatus { at, commit: self.id(commit), page: self.paged(page, bounds) }
-            }
             api::Read::Remarks { number, review, page } => {
                 self.rows = Rows::Remarks(List::with_capacity(bounds.page_size));
                 self.paged(page, bounds);
@@ -217,7 +211,7 @@ impl Plan {
                 self.contents = Some(plan);
                 return Ok(step);
             }
-            read @ (api::Read::Checks { .. } | api::Read::Job { .. }) => {
+            read @ (api::Read::Checks { .. } | api::Read::Statuses { .. } | api::Read::Job { .. }) => {
                 let mut plan = crate::forgejo::plans::actions::Plan::new(
                     read,
                     self.row.as_ref().expect("resolved").clone(),
@@ -232,9 +226,6 @@ impl Plan {
             }
         };
         Ok(self.send(request))
-    }
-    fn id(&self, bytes: api::Commit) -> ObjectId {
-        ObjectId { bytes, format: self.row.as_ref().expect("resolved format").object_format }
     }
     fn permission(&mut self, user: u64, tables: &mut Tables) -> Step {
         let request = match tables.user(self.repository.forge, user) {
@@ -372,7 +363,6 @@ impl Plan {
                     | Rows::Items(_)
                     | Rows::Comments(_)
                     | Rows::Reviews(_)
-                    | Rows::Statuses(_)
                     | Rows::Remarks(_)
                     | Rows::Branches(_) => Err(api::Error::InvalidAnswer),
                 }
@@ -397,14 +387,6 @@ impl Plan {
                     None => Ok(()),
                 }
             }
-            d::Row::Status(status) => self.append(
-                api::Answer::Statuses {
-                    ci: api::Ci::None,
-                    statuses: Box::new([reading::status(status, &self.row.as_ref().expect("resolved URL").html_url)?]),
-                    more: false,
-                },
-                bounds,
-            ),
             d::Row::ReviewComment(remark) => {
                 let skip = self.page.saturating_sub(1).checked_mul(self.limit).ok_or(api::Error::TooLarge)?;
                 if self.count <= skip {
@@ -428,7 +410,8 @@ impl Plan {
                 }
                 self.append(api::Answer::Branches(Box::new([branch.name])), bounds)
             }
-            d::Row::Found(_)
+            d::Row::Status(_)
+            | d::Row::Found(_)
             | d::Row::Reachable(_)
             | d::Row::Token(_)
             | d::Row::Hook(_)
@@ -514,7 +497,6 @@ impl Plan {
             Rows::Items(rows) => rows.len() < rows.capacity(),
             Rows::Comments(rows) => rows.len() < rows.capacity(),
             Rows::Reviews(rows) => rows.len() < rows.capacity(),
-            Rows::Statuses(rows) => rows.len() < rows.capacity(),
             Rows::Remarks(rows) => rows.len() < rows.capacity(),
             Rows::Branches(rows) => rows.len() < rows.capacity(),
             Rows::Collaborators(rows) => rows.len() < rows.capacity(),
@@ -526,12 +508,9 @@ impl Plan {
                     self.cut = true;
                     return Ok(());
                 }
-                Rows::None
-                | Rows::Items(_)
-                | Rows::Reviews(_)
-                | Rows::Statuses(_)
-                | Rows::Branches(_)
-                | Rows::Collaborators(_) => return Err(api::Error::TooLarge),
+                Rows::None | Rows::Items(_) | Rows::Reviews(_) | Rows::Branches(_) | Rows::Collaborators(_) => {
+                    return Err(api::Error::TooLarge);
+                }
             }
         }
         self.push(answer)
@@ -542,7 +521,6 @@ impl Plan {
             Rows::None
             | Rows::Comments(_)
             | Rows::Reviews(_)
-            | Rows::Statuses(_)
             | Rows::Remarks(_)
             | Rows::Branches(_)
             | Rows::Collaborators(_) => return Err(api::Error::InvalidAnswer),
@@ -561,7 +539,6 @@ impl Plan {
                     Rows::None
                     | Rows::Items(_)
                     | Rows::Reviews(_)
-                    | Rows::Statuses(_)
                     | Rows::Remarks(_)
                     | Rows::Branches(_)
                     | Rows::Collaborators(_) => return Err(api::Error::InvalidAnswer),
@@ -576,27 +553,11 @@ impl Plan {
                     Rows::None
                     | Rows::Items(_)
                     | Rows::Comments(_)
-                    | Rows::Statuses(_)
                     | Rows::Remarks(_)
                     | Rows::Branches(_)
                     | Rows::Collaborators(_) => return Err(api::Error::InvalidAnswer),
                 };
                 for row in reviews {
-                    rows.push(row).expect("room checked");
-                }
-            }
-            api::Answer::Statuses { statuses, .. } => {
-                let rows = match &mut self.rows {
-                    Rows::Statuses(rows) => rows,
-                    Rows::None
-                    | Rows::Items(_)
-                    | Rows::Comments(_)
-                    | Rows::Reviews(_)
-                    | Rows::Remarks(_)
-                    | Rows::Branches(_)
-                    | Rows::Collaborators(_) => return Err(api::Error::InvalidAnswer),
-                };
-                for row in statuses {
                     rows.push(row).expect("room checked");
                 }
             }
@@ -607,7 +568,6 @@ impl Plan {
                     | Rows::Items(_)
                     | Rows::Comments(_)
                     | Rows::Reviews(_)
-                    | Rows::Statuses(_)
                     | Rows::Branches(_)
                     | Rows::Collaborators(_) => return Err(api::Error::InvalidAnswer),
                 };
@@ -622,7 +582,6 @@ impl Plan {
                     | Rows::Items(_)
                     | Rows::Comments(_)
                     | Rows::Reviews(_)
-                    | Rows::Statuses(_)
                     | Rows::Remarks(_)
                     | Rows::Collaborators(_) => return Err(api::Error::InvalidAnswer),
                 };
@@ -630,7 +589,8 @@ impl Plan {
                     rows.push(row).expect("room checked");
                 }
             }
-            api::Answer::Pull(_)
+            api::Answer::Statuses { .. }
+            | api::Answer::Pull(_)
             | api::Answer::Commit(_)
             | api::Answer::Located { .. }
             | api::Answer::PullFiles { .. }

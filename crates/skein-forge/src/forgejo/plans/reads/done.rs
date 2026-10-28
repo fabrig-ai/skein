@@ -30,24 +30,6 @@ impl Plan {
                 Ok(Some(self.send(Request::Comments { at: self.at(), number })))
             }
             d::Document::Pull(pull) => self.pull_done(pull, bounds),
-            d::Document::CombinedStatus(combined) => {
-                let ci = reading::ci(combined.state, combined.total_count);
-                let read = u64::from(self.page.saturating_sub(1))
-                    .saturating_mul(u64::from(self.limit))
-                    .saturating_add(u64::from(self.count));
-                let statuses = match core::mem::replace(&mut self.rows, Rows::None) {
-                    Rows::Statuses(rows) => rows.into_boxed(),
-                    Rows::None
-                    | Rows::Items(_)
-                    | Rows::Comments(_)
-                    | Rows::Reviews(_)
-                    | Rows::Remarks(_)
-                    | Rows::Branches(_)
-                    | Rows::Collaborators(_) => return Err(api::Error::InvalidAnswer),
-                };
-                let answer = api::Answer::Statuses { ci, statuses, more: read < combined.total_count };
-                self.terminal(answer, bounds)
-            }
             d::Document::Branch(branch) => self.branch_done(branch, bounds),
             d::Document::Protection(protection) => {
                 self.terminal(api::Answer::Protection(Some(reading::protection(protection))), bounds)
@@ -61,18 +43,16 @@ impl Plan {
                         return self.next_permission(tables);
                     }
                     Rows::None => api::Answer::Permission(permission),
-                    Rows::Items(_)
-                    | Rows::Comments(_)
-                    | Rows::Reviews(_)
-                    | Rows::Statuses(_)
-                    | Rows::Remarks(_)
-                    | Rows::Branches(_) => return Err(api::Error::InvalidAnswer),
+                    Rows::Items(_) | Rows::Comments(_) | Rows::Reviews(_) | Rows::Remarks(_) | Rows::Branches(_) => {
+                        return Err(api::Error::InvalidAnswer);
+                    }
                 };
                 self.terminal(answer, bounds)
             }
             d::Document::Search { ok } => self.search_done(ok, tables),
             d::Document::Listed { skipped } => self.listed_done(skipped, bounds, tables),
-            d::Document::RepoSearch { .. }
+            d::Document::CombinedStatus(_)
+            | d::Document::RepoSearch { .. }
             | d::Document::Token(_)
             | d::Document::User(_)
             | d::Document::Org(_)
@@ -275,12 +255,9 @@ impl Plan {
                 | api::Read::Job { .. }
                 | api::Read::File { .. } => return Err(api::Error::InvalidAnswer),
             },
-            Rows::Items(_)
-            | Rows::Comments(_)
-            | Rows::Reviews(_)
-            | Rows::Statuses(_)
-            | Rows::Remarks(_)
-            | Rows::Branches(_) => return Err(api::Error::InvalidAnswer),
+            Rows::Items(_) | Rows::Comments(_) | Rows::Reviews(_) | Rows::Remarks(_) | Rows::Branches(_) => {
+                return Err(api::Error::InvalidAnswer);
+            }
         };
         let login = tables.user(self.repository.forge, user).ok_or(api::Error::Missing)?;
         Ok(Some(self.send(Request::Permission { at: self.at(), login: bytes::copy_of(login) })))
@@ -362,7 +339,6 @@ impl Plan {
             | Rows::Items(_)
             | Rows::Comments(_)
             | Rows::Reviews(_)
-            | Rows::Statuses(_)
             | Rows::Remarks(_)
             | Rows::Branches(_) => return Err(api::Error::InvalidAnswer),
         };
@@ -388,7 +364,7 @@ impl Plan {
                 api::Answer::Collaborators { collaborators: rows.into_boxed(), more: self.more }
             }
             Rows::None if self.stage == Stage::Protection => api::Answer::Protection(None),
-            Rows::None | Rows::Statuses(_) => return Err(api::Error::InvalidAnswer),
+            Rows::None => return Err(api::Error::InvalidAnswer),
         })
     }
 }
