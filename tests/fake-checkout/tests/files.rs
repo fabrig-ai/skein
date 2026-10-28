@@ -199,3 +199,59 @@ fn replacing_a_tree_preserves_nested_git_nodes_and_removing_it_removes_objects()
     assert!(checkout.tree(b"work").is_empty());
     assert_eq!(checkout.content(b"elsewhere/file"), Some(b"kept".as_slice()));
 }
+
+#[test]
+fn removal_requires_the_current_file_version_and_removes_only_that_file() {
+    let mut checkout = Checkout::new();
+    let root = checkout.root(b"work");
+    let old = checkout.write(b"work/file", b"old");
+    let current = checkout.write(b"work/file", b"current");
+    checkout.write(b"work/neighbor", b"kept");
+    let before = format!("{checkout:?}");
+    for expected in [Expect::Absent, Expect::Is(old)] {
+        assert_eq!(checkout.remove_current(root, b"file", expected), Err(Failure::Conflict { now: Some(current) }));
+        assert_eq!(format!("{checkout:?}"), before);
+    }
+    assert_eq!(checkout.remove_current(root, b"file", Expect::Is(current)), Ok(()));
+    assert!(!checkout.exists(b"work/file"));
+    assert_eq!(checkout.content(b"work/neighbor"), Some(b"kept".as_slice()));
+    assert_eq!(checkout.write(b"work/next", b"new"), current + 2, "removal issues no version");
+}
+
+#[test]
+fn removal_accepts_empty_directories_and_refuses_nonempty_ones() {
+    let mut checkout = Checkout::new();
+    let root = checkout.root(b"work");
+    checkout.mkdir(b"work/empty");
+    checkout.mkdir(b"work/parent/child");
+    let before = format!("{checkout:?}");
+    assert_eq!(checkout.remove_current(root, b"parent", Expect::Absent), Err(Failure::NotEmpty));
+    assert_eq!(format!("{checkout:?}"), before);
+    assert_eq!(checkout.remove_current(root, b"empty", Expect::Absent), Ok(()));
+    assert!(!checkout.exists(b"work/empty"));
+    assert!(checkout.exists(b"work/parent/child"));
+}
+
+#[test]
+fn removal_refuses_escapes_links_missing_paths_and_special_nodes_without_mutation() {
+    let mut checkout = Checkout::new();
+    let root = checkout.root(b"work");
+    let version = checkout.write(b"work/dir/file", b"kept");
+    checkout.link(b"work/alias", b"dir");
+    checkout.link(b"work/link", b"dir/file");
+    checkout.special(b"work/special");
+    checkout.write(b"outside", b"kept");
+    let before = format!("{checkout:?}");
+    for (path, refusal) in [
+        (b"../outside".as_slice(), Failure::Escapes),
+        (b"alias/file", Failure::Linked),
+        (b"link", Failure::Linked),
+        (b"missing", Failure::Missing),
+        (b"missing/file", Failure::Missing),
+        (b"special", Failure::NotFile),
+        (b"dir/file/child", Failure::NotDirectory),
+    ] {
+        assert_eq!(checkout.remove_current(root, path, Expect::Is(version)), Err(refusal));
+        assert_eq!(format!("{checkout:?}"), before);
+    }
+}

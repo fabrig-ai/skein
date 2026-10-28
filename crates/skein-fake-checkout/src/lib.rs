@@ -163,6 +163,9 @@ pub enum Failure {
     /// Required directory is another node kind (fake-checkout.md, section 2).
     NotDirectory,
 
+    /// Removal target is a directory with at least one descendant (fake-checkout.md, section 2).
+    NotEmpty,
+
     /// Load target exceeds the requested content cap (fake-checkout.md, section 2).
     TooLarge {
         /// Actual content length in bytes (fake-checkout.md, section 2).
@@ -581,6 +584,33 @@ impl Checkout {
         let version = self.next_version();
         self.nodes.insert(at, Node::File { content: content.to_vec(), version });
         Ok(version)
+    }
+
+    /// Remove one current regular file or empty directory beneath a root, following
+    /// no links and changing nothing on refusal (fake-checkout.md, section 2).
+    pub fn remove_current(&mut self, root: u64, path: &[u8], expect: Expect) -> Result<(), Failure> {
+        let (at, missing) = self.resolve(root, path, Resolve::Store)?;
+        if !missing.is_empty() {
+            return Err(Failure::Missing);
+        }
+        match self.nodes.get(&at) {
+            None => return Err(Failure::Missing),
+            Some(Node::File { version, .. }) => {
+                if expect != Expect::Is(*version) {
+                    return Err(Failure::Conflict { now: Some(*version) });
+                }
+            }
+            Some(Node::Directory) => {
+                let prefix = [at.as_slice(), b"/"].concat();
+                if self.nodes.keys().any(|name| name.starts_with(&prefix)) {
+                    return Err(Failure::NotEmpty);
+                }
+            }
+            Some(Node::Special) => return Err(Failure::NotFile),
+            Some(Node::Link { .. }) => unreachable!("removal resolves without following links"),
+        }
+        self.nodes.remove(&at);
+        Ok(())
     }
 
     /// Pure resolution, collecting missing store parents without installing them.
