@@ -67,23 +67,11 @@ pub struct Client {
     first_delta: Option<Time>,
     completion_time: Option<Time>,
     closed: bool,
-    bound: u64,
 }
 
 impl Client {
     fn new(transport: Transport, calls: u32, input: usize) -> Self {
         let limits = limits(calls);
-        let mut endpoints = List::with_capacity(1);
-        endpoints
-            .push(Endpoint {
-                address: (Ipv4Addr::LOCALHOST, 80).into(),
-                transport: skein_llm_connection::Transport::Plaintext,
-                llm: skein_llm::Endpoint::codex(),
-                limits: skein_llm_world::limits(),
-                credential: skein_llm::client::CredentialLimits { value: 2048, account_id: 128 },
-            })
-            .expect("endpoint bound");
-        let bound = skein_llm_connection::worst_case(&limits, &endpoints).expect("component bound");
         Self {
             io: io::Io::new(&limits.io),
             limits,
@@ -102,7 +90,6 @@ impl Client {
             first_delta: None,
             completion_time: None,
             closed: false,
-            bound,
         }
     }
 
@@ -292,13 +279,6 @@ impl Host for Client {
             && self.closed
             && !self.component.as_ref().is_some_and(Component::has_work)
     }
-    fn worst_case(&self) -> u64 {
-        self.bound
-            .checked_add(io::worst_case(&self.limits.io).expect("io bound"))
-            .expect("combined bound")
-            .checked_add(u64::from(ROOM) * 256 + 32 * 131_072)
-            .expect("queues and retained owner records")
-    }
     fn operations(&self) -> u32 {
         io::operations(&self.limits.io).expect("bounded io")
     }
@@ -364,14 +344,6 @@ impl Host for Process {
             Self::Client(client) => client.is_empty(),
             Self::Peer(peer, _) => peer.is_empty(),
         }
-    }
-    fn worst_case(&self) -> u64 {
-        match self {
-            Self::Client(client) => client.worst_case(),
-            Self::Peer(peer, _) => peer.worst_case(),
-        }
-        .checked_add(4096)
-        .expect("boxed process wrapper")
     }
     fn operations(&self) -> u32 {
         match self {

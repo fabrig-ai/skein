@@ -661,12 +661,6 @@ impl Component {
         up.push(Event::Closed);
     }
 
-    /// Checked heap bound using the normalized limits of configured endpoints.
-    #[must_use]
-    pub fn worst_case(&self) -> Option<u64> {
-        crate::worst_case(&self.limits, &self.endpoints)
-    }
-
     /// Releases settled connection slots at the owning loop's reclaim point.
     pub fn reclaim(&mut self) {
         self.connections.reclaim();
@@ -1007,13 +1001,5 @@ mod memory_tests {
         pool.down(&env, Request::Cancel { call: Token::new(8) }, &mut up, &mut io);
         assert_eq!(pool.reserved(), 2 * reservation, "removing the older wait grants the younger call");
         assert_eq!(pool.waiting_count(), 1);
-    }
-
-    #[test]
-    fn increasing_pool_memory_adds_exactly_that_many_bytes_to_the_bound() {
-        let mut pool = component();
-        let before = pool.worst_case().unwrap();
-        pool.limits.memory += 1024;
-        assert_eq!(pool.worst_case().unwrap() - before, 1024);
     }
 }

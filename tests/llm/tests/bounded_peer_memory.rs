@@ -304,6 +304,27 @@ fn actual_connections_reuse_reclaimed_service_routes_past_its_capacity() {
 }
 
 #[test]
+#[should_panic(expected = "finite configured peer observation ownership")]
+fn an_unrepresentable_event_observation_product_is_refused() {
+    let bounds = limits();
+    let mut caps = observations(&bounds);
+    caps.event_bytes = u64::MAX;
+    let mut world = Exchange::new(input(1, Provider::Anthropic), bounds, scripts());
+    world.observe(caps);
+}
+
+#[test]
+#[should_panic(expected = "finite configured peer observation ownership")]
+fn an_unrepresentable_query_observation_product_is_refused() {
+    let bounds = limits();
+    let mut caps = observations(&bounds);
+    caps.queries = 2;
+    caps.query_bytes = u64::MAX;
+    let mut world = Exchange::new(input(1, Provider::Anthropic), bounds, scripts());
+    world.observe(caps);
+}
+
+#[test]
 fn exact_query_observation_capacity_copies_the_whole_query_and_one_less_copies_nothing() {
     let bounds = limits();
     // This literal fixture offers no tools and carries one user/text pair.
