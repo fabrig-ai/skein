@@ -288,8 +288,9 @@ fn collect_memory(
     document: &[u8],
     filter: skein_json::collector::Filter,
     limits: skein_json::collector::Limits,
+    ceiling: u64,
 ) -> (u64, u64, u32, u32) {
-    collect_memory_caps(document, filter, limits, &[])
+    collect_memory_caps(document, filter, limits, &[], ceiling)
 }
 
 fn collect_memory_caps(
@@ -297,6 +298,7 @@ fn collect_memory_caps(
     filter: skein_json::collector::Filter,
     limits: skein_json::collector::Limits,
     caps: &[u32],
+    ceiling: u64,
 ) -> (u64, u64, u32, u32) {
     use skein_json::collector::{self, Collector, Event, Request};
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
@@ -306,7 +308,7 @@ fn collect_memory_caps(
         (u32::try_from(document.len()).expect("bounded document")).max(json::largest_demand(&limits.tokenizer)),
     );
     intake.append(document).expect("all bytes fit");
-    let bound = collector::worst_case(&limits, caps, &filter).expect("priced limits");
+    let bound = ceiling;
     let meter = Meter::new();
     meter.start();
     let mut collector = Collector::new(filter, &limits, caps).expect("valid filter");
@@ -343,6 +345,8 @@ fn collect_memory_caps(
 #[test]
 fn collector_skipped_long_text_adds_no_memory_and_full_counts_stay_within_the_bound() {
     use skein_json::collector::{Filter, Keep, Key, Limits, Node};
+    // Fixed selected/skipped fixtures peak below 1 KiB, including queue growth.
+    const CEILING: u64 = 1024;
     let limits = Limits {
         tokenizer: json::Limits { depth: 4, string: 8, number: 8, chunk: 32, length: 2 << 20 },
         tokens: 4,
@@ -352,9 +356,9 @@ fn collector_skipped_long_text_adds_no_memory_and_full_counts_stay_within_the_bo
     let filter = Filter { root: Keep::Into(&[Node { key: Key::Field(b"keep"), keep: Keep::Value }]) };
     let small = format!("{{\"keep\":1,\"omit\":\"{}\"}}", "a".repeat(64));
     let large = format!("{{\"keep\":1,\"omit\":\"{}\"}}", "a".repeat(1 << 12));
-    assert_eq!(collect_memory(small.as_bytes(), filter, limits).0, collect_memory(large.as_bytes(), filter, limits).0);
+    assert_eq!(collect_memory(small.as_bytes(), filter, limits, CEILING).0, collect_memory(large.as_bytes(), filter, limits, CEILING).0);
     let exact = Limits { tokenizer: json::Limits { chunk: 4, ..limits.tokenizer }, tokens: 4, text: 5, ..limits };
-    let (peak, bound, tokens, text) = collect_memory(br#"{"keep":1}"#, filter, exact);
+    let (peak, bound, tokens, text) = collect_memory(br#"{"keep":1}"#, filter, exact, CEILING);
     assert!(peak <= bound, "one reusable document and its emitted copy stay within the bound");
     assert_eq!(tokens, exact.tokens);
     assert_eq!(text, exact.text);
@@ -363,6 +367,8 @@ fn collector_skipped_long_text_adds_no_memory_and_full_counts_stay_within_the_bo
 #[test]
 fn tagged_losing_candidates_hold_no_memory_after_their_counts() {
     use skein_json::collector::{Cap, Filter, Keep, Key, Limits, Node, Tagged, Variant};
+    // The two tagged candidates and their routing queue peak below 4 KiB.
+    const CEILING: u64 = 4096;
     const TAG: Tagged = Tagged {
         tag: b"type",
         known: &[
@@ -380,12 +386,12 @@ fn tagged_losing_candidates_hold_no_memory_after_their_counts() {
     };
     let small = format!("{{\"body\":\"{}\",\"id\":1,\"type\":\"small\"}}", "a".repeat(64));
     let large = format!("{{\"body\":\"{}\",\"id\":1,\"type\":\"small\"}}", "a".repeat(1 << 12));
-    let (peak, bound, tokens, text) = collect_memory_caps(small.as_bytes(), filter, limits, &[2]);
+    let (peak, bound, tokens, text) = collect_memory_caps(small.as_bytes(), filter, limits, &[2], CEILING);
     assert!(peak <= bound, "the selected variant stays within the retained document bound");
     assert_eq!(tokens, limits.tokens);
     assert_eq!(text, limits.text);
     assert_eq!(
-        collect_memory_caps(small.as_bytes(), filter, limits, &[2]).0,
-        collect_memory_caps(large.as_bytes(), filter, limits, &[2]).0
+        collect_memory_caps(small.as_bytes(), filter, limits, &[2], CEILING).0,
+        collect_memory_caps(large.as_bytes(), filter, limits, &[2], CEILING).0
     );
 }

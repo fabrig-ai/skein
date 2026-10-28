@@ -26,8 +26,8 @@ impl Json {
         }
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits.tokenizer_limits() };
         let mut machine = tokenizer::Tokenizer::new(&env.limits);
-        let mut above = Queue::with_capacity(1);
-        let mut below = Queue::with_capacity(1);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         let mut collector = Collector::new(limits);
         let mut at: usize = 0;
         let ticks = input.len().saturating_mul(4).saturating_add(16);
