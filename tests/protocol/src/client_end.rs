@@ -3,7 +3,7 @@
 //! the event stream reader on its response body, and a JSON tokenizer for
 //! each event's data through `sse::Data`, or for the body itself when it
 //! is no event stream; routed as a connection routes between its machines
-//! (programming-model.md, 4), each call held to its `MAX_OUT`; and a
+//! (programming-model.md, 4); and a
 //! scripted user at the top, which makes its calls one after another on a
 //! connection kept, each uploading a JSON request, reads events slowly or
 //! not, and closes when it is done or when it is told to.
@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 
 use skein_http::client::{self, Body, Call, Client};
 use skein_http::sse::{self, Reader};
-use skein_http::{Header, MaxOut, Method};
+use skein_http::{Header, Method};
 use skein_json::Token;
 use skein_json::tokenizer::{self as json, Tokenizer};
 use skein_lib::stream::{Down, Fault, Read, Up};
@@ -309,10 +309,10 @@ impl End {
         let up = if self.seen.closed { self.bottom.late() } else { self.bottom.answer(grant) };
         let Some(up) = up else { return };
         let mut work = Work::new();
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         client::up(&mut self.client, &env(self.limits.client), up, &mut above, &mut below);
-        self.client_routed(client::UP_MAX_OUT, above, below, false, &mut work);
+        self.client_routed(above, below, false, &mut work);
         self.drain(work);
     }
 
@@ -322,24 +322,22 @@ impl End {
             client::Request::Body(down) => *down == Down::Demand { read: Read::Nothing, room: 0 },
             client::Request::Call(_) | client::Request::Upload(_) => false,
         };
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         client::down(&mut self.client, &env(self.limits.client), rq, &mut above, &mut below);
-        self.client_routed(client::DOWN_MAX_OUT, above, below, stopping, work);
+        self.client_routed(above, below, stopping, work);
     }
 
-    /// What the client emitted, checked against `max`: its requests go below,
+    /// What the client emitted: its requests go below,
     /// a withdrawal among them only as it stops reading; its events join
     /// `work`.
     fn client_routed(
         &mut self,
-        max: MaxOut,
         mut above: Queue<client::Event>,
         mut below: Queue<Down>,
         stopping: bool,
         work: &mut Work,
     ) {
-        assert!(above.len() <= max.above && below.len() <= max.below, "the client's MAX_OUT");
         let mut ending = stopping;
         while let Some(event) = above.pop() {
             ending |= matches!(event, client::Event::Done(_) | client::Event::Failed(_) | client::Event::Closed);
