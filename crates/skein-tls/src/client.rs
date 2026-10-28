@@ -56,8 +56,7 @@ pub use error::{Certificate, Error};
 #[cfg_attr(not(test), expect(unused_imports, reason = "The crate's step tests use this client path"))]
 pub(crate) use limits::MAX_HANDSHAKE;
 pub use limits::{
-    FLIGHT, HEADER, LARGEST_READ, Limits, MAX_BODY, MAX_PLAINTEXT, MAX_RECORD, largest_room,
-    room_for, worst_case,
+    FLIGHT, HEADER, LARGEST_READ, Limits, MAX_BODY, MAX_PLAINTEXT, MAX_RECORD, largest_room, room_for, worst_case,
 };
 
 use above::{Above, Answer, Reading, Wanted, answer, stream};

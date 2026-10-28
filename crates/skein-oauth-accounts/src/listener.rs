@@ -9,7 +9,7 @@
 )]
 
 use crate::Limits;
-use crate::exchange::{Exchange, ROUTES};
+use crate::exchange::Exchange;
 use crate::redirect;
 use crate::route::{self, Socket};
 use alloc::boxed::Box;
@@ -362,14 +362,14 @@ impl Listener {
 
 impl Callback {
     fn new(socket: Token, limits: &Limits) -> Self {
-        let mut requests = Queue::with_capacity(ROUTES);
+        let mut requests = Queue::uncapped();
         requests.push(http::Request::Next);
         Callback {
             socket,
             http: http::Server::new(&limits.server),
-            events: Queue::with_capacity(ROUTES),
+            events: Queue::uncapped(),
             requests,
-            below: Queue::with_capacity(ROUTES),
+            below: Queue::uncapped(),
             page: PAGE,
             send: limits.server.send,
             offset: 0,
@@ -411,9 +411,13 @@ impl Callback {
             return;
         }
         if self.phase != Head::Closing {
-            for _ in 0..ROUTES {
+            for _ in 0..self.events.len() {
                 drop(self.events.pop());
+            }
+            for _ in 0..self.requests.len() {
                 drop(self.requests.pop());
+            }
+            for _ in 0..self.below.len() {
                 drop(self.below.pop());
             }
             http::down(
@@ -423,8 +427,10 @@ impl Callback {
                 &mut self.events,
                 &mut self.below,
             );
-            for _ in 0..ROUTES {
+            for _ in 0..self.events.len() {
                 drop(self.events.pop());
+            }
+            for _ in 0..self.below.len() {
                 drop(self.below.pop());
             }
         }
@@ -434,14 +440,8 @@ impl Callback {
 }
 
 pub(crate) fn worst_case(limits: &Limits) -> Option<u64> {
-    Queue::<http::Event>::worst_case(ROUTES)?
-        .checked_add(Queue::<http::Request>::worst_case(ROUTES)?)?
-        .checked_add(Queue::<Down>::worst_case(ROUTES)?)?
-        .checked_add(
-            u64::from(limits.server.head.max(limits.server.response).max(limits.server.send))
-                .checked_mul(u64::from(ROUTES))?,
-        )?
-        .checked_add(u64::from(limits.client.url_bytes).checked_mul(2)?)?
+    u64::from(limits.client.url_bytes)
+        .checked_mul(2)?
         .checked_add(u64::from(limits.client.uri_bytes))?
         .checked_add(u64::from(limits.client.document.issued_client_bytes))?
         .checked_add(512)

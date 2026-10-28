@@ -4,6 +4,9 @@ use skein_llm_world::{TERMINAL, World, call, events, limits, response};
 
 #[test]
 fn standard_client_bound_excludes_per_item_replay_capacity() {
+    // 64 MiB leaves headroom above the standard client's 51 MiB fixed state;
+    // multiplying replay capacity by every output item exceeds this ceiling.
+    const STANDARD_CLIENT_CEILING: u64 = 64 * 1024 * 1024;
     let declared = Declared {
         window: 272_000,
         output: 32_000,
@@ -15,13 +18,7 @@ fn standard_client_bound_excludes_per_item_replay_capacity() {
         history_items: 1,
     };
     let derived = Limits::derive(&declared).unwrap();
-    // 64 MiB leaves headroom above the standard client's 51 MiB fixed state;
-    // multiplying replay capacity by every output item exceeds this ceiling.
-    const STANDARD_CLIENT_CEILING: u64 = 64 * 1024 * 1024;
-    for (provider, receiving) in [
-        (Provider::OpenAiCodex, 3_527_212),
-        (Provider::Anthropic, 3_527_206),
-    ] {
+    for (provider, receiving) in [(Provider::OpenAiCodex, 3_527_212), (Provider::Anthropic, 3_527_206)] {
         let mut bounds = derived.dialect(provider);
         bounds.http.request = 4096;
         bounds.http.read = 256;

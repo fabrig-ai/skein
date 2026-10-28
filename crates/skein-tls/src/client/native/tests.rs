@@ -38,13 +38,11 @@ impl Machine {
     fn down(&mut self, request: Request) {
         assert!(self.above.is_empty() && self.below.is_empty(), "previous step fully observed");
         super::down(&mut self.client, &self.env, request, &mut self.above, &mut self.below);
-
     }
 
     fn up(&mut self, event: LowerEvent) {
         assert!(self.above.is_empty() && self.below.is_empty(), "previous step fully observed");
         super::up(&mut self.client, &self.env, event, &mut self.above, &mut self.below);
-
     }
 
     fn started(&mut self) -> Token {

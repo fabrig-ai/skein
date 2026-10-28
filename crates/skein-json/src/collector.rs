@@ -318,7 +318,7 @@ pub fn worst_case(limits: &Limits, caps: &[u32], filter: &Filter) -> Option<u64>
     Some(receiving.max(candidates.checked_add(planning)?))
 }
 
-/// Receives a stream event, emitting at most `UP_MAX_OUT`.
+/// Receives a stream event.
 pub fn up(collector: &mut Collector, env: &Env<Limits>, event: Up, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let tokenizer_env = tokenizer_env(env);
     json::up(&mut collector.tokenizer, &tokenizer_env, event, &mut collector.events, below);
@@ -363,7 +363,7 @@ pub fn up(collector: &mut Collector, env: &Env<Limits>, event: Up, above: &mut Q
     drive(collector, env, above, below);
 }
 
-/// Receives the owner's demand, emitting at most `DOWN_MAX_OUT`.
+/// Receives the owner's demand.
 pub fn down(
     collector: &mut Collector,
     env: &Env<Limits>,

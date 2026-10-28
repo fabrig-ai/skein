@@ -109,7 +109,6 @@ impl Harness {
     }
 
     fn take(&mut self) {
-
         while let Some(event) = self.above.pop() {
             match event {
                 native::Event::Client(client::Event::Ready(_)) => self.phase = Phase::Exchange,
