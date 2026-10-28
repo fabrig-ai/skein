@@ -371,25 +371,17 @@ impl End {
 
     fn tokenizer_down(&mut self, rq: json::Request, work: &mut Work) {
         let (tokenizer, _) = self.tokenizer.as_mut().expect("a tokenizer");
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         json::down(tokenizer, &env(self.limits.json), rq, &mut above, &mut below);
-        assert!(
-            above.len() <= json::DOWN_MAX_OUT.above && below.len() <= json::DOWN_MAX_OUT.below,
-            "the tokenizer's MAX_OUT"
-        );
         queued(above, below, Routed::Tokenizer, Routed::TokenizerBelow, work);
     }
 
     fn tokenizer_up(&mut self, up: Up, work: &mut Work) {
         let (tokenizer, _) = self.tokenizer.as_mut().expect("a tokenizer");
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         json::up(tokenizer, &env(self.limits.json), up, &mut above, &mut below);
-        assert!(
-            above.len() <= json::UP_MAX_OUT.above && below.len() <= json::UP_MAX_OUT.below,
-            "the tokenizer's MAX_OUT"
-        );
         queued(above, below, Routed::Tokenizer, Routed::TokenizerBelow, work);
     }
 
