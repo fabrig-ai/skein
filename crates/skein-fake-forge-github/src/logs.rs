@@ -6,7 +6,7 @@ use crate::{
 use alloc::boxed::Box;
 use skein_fake_forge_domain::{self as domain, api as a};
 use skein_forge::{forgejo::id::unsigned, github::request::Method};
-use skein_lib::{Decimal, List, Queue, ReplyTo, Rng, Secret, Wall, Writer, bytes, sha256::Hmac};
+use skein_lib::{Decimal, Queue, ReplyTo, Rng, Secret, Wall, Writer, bytes, sha256::Hmac};
 
 const LIFE: u64 = 600_000_000_000;
 // u32 repository, u64 job/expiry, u32 attempt, separators and 64 hex digits.
@@ -224,13 +224,4 @@ pub(crate) fn finish(result: Result<a::Answer, a::Error>, limits: &Limits) -> Re
         return answers::failed();
     }
     Response { body, ..empty(200) }
-}
-
-pub(crate) fn worst_case(limits: &Limits) -> Option<u64> {
-    Queue::<Record>::worst_case(limits.blob_records)?
-        .checked_add(u64::from(limits.blob_records).checked_mul(u64::from(limits.http.head))?)?
-        .checked_add(32)?
-        // Three retained origins, signing scratch and the composed Location.
-        .checked_add(u64::from(limits.github.target_bytes).checked_mul(6)?)?
-        .checked_add(List::<u8>::worst_case(SIGNED_MAX)?)
 }

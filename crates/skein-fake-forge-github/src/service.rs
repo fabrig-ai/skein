@@ -266,7 +266,7 @@ pub struct Service {
 impl Service {
     /// Validates the tables and limits before creating bounded stores.
     pub fn new(config: Config, limits: &Limits, seed: u64) -> Result<Self, Problem> {
-        if worst_case(limits, &config).is_none() {
+        if !valid(limits, &config) {
             return Err(Problem::Limits);
         }
         let string = usize::try_from(limits.github.string_bytes).or(Err(Problem::Limits))?;
@@ -884,124 +884,31 @@ pub(crate) fn joined(first: &[u8], last: &[u8]) -> Option<Box<[u8]>> {
     Some(out.finish())
 }
 
-/// The layer's service scratch and one HTTP connection, including caller-owned
-/// continuations and framing buffers. A host adds one connection envelope per
-/// additional connection and budgets the shared domain's replies separately,
-/// including domain payloads moved into a continuation.
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// Paging, HTTP, document and hook bounds are usable, installation events and
+/// git parent frontiers fit their counters, and manifest decoding is finite.
 #[must_use]
-pub fn worst_case(limits: &Limits, config: &Config) -> Option<u64> {
-    if config.rate_quota == 0
-        || config.rate_window == skein_lib::Duration::ZERO
-        || github::limits::check(&limits.github).is_err()
-        || limits.page == 0
-        || limits.page > github::pin::PAGE_CAP
-        || limits.page > limits.github.inner
-        || limits.body == 0
-        || limits.body > limits.github.body_bytes
-        || limits.pages.states == 0
-        || limits.pages.manifest_bytes == 0
-        || limits.response < 128
-        || limits.blob_records == 0
-        || limits.git_records == 0
-        || limits.github.inner.checked_mul(4).is_none()
-    {
-        return None;
-    }
-    let mut bytes = crate::server::worst_case(limits)?
-        .checked_add(Map::<fake::RateKey, crate::rates::Heads>::worst_case(limits.github.inner)?)?
-        .checked_add(List::<u32>::worst_case(limits.installations.listed)?)?
-        .checked_add(skein_lib::Queue::<crate::delivery::Post>::worst_case(config.deliveries.log_entries)?)?
-        .checked_add(
-            u64::from(config.deliveries.log_entries).checked_mul(
-                u64::from(limits.deliveries.payload_bytes)
-                    .checked_add(u64::from(limits.github.string_bytes).checked_mul(2)?)?
-                    .checked_add(512)?,
-            )?,
-        )?
-        .checked_add(List::<github::log::Row>::worst_case(limits.github.inner.min(100))?)?
-        .checked_add(
-            u64::from(limits.github.inner.min(100))
-                .checked_mul(u64::from(limits.deliveries.payload_bytes).checked_add(128)?)?,
-        )?
-        .checked_add(crate::delivery::worst_case(&config.deliveries, limits.deliveries, limits.github.string_bytes)?)?
-        .checked_add(u64::from(limits.github.target_bytes))?
-        .checked_add(pages::worst_case(limits)?)?
-        .checked_add(crate::logs::worst_case(limits)?)?
-        .checked_add(skein_lib::Queue::<crate::GitCall>::worst_case(limits.git_records)?)?
-        .checked_add(List::<Account>::worst_case(config.accounts.capacity())?)?;
-    for account in &config.accounts {
-        bytes = bytes.checked_add(u64::try_from(account.login.len()).ok()?)?;
-    }
-    bytes =
-        bytes
-            .checked_add(u64::try_from(config.person.len()).ok()?)?
-            .checked_add(List::<(Secret, u64, Option<Wall>)>::worst_case(config.tokens.capacity())?)?;
-    for (secret, _, _) in &config.tokens {
-        bytes = bytes.checked_add(u64::try_from(secret.expose().len()).ok()?)?;
-    }
-    bytes = bytes
-        .checked_add(Installations::worst_case(&limits.installations)?)?
-        .checked_add(Map::<u32, Row>::worst_case(limits.github.inner)?)?
-        .checked_add(List::<Row>::worst_case(config.repositories.capacity())?)?;
-    for row in &config.repositories {
-        bytes = bytes
-            .checked_add(u64::try_from(row.owner.len()).ok()?)?
-            .checked_add(u64::try_from(row.name.len()).ok()?)?;
-    }
-    bytes = bytes
-        .checked_add(u64::try_from(config.app.slug.len()).ok()?)?
-        .checked_add(u64::try_from(config.app.webhook.len()).ok()?)?
-        .checked_add(u64::from(limits.github.string_bytes))?;
-    // The retained App and its GET /app snapshot coexist. A conversion's
-    // manifest remains in the page store, whose budget counts its own lists.
-    let app_lists = List::<d::Permission>::worst_case(limits.github.inner)?
-        .checked_add(List::<Box<[u8]>>::worst_case(limits.github.inner)?)?
-        .checked_add(
-            u64::from(limits.github.string_bytes).checked_mul(2)?.checked_mul(u64::from(limits.github.inner))?,
-        )?;
-    bytes = bytes.checked_add(app_lists.checked_mul(2)?)?;
-    // Compare moves file paths from the caller-owned domain reply into at
-    // most 300 descriptors, alongside one page of commit ids. Those bounded
-    // vectors coexist with the response encoder; file contents are dropped.
-    bytes = bytes
-        .checked_add(List::<d::File>::worst_case(300)?)?
-        .checked_add(List::<skein_forge::api::Commit>::worst_case(limits.page)?)?;
-    // A CI page holds one run or one classic context descriptor per row;
-    // the domain reply owns their texts, moved into these descriptors. Each
-    // run also owns the fourteen-byte github-actions app slug.
-    bytes = bytes
-        .checked_add(List::<d::Run>::worst_case(limits.page)?.max(List::<d::Context>::worst_case(limits.page)?))?
-        .checked_add(u64::from(limits.page).checked_mul(14)?)?;
-    // Five retained rule rows and the page's cloned contexts coexist.
-    bytes = bytes
-        .checked_add(List::<d::Rule>::worst_case(5)?)?
-        .checked_add(List::<d::Rule>::worst_case(5)?)?
-        .checked_add(List::<Box<[u8]>>::worst_case(limits.github.inner)?)?
-        .checked_add(u64::from(limits.github.inner).checked_mul(u64::from(limits.github.string_bytes))?)?;
-    // The query reader retains at most 16 tokens and their decoded text
-    // (bounded by its input), while its tokenizer and input intake coexist.
-    bytes = bytes
-        .checked_add(List::<skein_json::Token>::worst_case(16)?)?
-        .checked_add(u64::from(limits.github.body_bytes))?;
-    // Reviewer login decoding and the translated user ids coexist. Pending
-    // repository paths are caller-owned; write_body's retained fields, copied
-    // request, intake and token text fit the eight input-body copies below.
-    bytes = bytes.checked_add(List::<u64>::worst_case(limits.github.inner)?)?;
-    let row_bytes = u64::from(limits.github.string_bytes).checked_mul(4)?.checked_add(256)?;
-    bytes
-        .checked_add(row_bytes.checked_mul(u64::from(limits.page))?)?
-        .checked_add(skein_json::tokenizer::worst_case(&limits.github.json)?)?
-        .checked_add(List::<Box<[u8]>>::worst_case(limits.github.inner)?.checked_mul(2)?)?
-        // The fixed JWT reader (512 tokens), its queues and signing scratch.
-        .checked_add(65_536)?
-        // One verified entry retains the bounded JWT bytes; its claims are inline.
-        .checked_add(u64::try_from(github::jwt::JWT_BYTES).ok()?)?
-        .checked_add(u64::from(limits.body).checked_mul(8)?)?
-        // A merge refusal retains one response-sized rule message while the
-        // JSON encoder measures and writes it; these fit eight response copies.
-        .checked_add(u64::from(limits.response).checked_mul(8)?)?
-        .checked_add(u64::from(limits.github.target_bytes).checked_mul(8)?)?
-        .checked_add(u64::from(limits.github.string_bytes).checked_mul(8)?)
+pub fn valid(limits: &Limits, config: &Config) -> bool {
+    config.rate_quota > 0
+        && config.rate_window > skein_lib::Duration::ZERO
+        && github::limits::check(&limits.github).is_ok()
+        && limits.page > 0
+        && limits.page <= github::pin::PAGE_CAP
+        && limits.page <= limits.github.inner
+        && limits.body > 0
+        && limits.body <= limits.github.body_bytes
+        && limits.pages.states > 0
+        && limits.pages.manifest_bytes > 0
+        && limits.response >= 128
+        && limits.blob_records > 0
+        && limits.git_records > 0
+        && limits.github.inner.checked_mul(4).is_some()
+        && crate::server::valid(limits)
+        && installations::valid(&limits.installations)
+        && crate::delivery::valid(&config.deliveries, limits.deliveries, limits.github.string_bytes)
+        && crate::manifest::worst_case(&limits.github, limits.pages.manifest_bytes).is_some()
+        && skein_json::tokenizer::worst_case(&limits.github.json).is_some()
 }
 
 pub(crate) fn valid_origin(base: &[u8], cap: u32) -> bool {

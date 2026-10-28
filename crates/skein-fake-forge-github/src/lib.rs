@@ -27,7 +27,7 @@ pub mod service;
 pub use server::{
     Event, MAX_DOWN, MAX_UP, Server, close, closed, down, resume, resume_with_domain, start, up, up_with_domain,
 };
-pub use service::{Config, Limits, Problem, Service, worst_case};
+pub use service::{Config, Limits, Problem, Service, valid};
 mod texts;
 mod writes;
 

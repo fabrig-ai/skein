@@ -53,7 +53,9 @@ pub struct Server {
 }
 impl Server {
     pub fn new(owner: Token, limits: &Limits) -> Result<Self, Problem> {
-        worst_case(limits).ok_or(Problem::Limits)?;
+        if !valid(limits) {
+            return Err(Problem::Limits);
+        }
         Ok(Self {
             owner,
             blob: false,
@@ -91,51 +93,19 @@ impl Server {
         !self.events.is_empty() || !self.requests.is_empty()
     }
 }
-/// One connection's queues, heads, intake, decoded continuation fields and responses.
-/// Domain answers moved into continuations remain in the host's domain-reply budget.
-/// The shared service counts decoding scratch, including reviewer login/id lists.
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// HTTP is usable, bodies and responses are nonempty, and git decoding fits.
 #[must_use]
-pub fn worst_case(limits: &Limits) -> Option<u64> {
-    if limits.body == 0 || limits.response < 128 {
-        return None;
-    }
-    http::worst_case(&limits.http)?
-        .checked_add(Queue::<http::Event>::worst_case(4)?)?
-        .checked_add(Queue::<http::Request>::worst_case(4)?)?
-        // One Respond owns rate fields, a validator, Link, Location and media.
-        .checked_add(List::<Header>::worst_case(11)?)?
-        // A call moves from events into call; its redacted clone lives in head.
-        // One exchange at a time and take_head before reuse allow two field lists
-        // and two copies of their target/name/value bytes, each within http.head.
-        .checked_add(List::<Header>::worst_case(limits.http.headers)?.checked_mul(2)?)?
-        .checked_add(u64::from(limits.http.head).checked_mul(2)?)?
-        .checked_add(Intake::worst_case(limits.body)?)?
-        .checked_add(crate::git::worst_case(limits)?)?
-        // A conditional repository read retains its admission and a quoted digest.
-        .checked_add(u64::try_from(size_of::<crate::rates::Admission>()).ok()?)?
-        .checked_add(u64::try_from(crate::reads::REPOSITORY_ETAG_BYTES).ok()?)?
-        // dispatch's extracted body and the authenticated admission copy, or
-        // writes::Stage::ReviewAuthor.body, coexist; service counts decoding.
-        .checked_add(u64::from(limits.body).checked_mul(2)?)?
-        // One read continuation's target (Checks, Reviews, Collaborators,
-        // PullFiles, Issues, Comments, Branches) or Branch's decoded name.
-        .checked_add(u64::from(limits.github.target_bytes).checked_mul(2)?)?
-        .checked_add(1)?
-        // writes::Pending.repository plus writes::Stage::OpenPull's head and base.
-        // Service validates the repository's full URL within string_bytes, so
-        // its owner/name path fits one. Read::Repository's Row has two strings.
-        .checked_add(u64::from(limits.github.string_bytes).checked_mul(3)?)?
-        // Server.reply and Respond.headers' Link (API) or Location (page/log).
-        // The response head encoded by HTTP is in http::worst_case above.
-        .checked_add(u64::from(limits.response).checked_mul(2)?)?
-        // Bounded decimal rate values, their field names, validator framing,
-        // Link, Location and the longest media name/value fit this allowance.
-        .checked_add(576)?
-        // One outstanding body demand: one queued/local Body(Bytes) delivery.
-        .checked_add(u64::from(limits.http.read))?
-        // One reply room grant: one copied chunk in requests' Reply(Send).
-        .checked_add(u64::from(limits.http.send))
+pub fn valid(limits: &Limits) -> bool {
+    limits.body > 0
+        && limits.response >= 128
+        && http::valid(&limits.http)
+        && limits.github.inner.checked_mul(4).is_some()
+        && git::decoder_worst_case(&crate::git::limits(limits)).is_some()
+        && skein_json::tokenizer::worst_case(&crate::git::limits(limits).documents.json).is_some()
 }
+
 pub fn start(
     server: &mut Server,
     service: &mut Service,

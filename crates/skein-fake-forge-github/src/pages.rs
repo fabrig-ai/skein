@@ -596,19 +596,3 @@ fn link_page(link: &[u8], max: u32) -> Option<Box<[u8]>> {
     out.put(END).ok()?;
     Some(out.finish())
 }
-pub(crate) fn worst_case(limits: &ServiceLimits) -> Option<u64> {
-    let record = manifest::worst_case(&limits.github, limits.pages.manifest_bytes)?
-        .checked_add(u64::from(limits.github.target_bytes).checked_mul(2)?)?
-        .checked_add(20)?;
-    Map::<Box<[u8]>, Record>::worst_case(limits.pages.states)?
-        .checked_add(List::<Box<[u8]>>::worst_case(limits.pages.states)?)?
-        .checked_add(record.checked_mul(u64::from(limits.pages.states))?)?
-        // Both parameter maps, decoded form copies, and container/input scratch.
-        .checked_add(Fields::worst_case(limits.body)?)?
-        .checked_add(Fields::worst_case(limits.github.target_bytes)?)?
-        .checked_add(skein_lib::Intake::worst_case(
-            limits.pages.manifest_bytes.max(skein_json::tokenizer::largest_demand(&limits.github.json)),
-        )?)?
-        .checked_add(List::<u64>::worst_case(limits.github.json.depth)?)?
-        .checked_add(u64::from(limits.github.string_bytes).checked_mul(2)?)
-}

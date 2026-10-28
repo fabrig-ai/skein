@@ -87,6 +87,8 @@ fn github_fake_job_log_redirect_expires_at_600_seconds_and_blob_ignores_range() 
 
 #[test]
 fn github_fake_blob_record_and_origins_stay_within_admitted_bounds() {
+    // Bounds retained records and paths when the blob-record queue is full.
+    const FAKE_GITHUB_BLOB_RECORDS_HELD_CEILING: u64 = 83_000;
     let limits = f::limits();
     let mut service = crate::Service::new(f::config(), &limits, 5).unwrap();
     let path = f::boxed(&[b'x'; 4096]);
@@ -105,7 +107,7 @@ fn github_fake_blob_record_and_origins_stay_within_admitted_bounds() {
     for row in records {
         held = held.checked_add(u64::try_from(row.path.len()).unwrap()).unwrap();
     }
-    assert!(held <= crate::logs::worst_case(&limits).unwrap());
+    assert!(held <= FAKE_GITHUB_BLOB_RECORDS_HELD_CEILING);
     service.set_blob_origin(f::boxed(b"http://logs.example.test")).unwrap();
     let oversized = crate::service::joined(b"http://", &[b'a'; 1024]).unwrap();
     assert!(service.set_blob_origin(oversized).is_err());

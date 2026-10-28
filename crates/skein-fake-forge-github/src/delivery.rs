@@ -451,18 +451,6 @@ pub(crate) fn valid(config: &Config, limits: Limits, string: u32) -> bool {
         }
     }
 }
-pub(crate) fn worst_case(config: &Config, limits: Limits, string: u32) -> Option<u64> {
-    if !valid(config, limits, string) {
-        return None;
-    }
-    List::<Option<Entry>>::worst_case(config.log_entries)?
-        .checked_add(
-            u64::from(config.log_entries)
-                .checked_mul(u64::from(limits.payload_bytes).checked_mul(2)?.checked_add(128)?)?,
-        )?
-        .checked_add(u64::from(limits.payload_bytes).checked_mul(3)?)?
-        .checked_add(u64::from(string).checked_mul(2)?)
-}
 
 #[expect(
     clippy::disallowed_methods,
@@ -575,13 +563,16 @@ impl crate::Service {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Bounds the retained entries and payloads in the full delivery-store scenario.
+    const FAKE_GITHUB_DELIVERY_HELD_CEILING: u64 = 24_000;
+
     #[test]
-    fn github_fake_full_delivery_store_fits_its_heap_bound() {
+    fn github_fake_full_delivery_store_stays_under_its_held_ceiling() {
         let mut config = Config::standard();
         config.log_entries = 3;
         config.payload_size = 6000;
         let limits = Limits { entries: 3, payload_bytes: 49152 };
-        let bound = worst_case(&config, limits, 256).unwrap();
+
         let mut store = Store::new(config, limits, 7);
         let secret = Secret::new(bytes::copy_of(b"invented-hook-secret"));
         let bounds = crate::tests::fixtures::limits().github;
@@ -614,9 +605,8 @@ mod tests {
             assert_eq!(body.len(), 6000);
             held = held.checked_add(u64::try_from(body.len()).unwrap()).unwrap();
         }
-        assert!(held <= bound);
-        let mut config = Config::standard();
-        config.log_entries = u32::MAX;
-        assert_eq!(worst_case(&config, Limits { entries: u32::MAX, payload_bytes: u32::MAX }, 256), None);
+        assert!(held <= FAKE_GITHUB_DELIVERY_HELD_CEILING);
+        let config = Config::standard();
+        assert!(!valid(&config, Limits { entries: 0, payload_bytes: 1024 }, 256));
     }
 }
