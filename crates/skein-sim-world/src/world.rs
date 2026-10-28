@@ -398,16 +398,15 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
         if *self.finished.get(at).expect("a status per process") {
             return;
         }
-        if self.programs.is_empty() {
-            // No hosted program to bind: completions go straight to the host's queue.
-            self.sim.reap(pid, self.procs.get_mut(at).expect("a process at each index").completions());
-        } else {
+        // Reaping owns simulator bookkeeping; only delivery grows the process's
+        // queue. Stage no more than its room and the records it has in flight.
+        let room = self.procs.get_mut(at).expect("a process at each index").completions().room();
+        let mut arrived = Queue::with_capacity(room.min(self.sim.in_flight(pid)));
+        self.sim.reap(pid, &mut arrived);
+        if !self.programs.is_empty() {
             // Inspect the completion before the parent's next iterate: a hosted
             // child already exists when its parent learns that it was spawned.
-            let mut arrived =
-                Queue::with_capacity(self.procs.get_mut(at).expect("a process at each index").completions().room());
-            self.sim.reap(pid, &mut arrived);
-            while let Some(complete) = arrived.pop() {
+            for complete in &arrived {
                 if let (Op::Spawn { spawn }, Ok(Done::Spawned { pidfd, .. })) = (&complete.kind, &complete.result)
                     && let Some((program_at, entry)) =
                         self.programs.iter().enumerate().find(|(_, entry)| entry.program == spawn.program)
@@ -444,11 +443,13 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
                         "hosted program operations fit its provision"
                     );
                 }
-                self.procs.get_mut(at).expect("a process at each index").completions().push(complete);
             }
         }
         let proc = self.procs.get_mut(at).expect("a process at each index");
         self.meter.around(at, || {
+            while let Some(complete) = arrived.pop() {
+                proc.completions().push(complete);
+            }
             proc.iterate(now, wall);
             proc.drain();
         });
@@ -498,17 +499,21 @@ impl<P: Host, M: Machine, H: Meter> World<P, M, H> {
         let exit = self.sim.service_exit(pid).expect("the child terminated");
         while self.sim.in_flight(pid) > 0 {
             let proc = self.procs.get_mut(at).expect("a process per index");
-            self.sim.reap_exited_service(pid, proc.completions());
-            if self.sim.in_flight(pid) > 0 {
-                // Free returned records inside a call on the process's own
-                // queue, metered as part of its destruction.
-                let discard = || {
+            let mut arrived = Queue::with_capacity(proc.completions().room().min(self.sim.in_flight(pid)));
+            self.sim.reap_exited_service(pid, &mut arrived);
+            let pending = self.sim.in_flight(pid) > 0;
+            self.meter.around(at, || {
+                while let Some(complete) = arrived.pop() {
+                    proc.completions().push(complete);
+                }
+                if pending {
+                    // Delivery and freeing returned records belong to this
+                    // process, metered as part of its destruction.
                     while let Some(complete) = proc.completions().pop() {
                         drop(complete);
                     }
-                };
-                self.meter.around(at, discard);
-            }
+                }
+            });
         }
         let proc = self.procs.remove(at);
         let heap = self.meter.release(at, proc);

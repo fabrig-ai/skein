@@ -13,6 +13,7 @@
 //! `tests/no_allocator.rs`, without it.
 
 pub mod fixtures;
+pub mod growing_ring;
 
 use std::collections::VecDeque;
 use std::net::{Ipv4Addr, SocketAddr};

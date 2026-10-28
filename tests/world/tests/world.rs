@@ -54,6 +54,36 @@ fn a_world_of_two_scripts_settles_and_each_frees_what_it_held() {
     assert!(heap.iter().all(|(most, bound)| *most > 0 && most <= bound), "within each worst case: {heap:?}");
 }
 
+#[test]
+fn a_ring_the_loop_grows_is_charged_to_its_process() {
+    use skein_world::{HostedProgram, LastWord};
+    use skein_world_tests::{
+        Later,
+        growing_ring::{GrowingRing, OPERATIONS},
+    };
+
+    for hosted in [false, true] {
+        let mut world = World::new(SEED, Config::calm(), Later(LastWord::LastExpectation), Memory::Checked);
+        if hosted {
+            world.host(HostedProgram {
+                program: Box::from(&b"unused"[..]),
+                make: |_, _| GrowingRing::new(),
+                instances: 1,
+                operations: OPERATIONS,
+            });
+        }
+        world.spawn(GrowingRing::new);
+        let outcome = world.run();
+        let process = &outcome.procs[0];
+        assert_eq!(process.completed, OPERATIONS);
+        assert_eq!(process.largest_delivery, OPERATIONS, "one delivery grows through several ring capacities");
+        let before_growth = process.before_growth;
+        let peak = outcome.heap.as_ref().expect("checked process")[0].0;
+        drop(outcome);
+        assert!(peak > before_growth, "the process's peak includes the ring the loop grew");
+    }
+}
+
 /// The client's send, with its own completion late, leaves the server's
 /// waiting receive as the only work: deferred to the server's next entry,
 /// which the harness must make at once, before time moves on to the late

@@ -83,7 +83,10 @@ impl<P> Drop for CheckedOutcome<P> {
             let span = Span::start();
             drop(proc);
             let freed = span.end().net.checked_neg().expect("a heap within an i64");
-            assert_eq!(freed, held, "real process {at} must release exactly its own metered heap");
+            assert_eq!(
+                freed, held,
+                "real process {at} must release exactly its own metered heap: a leak, or heap made or freed outside its calls"
+            );
         }
     }
 }
@@ -579,16 +582,14 @@ impl<P: Host, R: Referee<P>> Running<P, R> {
                 let mut ran = self.processes.get(host).expect("a process per host").exit.is_none();
                 if ran {
                     let proc = self.world.procs.get_mut(at).expect("a process per host");
-                    self.ring.deliver(host, proc.completions());
+                    let mut turn = || {
+                        self.ring.deliver(host, proc.completions());
+                        proc.iterate(now, wall);
+                        proc.drain();
+                    };
                     match &mut self.world.heap {
-                        Some(heap) => heap.around(at, || {
-                            proc.iterate(now, wall);
-                            proc.drain();
-                        }),
-                        None => {
-                            proc.iterate(now, wall);
-                            proc.drain();
-                        }
+                        Some(heap) => heap.around(at, turn),
+                        None => turn(),
                     }
                     while let Some(record) = proc.submissions().pop() {
                         self.submits.push(record);
@@ -1011,8 +1012,8 @@ impl<P: Host, R: Referee<P>> Running<P, R> {
 
     fn discard(&mut self, at: usize, host: usize) {
         let proc = self.world.procs.get_mut(at).expect("a dying process");
-        self.ring.deliver(host, proc.completions());
         let mut discard = || {
+            self.ring.deliver(host, proc.completions());
             while let Some(complete) = proc.completions().pop() {
                 drop(complete);
             }

@@ -10,6 +10,26 @@ use skein_world_tests::hosted::{Act, Judge, Script};
 #[global_allocator]
 static HEAP: Counting = Counting;
 
+#[test]
+fn a_ring_the_loop_grows_is_charged_to_its_process() {
+    use skein_world::LastWord;
+    use skein_world_tests::{
+        Later,
+        growing_ring::{GrowingRing, OPERATIONS},
+    };
+
+    let mut world = real::World::new_checked(Later(LastWord::LastExpectation));
+    world.spawn(GrowingRing::new);
+    let outcome = world.run(&Clock::new(), Duration::from_secs(2));
+    let process = &outcome.procs[0];
+    assert_eq!(process.completed, OPERATIONS);
+    assert_eq!(process.largest_delivery, OPERATIONS, "one delivery grows through several ring capacities");
+    let before_growth = process.before_growth;
+    let peak = outcome.heap.as_ref().expect("checked process")[0].0;
+    drop(outcome);
+    assert!(peak > before_growth, "the process's peak includes the ring the loop grew");
+}
+
 fn exchange(_spawn: &Spawn, inherited: &Inherited) -> Script {
     Script::child(inherited, &[Act::Read(0), Act::Write(1, b"reply")])
 }

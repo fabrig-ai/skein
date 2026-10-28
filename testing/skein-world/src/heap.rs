@@ -2,16 +2,18 @@
 //!
 //! The harness checks each hosted process's heap against its own worst
 //! case. One thread, one heap: a process's part is what grew within the
-//! calls that run its code (making it, and each `iterate`), metered with a
-//! [`Span`], at its peak within each call. The simulator's submit and reap,
-//! the referee and the harness run between those calls, so the simulator's
-//! trace and network and the harness's heap are left out. This holds while
-//! nothing a process owns is allocated or freed outside its calls: the
-//! backend hands every buffer back and never copies or replaces one
-//! (`skein_io::kernel`); a crash cut destroys its original records under
-//! their owner's span. The queues it fills and drains are the process's
-//! own, bounded and made with it; and the referee changes a process only
-//! through flags that allocate nothing. Once settled, the harness checks it:
+//! calls that run its code, metered with a [`Span`], at its peak within each
+//! call: making it, delivering into its own containers, iterating and
+//! draining it, and destroying it. What the harness pushes into a process's
+//! containers is metered inside that process's span, including queue growth.
+//! Pops of its submissions stay outside: a queue never shrinks, so popping
+//! frees nothing. The simulator's submit and reap bookkeeping, trace and
+//! network, and the harness's storage stay outside process spans; simulated
+//! completions are staged there before delivery. The backend hands every
+//! buffer back and never copies or replaces one (`skein_io::kernel`); a
+//! crash cut destroys its original records under their owner's span. The
+//! referee changes a process only through flags it acts on in its next
+//! iteration, allocating nothing of theirs. Once settled, the harness checks it:
 //! each process, dropped, frees exactly what was metered as its own
 //! ([`Outcome`](crate::Outcome)), which also finds a leak.
 
@@ -112,7 +114,10 @@ impl Heap {
         let span = Span::start();
         drop(proc);
         let freed = span.end().net.checked_neg().expect("heap fits i64");
-        assert_eq!(freed, old.now, "the cut process releases exactly its remaining owned heap");
+        assert_eq!(
+            freed, old.now,
+            "the cut process releases exactly its remaining owned heap: a leak, or heap made or freed outside its calls"
+        );
         let span = Span::start();
         let proc = make();
         let grown = span.end();
