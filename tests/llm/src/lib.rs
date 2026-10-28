@@ -125,6 +125,15 @@ pub fn text_response(chunked: bool) -> Vec<u8> {
     )
 }
 
+/// The client work selected by one transport turn.
+pub enum Turn {
+    Up(Up),
+    Down(client::Request),
+    Resume,
+    Waiting,
+    Done,
+}
+
 /// Queues are deliberately only as large as the public entry-point bound.
 #[expect(missing_debug_implementations, reason = "Client intentionally hides credential-bearing state")]
 pub struct World {
@@ -246,18 +255,31 @@ impl World {
     /// One deterministic turn; source fragments may arrive without satisfying
     /// the outstanding demand. Reads are delivered only through `Intake::meet`.
     pub fn tick(&mut self, auto_next: bool) -> bool {
+        match self.next_turn(auto_next) {
+            Turn::Up(event) => client::up(&mut self.machine, &self.env, event, &mut self.above, &mut self.below),
+            Turn::Down(request) => {
+                client::down(&mut self.machine, &self.env, request, &mut self.above, &mut self.below);
+            }
+            Turn::Resume => client::resume(&mut self.machine, &self.env, &mut self.above, &mut self.below),
+            Turn::Waiting => return true,
+            Turn::Done => return false,
+        }
+        self.take();
+        true
+    }
+
+    /// Advances only the transport, leaving the client call to the caller.
+    /// A memory test can keep transport buffers outside the client's step.
+    pub fn next_turn(&mut self, auto_next: bool) -> Turn {
         self.ticks += 1;
         if self.machine.has_work() {
-            client::resume(&mut self.machine, &self.env, &mut self.above, &mut self.below);
-            self.take();
-            return true;
+            return Turn::Resume;
         }
         match self.machine.waiting() {
             client::Waiting::Next if auto_next => {
-                self.request(client::Request::Next);
-                return true;
+                return Turn::Down(client::Request::Next);
             }
-            client::Waiting::Closing | client::Waiting::Nothing | client::Waiting::Idle => return false,
+            client::Waiting::Closing | client::Waiting::Nothing | client::Waiting::Idle => return Turn::Done,
             client::Waiting::Start
             | client::Waiting::Ready
             | client::Waiting::Http(_)
@@ -274,7 +296,7 @@ impl World {
             self.source_at += n;
         }
         let Some((read, room)) = self.demand else {
-            return false;
+            return Turn::Done;
         };
         let answer = if room > 0 && self.ticks.is_multiple_of(self.room_delay + 1) {
             self.grants = room;
@@ -289,14 +311,23 @@ impl World {
         } else {
             None
         };
-        if let Some(answer) = answer {
-            if !matches!(answer, Up::End) {
-                self.demand = None;
+        match answer {
+            Some(answer) => {
+                if !matches!(answer, Up::End) {
+                    self.demand = None;
+                }
+                Turn::Up(answer)
             }
-            client::up(&mut self.machine, &self.env, answer, &mut self.above, &mut self.below);
-            self.take();
+            None => Turn::Waiting,
         }
-        true
+    }
+
+    /// Adopts and drains the outputs of a separately metered client call.
+    pub fn outputs(&mut self, above: Queue<client::Event>, below: Queue<Down>) {
+        assert!(self.above.is_empty() && self.below.is_empty());
+        self.above = above;
+        self.below = below;
+        self.take();
     }
     pub fn run(&mut self) {
         for _ in 0..100_000 {
