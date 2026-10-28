@@ -137,7 +137,7 @@ pub enum Unusable {
     LogOrigins { forge: u16, origins: u32, limit: u32 },
     /// A refused origin, including its dialect, name, address or missing TLS trust.
     Origin { forge: u16, origin: skein_forge::github::redirect::Origin },
-    /// A limit is 0, or the worst case passes a `u64`.
+    /// A limit is zero or a derived edge or capacity cannot be represented.
     Zero,
     /// Owner word outside its alphabet or length: terminal before begin.
     Word,
@@ -209,7 +209,9 @@ pub fn check(l: &Limits, s: &Shared, settings: &Settings) -> Result<(), Unusable
         return Err(Unusable::SecretBytes { bytes: l.hook_secret_bytes });
     }
     let server = hook_http(l);
-    skein_http::server::worst_case(&server).ok_or(Unusable::Zero)?;
+    if !skein_http::server::valid(&server) {
+        return Err(Unusable::Zero);
+    }
     stack(Stacked::ServerOverIo, skein_http::server::largest_read(&server), s.io.intake)?;
     stack(Stacked::ServerOverIo, skein_http::server::largest_room(&server), s.io.output)?;
     stack(Stacked::JsonOverServer, tokenizer::largest_demand(&hook_documents(l).json), server.read)?;
@@ -266,15 +268,32 @@ pub fn check(l: &Limits, s: &Shared, settings: &Settings) -> Result<(), Unusable
     stack(Stacked::TlsOverIo, skein_tls::client::largest_room(&l.tls), s.io.output)?;
     stack(Stacked::JsonOverHttp, tokenizer::largest_demand(&documents(l).json), http(l, false, &s.io).read)?;
     check_settings(l, s, settings)?;
-    worst_case(
-        l,
-        s,
-        Forges::of(settings).ok_or(Unusable::Zero)?,
-        crate::settings::owned_bytes(settings).ok_or(Unusable::Zero)?,
-    )
-    .ok_or(Unusable::Zero)?;
+    let forges = Forges::of(settings).ok_or(Unusable::Zero)?;
+    if !skein_tls::client::valid(&l.tls)
+        || !skein_http::client::valid(&http(l, true, &s.io))
+        || !skein_http::client::valid(&http(l, false, &s.io))
+    {
+        return Err(Unusable::Zero);
+    }
+    capacity_bound(l, s, forges).ok_or(Unusable::Zero)?;
     Ok(())
 }
+// Socket slots, Forgejo staging and GitHub log pages are derived capacities,
+// independent of the price of their backing allocations.
+fn capacity_bound(l: &Limits, s: &Shared, forges: Forges) -> Option<()> {
+    l.connections.checked_add(forges.github)?;
+    if l.body_bytes_in == u32::MAX || l.hook_body_bytes == u32::MAX {
+        return None;
+    }
+    if forges.forgejo > 0 {
+        s.op_bytes.checked_div(8)?.checked_add(l.inner)?;
+    }
+    if forges.github > 0 {
+        log_page_bytes(l)?;
+    }
+    Some(())
+}
+
 fn check_github(l: &Limits, s: &Shared, settings: &Settings) -> Result<(), Unusable> {
     let mut github = false;
     for forge in &settings.forges {
