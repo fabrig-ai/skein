@@ -813,3 +813,79 @@ fn a_sign_in_without_refresh_completes_and_round_trips() {
 mod access_only_openid;
 
 mod admits;
+
+#[test]
+fn valid_accepts_test_limits() {
+    assert!(client_valid(&limits()));
+}
+
+fn refuses_limits(bounds: ClientLimits) {
+    assert!(!client_valid(&bounds));
+    assert_eq!(Client::new(bounds).err(), Some(Failure::Limit));
+}
+
+#[test]
+fn valid_refuses_zero_attempts() {
+    refuses_limits(ClientLimits { max_attempts: 0, ..limits() });
+}
+
+#[test]
+fn valid_refuses_zero_request_time() {
+    refuses_limits(ClientLimits { request_time: Duration::ZERO, ..limits() });
+}
+
+#[test]
+fn valid_refuses_zero_sign_in_time() {
+    refuses_limits(ClientLimits { sign_in_time: Duration::ZERO, ..limits() });
+}
+
+#[test]
+fn valid_refuses_modulus_outside_supported_range() {
+    refuses_limits(ClientLimits { modulus_bits: 2047, ..limits() });
+}
+
+#[test]
+fn valid_refuses_document_length_past_tokenizer() {
+    refuses_limits(ClientLimits { document: Limits { document_bytes: u32::MAX, ..limits().document }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_parameter_slots_past_u32() {
+    refuses_limits(ClientLimits { parameter_bytes: u32::MAX, ..limits() });
+}
+
+#[test]
+fn valid_refuses_token_bytes_past_record_schema() {
+    refuses_limits(ClientLimits { document: Limits { token_bytes: u32::MAX, ..limits().document }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_id_token_bytes_past_record_schema() {
+    refuses_limits(ClientLimits { document: Limits { id_token_bytes: u32::MAX, ..limits().document }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_issued_client_bytes_past_record_schema() {
+    refuses_limits(ClientLimits {
+        document: Limits { issued_client_bytes: u32::MAX, ..limits().document },
+        ..limits()
+    });
+}
+
+#[test]
+fn valid_refuses_granted_bytes_past_record_schema() {
+    refuses_limits(ClientLimits { document: Limits { granted_bytes: u32::MAX, ..limits().document }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_subject_bytes_past_record_schema() {
+    refuses_limits(ClientLimits { document: Limits { subject_bytes: u32::MAX, ..limits().document }, ..limits() });
+}
+
+#[test]
+fn valid_ignores_heap_key_strings() {
+    let bounds =
+        ClientLimits { keys: u32::MAX, document: Limits { string_bytes: u32::MAX, ..limits().document }, ..limits() };
+    assert!(client_valid(&bounds));
+    assert_eq!(client_worst_case(&bounds), None);
+}

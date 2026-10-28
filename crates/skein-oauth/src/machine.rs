@@ -41,9 +41,27 @@ pub struct ClientLimits {
     pub max_attempts: u32,
 }
 
+/// Whether these limits are representable: every edge bound they size
+/// is finite and every capacity they derive fits (programming-model.md, 6.3).
+/// Exchange timing and key sizes are usable, saved records fit their schema,
+/// and JSON input and request-field slots have representable lengths.
+#[must_use]
+pub fn client_valid(limits: &ClientLimits) -> bool {
+    limits.max_attempts > 0
+        && limits.request_time > Duration::ZERO
+        && limits.sign_in_time > Duration::ZERO
+        && (2048..=8192).contains(&limits.modulus_bits)
+        && crate::record::record_limits(&limits.document).is_some()
+        && limits.document.document_bytes < u32::MAX
+        && limits.parameter_bytes.checked_add(11).is_some()
+}
+
 /// Upper bound for retained registration, exchange, request and answer bytes.
 #[must_use]
 pub fn client_worst_case(limits: &ClientLimits) -> Option<u64> {
+    if !client_valid(limits) {
+        return None;
+    }
     crate::worst_case(&limits.document)?
         .checked_add(u64::from(limits.uri_bytes).checked_mul(7)?)?
         .checked_add(u64::from(limits.scope_bytes).checked_mul(2)?)?
@@ -254,12 +272,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(limits: ClientLimits) -> Result<Client, Failure> {
-        if limits.max_attempts == 0
-            || limits.request_time == Duration::ZERO
-            || limits.sign_in_time == Duration::ZERO
-            || !(2048..=8192).contains(&limits.modulus_bits)
-            || client_worst_case(&limits).is_none()
-        {
+        if !client_valid(&limits) {
             return Err(Failure::Limit);
         }
         Ok(Client { limits, phase: Phase::Idle, active: None, next_id: 1 })
