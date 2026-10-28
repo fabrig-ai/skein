@@ -246,3 +246,20 @@ fn a_refused_answer_is_offered_once_per_offer() {
     );
     assert!(world.close());
 }
+
+#[test]
+fn a_held_git_token_is_not_released_after_its_installation_is_lost() {
+    // The second mint is Contents; its reply remains below while acceptance is withdrawn.
+    const CONTENTS_REPLY: usize = 3;
+    let mut world = Machine::github(SEED, fixtures::limits(), settings(), script(&[PAGE_ONE, PAGE_TWO, MINT, MINT]));
+    world.pause_at(CONTENTS_REPLY, Pause::Reading(0));
+    accepted(&mut world, &[1]);
+    world.run_for(SECOND);
+    accepted(&mut world, &[]);
+    world.action(Request::Offer);
+    world.release_response();
+    world.run_for(SECOND);
+    assert!(world.git_tokens().is_empty());
+    assert!(world.script_done());
+    assert!(world.close());
+}
