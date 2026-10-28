@@ -100,3 +100,7 @@ const ITEM: Tagged = Tagged {
     ],
     unknown: REASONING,
 };
+
+pub(crate) fn valid(limits: &crate::client::Limits) -> bool {
+    crate::filter::projection_bound(limits, &[&ITEM]).is_some()
+}

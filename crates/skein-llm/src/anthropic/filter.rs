@@ -59,3 +59,7 @@ const DELTA: Tagged = Tagged {
     ],
     unknown: STRINGS,
 };
+
+pub(crate) fn valid(limits: &crate::client::Limits) -> bool {
+    crate::filter::projection_bound(limits, &[&BLOCK, &DELTA]).is_some()
+}
