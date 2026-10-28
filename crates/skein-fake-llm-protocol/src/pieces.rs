@@ -19,9 +19,9 @@ pub(super) struct Stream {
 }
 
 impl Stream {
-    pub(super) fn new(limits: &documents::Limits) -> Self {
+    pub(super) fn new() -> Self {
         Self {
-            pending: Queue::with_capacity(cap(limits).checked_mul(2).expect("checked pieces bound")),
+            pending: Queue::uncapped(),
             bytes: 0,
             usage: api::Usage::NONE,
             opening: 0,
@@ -39,7 +39,9 @@ impl Stream {
     }
 
     pub(super) fn clear(&mut self) {
-        while self.pending.pop().is_some() {}
+        for _piece in 0..self.pending.len() {
+            self.pending.pop().expect("pending piece present at the start");
+        }
         self.bytes = 0;
         self.usage = api::Usage::NONE;
         self.opening = 0;
@@ -115,7 +117,7 @@ pub(super) fn receive(
         | State::Closing
         | State::Closed => 0,
     };
-    if length > bound.saturating_sub(written).saturating_sub(server.pieces.bytes) || server.pieces.pending.room() == 0 {
+    if length > bound.saturating_sub(written).saturating_sub(server.pieces.bytes) {
         super::close(server, service, env, above, below);
         return;
     }
@@ -134,6 +136,7 @@ pub(super) fn next(
     service: &Service,
     env: &Env<Limits>,
 ) -> Result<Option<Outgoing>, documents::Error> {
+    // One writer event completes before the next piece is pulled.
     if server.pieces.busy {
         return Ok(None);
     }

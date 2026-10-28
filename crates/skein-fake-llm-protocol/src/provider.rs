@@ -24,20 +24,6 @@ use skein_lib::{Env, Id, List, Queue, ReplyTo, Slab, Token, bytes};
 use skein_llm::anthropic;
 use skein_llm::openai;
 
-/// Maximum owner-directed records emitted by one connection entry point.
-///
-/// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
-pub const MAX_UP: u32 = 3;
-
-/// Maximum transport-directed records emitted by one connection entry point.
-///
-/// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
-pub const MAX_DOWN: u32 = 18;
-
-const EVENTS: u32 = 4;
-
-const REQUESTS: u32 = 4;
-
 const ROUTES: u32 = 8;
 
 /// Immutable ownership and document caps supplied by the caller to every entry point.
@@ -327,16 +313,16 @@ impl Server {
             state: State::New,
             http: http::Server::new(&limits.http),
             writer: sse::Writer::new(&limits.sse),
-            events: Queue::with_capacity(EVENTS),
-            writer_events: Queue::with_capacity(1),
-            requests: Queue::with_capacity(REQUESTS),
+            events: Queue::uncapped(),
+            writer_events: Queue::uncapped(),
+            requests: Queue::uncapped(),
             body: List::with_capacity(request),
             inflated: List::with_capacity(request),
             gzip: false,
             remaining_body: None,
             call: None,
             answer: None,
-            pieces: pieces::Stream::new(&limits.documents),
+            pieces: pieces::Stream::new(),
             sequence: 0,
             response_id: 0,
             reply: None,
@@ -359,7 +345,7 @@ impl Server {
     }
 }
 
-/// Starts this connection's bounded HTTP state; reserve the declared output maxima before calling.
+/// Starts this connection's HTTP state with uncapped output queues.
 ///
 /// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
 pub fn start(
@@ -481,7 +467,7 @@ pub fn down(
     resume(server, service, credentials, env, above, below);
 }
 
-/// Performs one bounded deferred HTTP/SSE handoff under backpressure; reserve output maxima first.
+/// Performs bounded deferred HTTP/SSE handoffs through uncapped output queues.
 ///
 /// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
 pub fn resume(
@@ -493,9 +479,6 @@ pub fn resume(
     below: &mut Queue<Down>,
 ) {
     for _route in 0..ROUTES {
-        if below.room() < 2 || above.room() < 2 {
-            break;
-        }
         if let Some(event) = server.writer_events.pop() {
             match event {
                 sse::Event::Sent => {
@@ -537,12 +520,12 @@ pub fn close(
         call.active = false;
         service.calls.retire(id);
     }
-    for _slot in 0..server.events.capacity() {
+    for _slot in 0..server.events.len() {
         if server.events.pop().is_none() {
             break;
         }
     }
-    for _slot in 0..server.requests.capacity() {
+    for _slot in 0..server.requests.len() {
         if server.requests.pop().is_none() {
             break;
         }
@@ -555,7 +538,7 @@ pub fn close(
         writer_down(server, env, sse::Request::Close);
         server.writer_closed = true;
     }
-    for _slot in 0..server.requests.capacity() {
+    for _slot in 0..server.requests.len() {
         if server.requests.pop().is_none() {
             break;
         }
@@ -717,9 +700,10 @@ fn http_down(server: &mut Server, env: &Env<Limits>, request: http::Request, bel
 
 fn writer_down(server: &mut Server, env: &Env<Limits>, request: sse::Request) {
     let child = Env { now: env.now, wall: env.wall, limits: env.limits.sse };
-    let mut down = Queue::with_capacity(1);
+    let mut down = Queue::uncapped();
     sse::down(&mut server.writer, &child, request, &mut server.writer_events, &mut down);
-    if let Some(down) = down.pop() {
+    for _slot in 0..down.len() {
+        let down = down.pop().expect("writer output present at the start");
         server.requests.push(http::Request::Reply(down));
     }
 }
@@ -729,11 +713,11 @@ fn writer_down(server: &mut Server, env: &Env<Limits>, request: sse::Request) {
 // completed response and must not be sent into HTTP's WaitingNext state.
 fn reset_writer(server: &mut Server, env: &Env<Limits>) {
     let child = Env { now: env.now, wall: env.wall, limits: env.limits.sse };
-    let mut down = Queue::with_capacity(1);
+    let mut down = Queue::uncapped();
     if !server.writer_closed {
         sse::down(&mut server.writer, &child, sse::Request::Close, &mut server.writer_events, &mut down);
     }
-    for _slot in 0..server.writer_events.capacity() {
+    for _slot in 0..server.writer_events.len() {
         if server.writer_events.pop().is_none() {
             break;
         }
@@ -776,9 +760,9 @@ fn http_event(
         http::Event::Reply(event) => match server.state {
             State::Streaming | State::Pieces { .. } => {
                 let child = Env { now: env.now, wall: env.wall, limits: env.limits.sse };
-                let mut down = Queue::with_capacity(2);
+                let mut down = Queue::uncapped();
                 sse::up(&mut server.writer, &child, event, &mut server.writer_events, &mut down);
-                for _slot in 0..2_u32 {
+                for _slot in 0..down.len() {
                     if let Some(down) = down.pop() {
                         server.requests.push(http::Request::Reply(down));
                     }
@@ -1028,8 +1012,7 @@ fn room(limits: &Limits) -> Option<u32> {
 
 /// Whether these limits are representable: every edge bound they size is finite
 /// and every capacity they derive fits (programming-model.md, 6.3).
-/// HTTP and SSE fit their adjacent streams, native documents and gzip fit,
-/// and each text piece can have a preceding hold in the pending queue.
+/// HTTP and SSE fit their adjacent streams, and native documents and gzip fit.
 #[must_use]
 pub fn valid(limits: &Limits) -> bool {
     let request = limits.documents.openai.request.max(limits.documents.anthropic.request);
@@ -1038,7 +1021,6 @@ pub fn valid(limits: &Limits) -> bool {
         && limits.sse.chunk > 0
         && limits.sse.chunk <= limits.http.send
         && limits.documents.model_ceiling > 0
-        && limits.documents.openai.answer.max(limits.documents.anthropic.answer).checked_mul(2).is_some()
         && room(limits).is_some()
         && document_bounds(limits).is_some()
 }

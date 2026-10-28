@@ -1009,8 +1009,8 @@ fn peer_native_request(
     )
     .expect("valid bounded affinity control");
     let mut server = provider::Server::new(Token::new(2), &bounds).expect("valid bounded affinity control");
-    let mut above = Queue::with_capacity(provider::MAX_UP);
-    let mut below = Queue::with_capacity(provider::MAX_DOWN);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let mut intake = Intake::with_capacity(32768);
     intake.append(wire).expect("valid bounded affinity control");
     let mut response = Vec::new();
