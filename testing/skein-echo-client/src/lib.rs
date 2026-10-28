@@ -186,10 +186,6 @@ enum Server {
     Known(Addr),
 }
 
-/// The most requests to io one event or timer of the client's emits: a
-/// piece sent, the half-close it completes, and the next demand.
-pub const MAX_OUT: u32 = 3;
-
 /// Timers per connection.
 const TIMERS: u32 = 3;
 
@@ -222,7 +218,8 @@ impl Client {
     /// connections following `plans`, each of which must fit the limits.
     #[must_use]
     pub fn new(limits: &Limits, plans: &[Plan]) -> Client {
-        assert!(limits.queue >= MAX_OUT, "queues that hold the largest MAX_OUT");
+        assert!(limits.queue >= io::MAX_OUT_UP.submissions.max(io::MAX_OUT_DOWN.submissions)
+            .max(io::MAX_OUT_RESUME.submissions).max(io::MAX_OUT_FIRE.submissions), "kernel submission room");
         assert!(limits.line <= limits.io.largest_read(), "io's intake holds an answer");
         let count = u32::try_from(plans.len()).expect("fewer than 2^32 plans");
         let mut conns = List::with_capacity(count);
@@ -258,7 +255,7 @@ impl Client {
             completions: Queue::with_capacity(limits.queue),
             submissions: Queue::with_capacity(limits.queue),
             told: Queue::uncapped(),
-            asked: Queue::with_capacity(limits.queue),
+            asked: Queue::uncapped(),
         }
     }
 
@@ -357,7 +354,7 @@ impl Client {
 }
 
 /// One iteration: io's stage, the client's, io's down stage, and the
-/// reclaim point, each call within its `MAX_OUT`.
+/// reclaim point, reserving room only for kernel submissions.
 pub fn iterate(client: &mut Client, now: Time, wall: Wall) {
     client.io_env.now = now;
     client.io_env.wall = wall;
@@ -376,23 +373,19 @@ fn io_up(client: &mut Client, now: Time) {
         if !client.io.is_ready() || !io_room(client, io::MAX_OUT_RESUME) {
             break;
         }
-        let marks = io_marks(client);
         io::resume(&mut client.io, &client.io_env, &mut client.told, &mut client.submissions);
-        io_within(client, marks, io::MAX_OUT_RESUME);
     }
     if client.io.is_ready() {
         return;
     }
-    for _ in 0..client.completions.capacity() {
+    for _ in 0..client.completions.len() {
         if !io_room(client, io::MAX_OUT_UP) {
             break;
         }
         let Some(complete) = client.completions.pop() else {
             break;
         };
-        let marks = io_marks(client);
         io::up(&mut client.io, &client.io_env, complete, &mut client.told, &mut client.submissions);
-        io_within(client, marks, io::MAX_OUT_UP);
     }
     if !client.completions.is_empty() {
         return;
@@ -402,9 +395,7 @@ fn io_up(client: &mut Client, now: Time) {
         if !client.io.is_due(now) || !io_room(client, io::MAX_OUT_FIRE) {
             break;
         }
-        let marks = io_marks(client);
         io::fire(&mut client.io, &client.io_env, &mut client.told, &mut client.submissions);
-        io_within(client, marks, io::MAX_OUT_FIRE);
     }
 }
 
@@ -418,18 +409,13 @@ fn client_stage(client: &mut Client, now: Time) {
         }
         Server::Unknown | Server::Known(_) => {}
     }
-    for _ in 0..client.told.capacity() {
-        if client.asked.room() < MAX_OUT {
-            break;
-        }
+    for _ in 0..client.told.len() {
         let Some(event) = client.told.pop() else {
             break;
         };
         let index = owner(&event);
-        let before = client.asked.len();
         let conn = client.conns.get_mut(index).expect("io names a connection the client made");
         let after = conn::told(conn, event, now, &client.env.limits, &mut client.asked);
-        within(before, client.asked.len());
         follow_up(client, index, after);
     }
     if !client.told.is_empty() {
@@ -440,13 +426,9 @@ fn client_stage(client: &mut Client, now: Time) {
         Server::Unknown | Server::Told(_) => return,
     };
     for _ in 0..client.deadlines.len() {
-        if client.asked.room() < MAX_OUT {
-            break;
-        }
         let Some((index, timer)) = client.deadlines.expire(now) else {
             break;
         };
-        let before = client.asked.len();
         let conn = client.conns.get_mut(index).expect("a timer names a connection the client made");
         let after = match timer {
             Timer::Start => {
@@ -459,7 +441,6 @@ fn client_stage(client: &mut Client, now: Time) {
                 After::Nothing
             }
         };
-        within(before, client.asked.len());
         follow_up(client, index, after);
     }
 }
@@ -514,16 +495,14 @@ fn owner(event: &io::Event) -> u32 {
 }
 
 fn io_down(client: &mut Client) {
-    for _ in 0..client.asked.capacity() {
+    for _ in 0..client.asked.len() {
         if !client.io.takes() || !io_room(client, io::MAX_OUT_DOWN) {
             break;
         }
         let Some(request) = client.asked.pop() else {
             break;
         };
-        let marks = io_marks(client);
         io::down(&mut client.io, &client.io_env, request, &mut client.submissions);
-        io_within(client, marks, io::MAX_OUT_DOWN);
     }
 }
 
@@ -531,19 +510,3 @@ fn io_room(client: &Client, max: io::MaxOut) -> bool {
     client.submissions.room() >= max.submissions
 }
 
-/// The lengths of io's two output queues before a call.
-fn io_marks(client: &Client) -> (u32, u32) {
-    (client.told.len(), client.submissions.len())
-}
-
-fn io_within(client: &Client, (_told, submissions): (u32, u32), max: io::MaxOut) {
-    let records = client.submissions.len().checked_sub(submissions).expect("a step only adds to its output queues");
-    assert!(records <= max.submissions, "io emits no more than its MAX_OUT");
-}
-
-/// A call emitted no more than [`MAX_OUT`] into a queue it found at `before`
-/// and left at `after`.
-fn within(before: u32, after: u32) {
-    let emitted = after.checked_sub(before).expect("a step only adds to its output queue");
-    assert!(emitted <= MAX_OUT, "the client emits no more than its MAX_OUT");
-}

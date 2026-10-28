@@ -21,11 +21,8 @@
 //! came wins over a deadline that passed while the loop waited. The price:
 //! under a load that leaves input over in every iteration, deadlines wait
 //! for it to ease, as one that cut in could close a connection whose
-//! progress sits untaken in the queue. Before each
-//! call it reserves the call's `MAX_OUT` in its output queues, and after it
-//! asserts that the call emitted no more: the loop is the service's own, so
-//! it checks the room it reserves. What does not fit waits for the next
-//! iteration.
+//! progress sits untaken in the queue. The loop reserves kernel submission
+//! room before calling io; handoffs between its layers are uncapped.
 
 #![cfg_attr(not(test), no_std)]
 #![forbid(unsafe_code)]
@@ -60,9 +57,8 @@ pub struct Limits {
     pub io: io::Limits,
     pub protocol: protocol::Limits,
     pub domain: domain::Limits,
-    /// The capacity of each queue between the stages, completions and
-    /// submissions included: at least [`Limits::LEAST_QUEUE`], the largest
-    /// `MAX_OUT`.
+    /// The capacity of the kernel submission and completion queues, at least
+    /// [`Limits::LEAST_QUEUE`].
     pub queue: u32,
 }
 
@@ -73,7 +69,7 @@ pub enum Unusable {
     Io,
     /// The protocol layer's are not (`skein_echo_protocol::Limits::is_usable`).
     Protocol,
-    /// A queue too small for the largest `MAX_OUT`.
+    /// A kernel queue too small for one io entrance.
     Queue,
     /// The protocol layer's largest read is past io's intake, so it could
     /// never be met (io.md, 2).
@@ -83,25 +79,18 @@ pub enum Unusable {
 }
 
 impl Limits {
-    /// The smallest queue the loop can reserve every stage's `MAX_OUT` in:
-    /// the maximum of IO's submissions, the protocol's events/requests,
-    /// and the domain's requests. Events from io have no queue cap.
+    /// The smallest kernel queue that holds every io entry point's submissions.
     pub const LEAST_QUEUE: u32 = {
         let io_down = io::MAX_OUT_DOWN.submissions;
         let io_up = io::MAX_OUT_UP.submissions;
         let io_resume = io::MAX_OUT_RESUME.submissions;
         let io_fire = io::MAX_OUT_FIRE.submissions;
         let io_maximum = larger(larger(io_down, io_up), larger(io_resume, io_fire));
-        let protocol_up = larger(protocol::MAX_OUT_UP.events, protocol::MAX_OUT_UP.requests);
-        let protocol_resume = larger(protocol::MAX_OUT_RESUME.events, protocol::MAX_OUT_RESUME.requests);
-        let protocol_fire = larger(protocol::MAX_OUT_FIRE.events, protocol::MAX_OUT_FIRE.requests);
-        let protocol_maximum =
-            larger(larger(protocol_up, protocol_resume), larger(protocol_fire, protocol::MAX_OUT_DOWN));
-        larger(io_maximum, larger(protocol_maximum, domain::MAX_OUT))
+        io_maximum
     };
 
     /// Whether the service can run under these limits: each layer's usable,
-    /// queues that hold the largest `MAX_OUT`, and io's caps no smaller than
+    /// kernel queues that hold io's submissions, and io's caps no smaller than
     /// the protocol layer's largest demands (io.md, 2).
     pub fn check(&self) -> Result<(), Unusable> {
         if !self.io.is_usable() {
@@ -203,9 +192,9 @@ impl Service {
             completions: Queue::with_capacity(limits.queue),
             submissions: Queue::with_capacity(limits.queue),
             told: Queue::uncapped(),
-            asked: Queue::with_capacity(limits.queue),
-            calls: Queue::with_capacity(limits.queue),
-            answers: Queue::with_capacity(limits.queue),
+            asked: Queue::uncapped(),
+            calls: Queue::uncapped(),
+            answers: Queue::uncapped(),
             signals: None,
             signals_closing: false,
         }
@@ -337,7 +326,6 @@ pub fn iterate(svc: &mut Service, now: Time, wall: Wall) {
     // the sockets. Close the source only once the protocol has settled.
     if svc.protocol.is_empty()
         && !svc.signals_closing
-        && svc.asked.room() > 0
         && let Some(entity) = svc.signals
     {
         svc.signals_closing = true;
@@ -363,24 +351,18 @@ fn protocol_up(svc: &mut Service, now: Time) {
     // The listener, the shutdown, and each connection once.
     let entries = svc.protocol_env.limits.conns.checked_add(2).expect("the protocol's limits fit a u32");
     for _ in 0..entries {
-        if !svc.protocol.is_ready() || !protocol_room(svc, protocol::MAX_OUT_RESUME) {
+        if !svc.protocol.is_ready() {
             break;
         }
-        let marks = protocol_marks(svc);
         protocol::resume(&mut svc.protocol, &svc.protocol_env, &mut svc.calls, &mut svc.asked);
-        protocol_within(svc, marks, protocol::MAX_OUT_RESUME);
     }
     if svc.protocol.is_ready() {
         return;
     }
-    for _ in 0..svc.told.capacity() {
-        if !protocol_room(svc, protocol::MAX_OUT_UP) {
-            break;
-        }
+    for _ in 0..svc.told.len() {
         let Some(event) = svc.told.pop() else {
             break;
         };
-        let marks = protocol_marks(svc);
         match &event {
             io::Event::Closed { owner } if *owner == SIGNALS => svc.signals = None,
             io::Event::Failed { owner, error: _ } if *owner == SIGNALS => {
@@ -404,103 +386,53 @@ fn protocol_up(svc: &mut Service, now: Time) {
                 protocol::up(&mut svc.protocol, &svc.protocol_env, event, &mut svc.calls, &mut svc.asked);
             }
         }
-        protocol_within(svc, marks, protocol::MAX_OUT_UP);
     }
     if !svc.told.is_empty() {
         return;
     }
     for _ in 0..svc.protocol_env.limits.conns {
-        if !svc.protocol.is_due(now) || !protocol_room(svc, protocol::MAX_OUT_FIRE) {
+        if !svc.protocol.is_due(now) {
             break;
         }
-        let marks = protocol_marks(svc);
         protocol::fire(&mut svc.protocol, &svc.protocol_env, &mut svc.calls, &mut svc.asked);
-        protocol_within(svc, marks, protocol::MAX_OUT_FIRE);
     }
 }
 
 /// The domain's stage: each call and event, while its replies fit.
 fn domain_stage(svc: &mut Service) {
-    for _ in 0..svc.calls.capacity() {
-        if svc.answers.room() < domain::MAX_OUT {
-            break;
-        }
+    for _ in 0..svc.calls.len() {
         let Some(event) = svc.calls.pop() else {
             break;
         };
-        let before = svc.answers.len();
         domain::step(&mut svc.domain, &svc.domain_env, event, &mut svc.answers);
-        within(before, svc.answers.len(), domain::MAX_OUT);
     }
 }
 
 /// The protocol layer's stage of the down pass: each of the domain's
 /// requests, while what it asks of io fits.
 fn protocol_down(svc: &mut Service) {
-    for _ in 0..svc.answers.capacity() {
-        if svc.asked.room() < protocol::MAX_OUT_DOWN {
-            break;
-        }
+    for _ in 0..svc.answers.len() {
         let Some(request) = svc.answers.pop() else {
             break;
         };
-        let before = svc.asked.len();
         protocol::down(&mut svc.protocol, &svc.protocol_env, request, &mut svc.asked);
-        within(before, svc.asked.len(), protocol::MAX_OUT_DOWN);
     }
 }
 
 /// io's stage of the down pass: each request, while io can hold a refusal
 /// (`Io::takes`) and what it submits fits.
 fn io_down(svc: &mut Service) {
-    for _ in 0..svc.asked.capacity() {
+    for _ in 0..svc.asked.len() {
         if !svc.io.takes() || !io_room(svc, io::MAX_OUT_DOWN) {
             break;
         }
         let Some(request) = svc.asked.pop() else {
             break;
         };
-        let marks = io_marks(svc);
         io::down(&mut svc.io, &svc.io_env, request, &mut svc.submissions);
-        io_within(svc, marks, io::MAX_OUT_DOWN);
     }
-}
-
-/// The lengths of a stage's two output queues before a call.
-#[derive(Clone, Copy, Debug)]
-struct Marks {
-    up: u32,
-    down: u32,
 }
 
 fn io_room(svc: &Service, max: io::MaxOut) -> bool {
     svc.submissions.room() >= max.submissions
-}
-
-fn io_marks(svc: &Service) -> Marks {
-    Marks { up: svc.told.len(), down: svc.submissions.len() }
-}
-
-fn io_within(svc: &Service, marks: Marks, max: io::MaxOut) {
-    within(marks.down, svc.submissions.len(), max.submissions);
-}
-
-fn protocol_room(svc: &Service, max: protocol::MaxOut) -> bool {
-    svc.calls.room() >= max.events && svc.asked.room() >= max.requests
-}
-
-fn protocol_marks(svc: &Service) -> Marks {
-    Marks { up: svc.calls.len(), down: svc.asked.len() }
-}
-
-fn protocol_within(svc: &Service, marks: Marks, max: protocol::MaxOut) {
-    within(marks.up, svc.calls.len(), max.events);
-    within(marks.down, svc.asked.len(), max.requests);
-}
-
-/// A call emitted no more than its `MAX_OUT` into a queue it found at
-/// `before` and left at `after`.
-fn within(before: u32, after: u32, max: u32) {
-    let emitted = after.checked_sub(before).expect("a step only adds to its output queues");
-    assert!(emitted <= max, "an entry point emits no more than its MAX_OUT");
 }

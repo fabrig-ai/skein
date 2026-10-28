@@ -265,8 +265,7 @@ impl Tables {
     }
 }
 
-/// Takes one entry of the ready list, emitting at most
-/// [`MAX_OUT_RESUME`](crate::MAX_OUT_RESUME): the listener's `Listen`; or
+/// Takes one entry of the ready list: the listener's `Listen`; or
 /// `Shutdown` told the domain; or a connection’s `Gone`, drain or abort.
 pub fn resume(proto: &mut Protocol, env: &Env<Limits>, up: &mut Queue<Call>, down: &mut Queue<Io>) {
     match proto.listener {
@@ -298,8 +297,7 @@ pub fn resume(proto: &mut Protocol, env: &Env<Limits>, up: &mut Queue<Call>, dow
     conclude(proto, id);
 }
 
-/// Takes one event io told, emitting at most
-/// [`MAX_OUT_UP`](crate::MAX_OUT_UP). The loop hands the layer io's events
+/// Takes one event io told. The loop hands the layer io's events
 /// only once its ready list is empty.
 ///
 /// An event names its owner, which is never stale: a connection retires
@@ -349,8 +347,7 @@ pub fn up(proto: &mut Protocol, env: &Env<Limits>, event: Told, up: &mut Queue<C
     }
 }
 
-/// Fires the earliest deadline due at `env.now`, if one is, emitting at most
-/// [`MAX_OUT_FIRE`](crate::MAX_OUT_FIRE): the listener listens again, or an
+/// Fires the earliest deadline due at `env.now`, if one is: the listener listens again, or an
 /// idle connection is closed.
 pub fn fire(proto: &mut Protocol, env: &Env<Limits>, up: &mut Queue<Call>, down: &mut Queue<Io>) {
     match proto.listener {
@@ -376,8 +373,7 @@ pub fn fire(proto: &mut Protocol, env: &Env<Limits>, up: &mut Queue<Call>, down:
     conclude(proto, id);
 }
 
-/// Takes one request of the domain's, emitting at most
-/// [`MAX_OUT_DOWN`](crate::MAX_OUT_DOWN) requests to io.
+/// Takes one request of the domain's, emitting requests to io.
 ///
 /// A reply names its connection by its `ReplyTo`, which may be stale going
 /// down (programming-model.md, 5.2), and is then dropped; but a connection

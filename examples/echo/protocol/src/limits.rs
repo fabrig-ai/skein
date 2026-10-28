@@ -76,25 +76,3 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     tables.checked_add(lines)
 }
 
-/// The most an entry point emits in one call: events up to the domain, and
-/// requests down to io. The loop reserves this much room in each first.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MaxOut {
-    pub events: u32,
-    pub requests: u32,
-}
-
-/// `resume`: the listener's `Listen`; or `Shutdown` told; or a connection's
-/// `Gone`, drain or abort.
-pub const MAX_OUT_RESUME: MaxOut = MaxOut { events: 1, requests: 1 };
-
-/// `up`: a socket bound and its first demand, or rejected; a call up; or a
-/// refusal sent and the close, and `Gone`.
-pub const MAX_OUT_UP: MaxOut = MaxOut { events: 1, requests: 2 };
-
-/// `fire`: an idle connection's close, and `Gone`.
-pub const MAX_OUT_FIRE: MaxOut = MaxOut { events: 1, requests: 1 };
-
-/// `down`: an answer sent and the next demand, or the close; a refusal sent
-/// and the close; the listener's close.
-pub const MAX_OUT_DOWN: u32 = 2;

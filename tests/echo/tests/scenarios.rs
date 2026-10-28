@@ -152,8 +152,9 @@ fn every_echo_connection_fills_its_buffers_together_within_its_worst_case() {
         let mut filled = false;
         let outcome = worst(seed, Config::calm()).run_with_inputs(|sim, _, procs| {
             let echo = procs[0].as_echo().expect("the echo");
+            // This hook runs before the clients act, including at their abort tick.
             if !filled
-                && sim.now() < skein_echo_world::scenarios::ms(1_000)
+                && sim.now() <= skein_echo_world::scenarios::ms(1_000)
                 && !echo.work_pending(sim.now())
                 && echo.domain().sessions() == limits.protocol.conns
             {
