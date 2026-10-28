@@ -12,9 +12,44 @@ pub struct Limits {
     pub claim_bytes: u32,
 }
 
+/// Whether these limits are representable: every edge bound they size
+/// is finite and every capacity they derive fits (programming-model.md, 6.3).
+/// Answers and discovery fit the encoder's u32 lengths; form slots fit u32.
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    document_bounds(limits).is_some()
+}
+
+fn document_bounds(limits: &Limits) -> Option<()> {
+    let uri = u64::from(limits.uri_bytes);
+    let client = u64::from(limits.client_bytes);
+    let state = u64::from(limits.state_bytes);
+    let token = u64::from(limits.token_bytes);
+    // JSON's longest spelling is six bytes per input byte. Include all four
+    // person strings, issuer, audience, nonce, member names and two u64s.
+    let claims = u64::from(limits.claim_bytes)
+        .checked_mul(4)?
+        .checked_add(uri)?
+        .checked_add(client)?
+        .checked_add(state)?
+        .checked_mul(6)?
+        .checked_add(1024)?;
+    let jwt = claims.checked_add(2)?.checked_div(3)?.checked_mul(4)?.checked_add(1024)?;
+    let answer = jwt.checked_add(token.checked_mul(6)?)?.checked_add(128)?;
+    // The encoder's document length is u32; reject settings whose maximum
+    // documents could not be represented before any call is admitted.
+    u32::try_from(answer).ok()?;
+    u32::try_from(uri.checked_mul(30)?.checked_add(2048)?).ok()?;
+    limits.request_bytes.checked_add(1)?;
+    Some(())
+}
+
 /// Settings held plus the largest call, including its output and temporaries.
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
+    if !valid(limits) {
+        return None;
+    }
     let uri = u64::from(limits.uri_bytes);
     let client = u64::from(limits.client_bytes);
     let state = u64::from(limits.state_bytes);
@@ -55,7 +90,9 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
 
 impl Issuer {
     pub fn new(mut settings: Settings, limits: Limits) -> Result<Issuer, Error> {
-        worst_case(&limits).ok_or(Error::Limits)?;
+        if !valid(&limits) {
+            return Err(Error::Limits);
+        }
         for url in [
             &settings.issuer,
             &settings.authorization_endpoint,
