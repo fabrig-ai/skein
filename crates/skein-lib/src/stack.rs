@@ -1,7 +1,7 @@
 //! Bounded nesting (programming-model.md, section 8): what a parser keeps
-//! instead of recursing, since the depth of nested input is the peer's choice.
+//! instead of recursing, growing as input fills it under the fixed depth cap.
 
-#![expect(clippy::disallowed_types, reason = "a stack is a Vec allocated once, at its final capacity")]
+#![expect(clippy::disallowed_types, reason = "a stack is a Vec grown exactly as it fills, never past its cap")]
 
 use core::hash::{Hash, Hasher};
 
@@ -10,18 +10,19 @@ use core::mem::size_of;
 
 /// A last-in, first-out stack that never grows past its capacity, and
 /// refuses past it: input nested deeper than the capacity is the caller's to
-/// refuse.
+/// refuse. It allocates as it fills and never shrinks.
 #[derive(Debug)]
 pub struct Stack<T> {
     items: Vec<T>,
     capacity: u32,
 }
 
+const GROWTH_FLOOR: usize = 4;
+
 impl<T> Stack<T> {
     #[must_use]
     pub fn with_capacity(capacity: u32) -> Stack<T> {
-        let size = usize::try_from(capacity).expect("a u32 fits in a usize");
-        Stack { items: Vec::with_capacity(size), capacity }
+        Stack { items: Vec::new(), capacity }
     }
 
     /// The heap a stack of `capacity` takes for its items, or `None` past a
@@ -51,8 +52,19 @@ impl<T> Stack<T> {
         if self.len() == self.capacity {
             return Err(item);
         }
+        self.grow();
         self.items.push(item);
         Ok(())
+    }
+
+    /// Grows a full buffer exactly, while the logical capacity has room.
+    fn grow(&mut self) {
+        if self.items.len() == self.items.capacity() {
+            let cap = usize::try_from(self.capacity).expect("a u32 fits in a usize");
+            let target = self.items.len().saturating_mul(2).max(GROWTH_FLOOR).min(cap);
+            let additional = target.checked_sub(self.items.len()).expect("room for another item");
+            self.items.reserve_exact(additional);
+        }
     }
 
     /// Takes the top item.

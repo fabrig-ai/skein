@@ -9,10 +9,10 @@
 //! hands out (an item taken, a delivery, a box of a list's items) is its
 //! receiver's, dropped before the check.
 //!
-//! A queue and an intake grow as they fill: held storage stays within their
-//! worst case, and a step peaks within twice it because a realloc counts
-//! both the old and new buffers. A slab, a list and a stack are allocated
-//! once, at their capacity, and hold their worst case from the start. A map, a set
+//! Queues, intakes, lists and stacks grow as they fill: held storage stays
+//! within their worst case, and a step peaks within twice it because a realloc
+//! counts both the old and new buffers. A slab is allocated once, at its
+//! capacity, and holds its worst case from the start. A map, a set
 //! and a deadline table allocate tree nodes as they fill, priced at the most
 //! nodes the tree can have, each as the larger kind: they are filled in
 //! order, each leaf left behind holding six entries, then thinned to five a
@@ -52,7 +52,7 @@ impl Metered {
         Metered { meter: Meter::new(), bound, peak_bound: bound, what: (container, item, capacity), most: 0 }
     }
 
-    /// A growing ring holds at most its bound, with both buffers at a realloc.
+    /// A growing container holds at most its bound, with both buffers at a realloc.
     fn growing(container: &'static str, item: &'static str, capacity: u32, bound: Option<u64>) -> Metered {
         let mut metered = Self::new(container, item, capacity, bound);
         metered.peak_bound = 2 * metered.bound;
@@ -211,7 +211,7 @@ fn queue<T: Item>(capacity: u32) {
 /// Fills a list to its capacity, refuses one more and copies it out; then
 /// fills half of it again, and moves that out.
 fn list<T: Item>(capacity: u32) {
-    let mut metered = Metered::new("List", type_name::<T>(), capacity, List::<T>::worst_case(capacity));
+    let mut metered = Metered::growing("List", type_name::<T>(), capacity, List::<T>::worst_case(capacity));
     metered.start();
     let mut list = List::with_capacity(capacity);
     metered.end(());
@@ -236,13 +236,12 @@ fn list<T: Item>(capacity: u32) {
     metered.start();
     let moved = list.into_boxed();
     metered.end(moved);
-    metered.held_exactly_its_worst_case();
 }
 
 /// Fills a stack to its capacity, refuses one more, pops half of it and fills
 /// it again; then pops all of it.
 fn stack<T: Item>(capacity: u32) {
-    let mut metered = Metered::new("Stack", type_name::<T>(), capacity, Stack::<T>::worst_case(capacity));
+    let mut metered = Metered::growing("Stack", type_name::<T>(), capacity, Stack::<T>::worst_case(capacity));
     metered.start();
     let mut stack = Stack::with_capacity(capacity);
     metered.end(());
@@ -264,7 +263,6 @@ fn stack<T: Item>(capacity: u32) {
         let popped = stack.pop();
         metered.end(popped);
     }
-    metered.held_exactly_its_worst_case();
 }
 
 /// Bytes enough for the largest capacity.
@@ -504,7 +502,7 @@ fn a_queue_filled_to_its_capacity_stays_within_its_worst_case() {
 }
 
 #[test]
-fn a_list_holds_exactly_its_worst_case() {
+fn a_list_filled_to_its_capacity_stays_within_its_worst_case() {
     for capacity in CAPACITIES {
         list::<u8>(capacity);
         list::<u64>(capacity);
@@ -514,7 +512,7 @@ fn a_list_holds_exactly_its_worst_case() {
 }
 
 #[test]
-fn a_stack_holds_exactly_its_worst_case() {
+fn a_stack_filled_to_its_capacity_stays_within_its_worst_case() {
     for capacity in CAPACITIES {
         stack::<u8>(capacity);
         stack::<u64>(capacity);
@@ -901,5 +899,100 @@ fn an_intake_grows_to_its_capacity_exactly() {
             metered.end(());
             assert_eq!(metered.meter.held(), bound, "clear keeps the grown buffer");
         }
+    }
+}
+
+#[test]
+fn an_unused_list_holds_nothing() {
+    let meter = Meter::new();
+    let list = std::hint::black_box(List::<u64>::with_capacity(1_000_000));
+    assert_eq!(meter.held(), 0);
+    assert_eq!(list.room(), 1_000_000);
+}
+
+#[test]
+fn an_unused_stack_holds_nothing() {
+    let meter = Meter::new();
+    let stack = std::hint::black_box(Stack::<u64>::with_capacity(1_000_000));
+    assert_eq!(meter.held(), 0);
+    assert_eq!(stack.capacity(), 1_000_000);
+    assert!(stack.is_empty());
+}
+
+#[test]
+fn a_list_grows_to_its_capacity_exactly() {
+    for capacity in [1, 3, 5, 300] {
+        let bound = List::<u64>::worst_case(capacity).expect("test capacity fits");
+        let mut metered = Metered::growing("List", "u64", capacity, Some(bound));
+        let mut list = List::with_capacity(capacity);
+        for n in 0..capacity {
+            metered.start();
+            list.push(u64::from(n)).expect("room below the cap");
+            metered.end(());
+            assert_eq!(list.len(), n + 1);
+        }
+        assert_eq!(metered.meter.held(), bound, "full buffer holds exactly its worst case");
+        metered.start();
+        assert_eq!(list.push(999), Err(999));
+        metered.end(());
+        assert_eq!(list.as_slice(), (0..u64::from(capacity)).collect::<Vec<_>>());
+        metered.start();
+        list.truncate(capacity / 2);
+        metered.end(());
+        assert_eq!(metered.meter.held(), bound, "truncate keeps the buffer");
+        metered.start();
+        list.clear();
+        for n in 0..capacity {
+            list.push(u64::from(n)).expect("refill fits");
+        }
+        metered.end(());
+        assert_eq!(metered.meter.held(), bound, "refilling keeps the buffer");
+    }
+}
+
+#[test]
+fn a_stack_grows_to_its_capacity_exactly() {
+    for capacity in [1, 3, 5, 300] {
+        let bound = Stack::<u64>::worst_case(capacity).expect("test capacity fits");
+        let mut metered = Metered::growing("Stack", "u64", capacity, Some(bound));
+        let mut stack = Stack::with_capacity(capacity);
+        for n in 0..capacity {
+            metered.start();
+            stack.push(u64::from(n)).expect("room below the cap");
+            metered.end(());
+            assert_eq!(stack.len(), n + 1);
+        }
+        assert_eq!(metered.meter.held(), bound, "full buffer holds exactly its worst case");
+        metered.start();
+        assert_eq!(stack.push(999), Err(999));
+        metered.end(());
+        for n in (0..capacity).rev() {
+            metered.start();
+            assert_eq!(stack.pop(), Some(u64::from(n)));
+            metered.end(());
+        }
+        assert_eq!(metered.meter.held(), bound, "popping keeps the buffer");
+    }
+}
+
+#[test]
+fn a_list_clone_holds_only_its_items_and_grows_as_it_fills() {
+    for len in [0_u32, 1, 3] {
+        let capacity = 1_000_000;
+        let mut list = List::with_capacity(capacity);
+        for n in 0..len {
+            list.push(u64::from(n)).expect("room for the source items");
+        }
+        let mut metered = Metered::growing("List clone", "u64", capacity, List::<u64>::worst_case(capacity));
+        metered.start();
+        let mut cloned = list.clone();
+        metered.end(());
+        assert_eq!(cloned.capacity(), capacity);
+        assert_eq!(cloned, list);
+        assert_eq!(metered.meter.held(), 8 * u64::from(len), "clone allocates exactly its item count");
+        metered.start();
+        cloned.push(u64::from(len)).expect("clone retains its logical cap");
+        metered.end(());
+        assert_eq!(metered.meter.held(), 8 * u64::from((2 * len).max(4)), "clone follows capped growth");
     }
 }

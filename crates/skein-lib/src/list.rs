@@ -1,6 +1,6 @@
-//! Bounded sequences: what a step appends to, up to a limit.
+//! Bounded sequences: what a step appends to, growing as they fill under a cap.
 
-#![expect(clippy::disallowed_types, reason = "a list is a Vec allocated once, at its final capacity")]
+#![expect(clippy::disallowed_types, reason = "a list is a Vec grown exactly as it fills, never past its cap")]
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -9,18 +9,19 @@ use core::mem::size_of;
 use core::slice;
 
 /// A sequence that grows up to a capacity fixed when it is made, and refuses
-/// past it. The capacity is allocated up front, so pushing never reallocates.
+/// past it. It allocates as it fills, never past its capacity and never shrinking.
 #[derive(Debug)]
 pub struct List<T> {
     items: Vec<T>,
     capacity: u32,
 }
 
+const GROWTH_FLOOR: usize = 4;
+
 impl<T> List<T> {
     #[must_use]
     pub fn with_capacity(capacity: u32) -> List<T> {
-        let size = usize::try_from(capacity).expect("a u32 fits in a usize");
-        List { items: Vec::with_capacity(size), capacity }
+        List { items: Vec::new(), capacity }
     }
 
     /// The heap a list of `capacity` takes for its items, or `None` past a
@@ -56,8 +57,19 @@ impl<T> List<T> {
         if self.room() == 0 {
             return Err(item);
         }
+        self.grow();
         self.items.push(item);
         Ok(())
+    }
+
+    /// Grows a full buffer exactly, while the logical capacity has room.
+    fn grow(&mut self) {
+        if self.items.len() == self.items.capacity() {
+            let cap = usize::try_from(self.capacity).expect("a u32 fits in a usize");
+            let target = self.items.len().saturating_mul(2).max(GROWTH_FLOOR).min(cap);
+            let additional = target.checked_sub(self.items.len()).expect("room for another item");
+            self.items.reserve_exact(additional);
+        }
     }
 
     /// The item at `index`, counted from the first pushed.
@@ -84,8 +96,8 @@ impl<T> List<T> {
         self.items.truncate(usize::try_from(length).expect("u32 fits usize"));
     }
 
-    /// Empties the list, keeping its capacity: a list refilled in place
-    /// allocates nothing.
+    /// Empties the list, keeping its grown buffer: a list refilled in place
+    /// to its previous length allocates nothing.
     pub fn clear(&mut self) {
         self.items.clear();
     }
@@ -126,7 +138,7 @@ impl<'a, T> IntoIterator for &'a List<T> {
 
 impl<T: Clone> Clone for List<T> {
     fn clone(&self) -> List<T> {
-        let mut items = Vec::with_capacity(usize::try_from(self.capacity).expect("a u32 fits in usize"));
+        let mut items = Vec::with_capacity(self.items.len());
         items.extend_from_slice(&self.items);
         List { items, capacity: self.capacity }
     }
