@@ -122,6 +122,22 @@ fn a_broken_safety_expectation_fails_at_once() {
 }
 
 #[test]
+fn a_forwarded_no_bound_with_added_bytes_runs_and_settles() {
+    let forwarded = skein_shell::NO_BOUND + 4096;
+    let outcome = world(
+        Config::calm(),
+        vec![Expect::Receives { at: 0, by: ms(1_000) }],
+        || server().with_heap_bound(forwarded),
+        || sender().with_heap_bound(forwarded),
+    )
+    .run();
+    assert_eq!(outcome.procs[0].received.len(), 1);
+    let heap = outcome.heap.as_ref().expect("both processes metered and released");
+    assert_eq!(heap.len(), 2);
+    assert!(heap.iter().all(|(peak, bound)| *peak > 0 && *bound == skein_shell::NO_BOUND));
+}
+
+#[test]
 #[should_panic(expected = "past its worst case")]
 fn a_process_past_its_worst_case_fails() {
     let hog = usize::try_from(WORST).expect("small");

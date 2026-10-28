@@ -150,6 +150,13 @@ impl Script {
         self
     }
 
+    /// Declares the heap bound returned by this host.
+    #[must_use]
+    pub fn with_heap_bound(mut self, bound: u64) -> Script {
+        self.worst = bound;
+        self
+    }
+
     /// Adds state for a replay test to distinguish.
     #[must_use]
     pub fn noting(mut self, noted: u64) -> Script {

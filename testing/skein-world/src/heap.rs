@@ -73,7 +73,8 @@ impl Heap {
         let span = Span::start();
         let proc = make();
         let grown = span.end();
-        let bound = i64::try_from(worst_case(&proc)).expect("a worst case within an i64");
+        // A bound past i64::MAX is no bound, including a forward of NO_BOUND.
+        let bound = i64::try_from(worst_case(&proc)).unwrap_or(i64::MAX);
         self.procs.push(Held { now: 0, most: 0, bound, largest_bound: bound });
         let at = self.procs.len().checked_sub(1).expect("just pushed");
         self.check(at, grown);
@@ -121,7 +122,8 @@ impl Heap {
         let span = Span::start();
         let proc = make();
         let grown = span.end();
-        let bound = i64::try_from(worst_case(&proc)).expect("worst case fits i64");
+        // A bound past i64::MAX is no bound, including a forward of NO_BOUND.
+        let bound = i64::try_from(worst_case(&proc)).unwrap_or(i64::MAX);
         *self.procs.get_mut(at).expect("the same process slot") = Held { now: 0, most: 0, bound, largest_bound: bound };
         self.check(at, grown);
         let held = self.procs.get_mut(at).expect("the replacement's meter");
