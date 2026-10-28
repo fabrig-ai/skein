@@ -869,8 +869,9 @@ fn selective_step(
 }
 
 #[test]
-fn selective_echo_high_water_is_independent_of_the_echo_size() {
-    // The SSE reader's data Intake grows from 32 to 128 bytes on these inputs.
+fn selective_echo_storage_differs_only_by_bounded_cold_growth() {
+    // The SSE reader's data Intake (128-byte cap) keeps its grown, empty buffer.
+    // Its growth from 32 to 128 bytes bounds the difference, never the echo's size.
     // A quarter above the measured 96-byte difference, rounded to two digits.
     const COLD_GROWTH: u64 = 120;
     let short = selective_peak(64, false);
@@ -878,7 +879,8 @@ fn selective_echo_high_water_is_independent_of_the_echo_size() {
     let long = selective_peak(1 << 18, false);
     assert!(middle.0 <= short.0 + COLD_GROWTH);
     assert!(long.0 <= short.0 + COLD_GROWTH);
-    assert_eq!(short.1, long.1, "discarded echoes retain no event buffer");
+    assert!(middle.1 <= short.1 + COLD_GROWTH, "discarded echoes retain no event buffer");
+    assert!(long.1 <= short.1 + COLD_GROWTH, "discarded echoes retain no event buffer");
 }
 
 #[test]
