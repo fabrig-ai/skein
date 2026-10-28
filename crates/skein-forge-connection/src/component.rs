@@ -21,14 +21,6 @@ use skein_forge::forgejo::plans::{
     start::Read,
     tables::Tables,
 };
-/// Output reservations for each entry point.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MaxOut {
-    pub above: u32,
-    pub below: u32,
-}
-/// Reserve these slots before an entry point runs.
-pub const MAX_OUT: MaxOut = MaxOut { above: 16, below: 16 };
 /// Malformed answers and long bodies counted by the component.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Diagnostics {
@@ -215,22 +207,19 @@ impl Component {
         self.github.get_mut(0).expect("fixture forge").as_mut().expect("GitHub fixture")
     }
     #[cfg(test)]
-    pub(crate) fn test_room(
-        &mut self,
-        env: &Env<Limits>,
-        up: &mut Queue<Event>,
-        io: &mut Queue<skein_io::Request>,
-        above: u32,
-        below: u32,
-    ) {
-        self.drive_room(env, up, io, above, below);
+    pub(crate) fn test_local(&mut self, env: &Env<Limits>, up: &mut Queue<Event>) {
+        let before = up.len();
+        for _ in 0..64 {
+            if !self.github_local(0, env, up) || up.len() != before {
+                break;
+            }
+        }
     }
-    /// Opens each forge's start, within the connection and output bounds.
+    /// Opens each forge's start within its connection slots.
     pub fn begin(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
         if self.closed {
             return;
         }
-        let before = io.len();
         if let Some(settings) = &self.settings.webhooks {
             self.hooks.begin(settings, io);
         }
@@ -240,7 +229,7 @@ impl Component {
                     initial(self.settings.forges.get(at).expect("forge").kind, env.limits.start_backoff);
             }
         }
-        self.drive_room(env, up, io, MAX_OUT.above, MAX_OUT.below.saturating_sub(io.len().saturating_sub(before)));
+        self.drive(env, up, io);
     }
     pub fn down(
         &mut self,
@@ -254,20 +243,12 @@ impl Component {
         }
         match request {
             Request::Connect { forge, access } => {
-                let above = up.len();
-                let below = io.len();
                 self.connect(env, forge, access, up, io);
-                self.drive_room(
-                    env,
-                    up,
-                    io,
-                    MAX_OUT.above.saturating_sub(up.len().saturating_sub(above)),
-                    MAX_OUT.below.saturating_sub(io.len().saturating_sub(below)),
-                );
+                self.drive(env, up, io);
             }
             Request::Installations { forge, accepted } => {
                 self.installations(forge, &accepted);
-                self.drive(env, up, io, MAX_OUT.above);
+                self.drive(env, up, io);
             }
             Request::Call { call, repository, op } => {
                 assert!(!self.calls.contains_key(&call), "one live call per token");
@@ -276,7 +257,7 @@ impl Component {
                     .insert(Waiting::new(repository, op, env.now.saturating_add(env.limits.deadline)))
                     .expect("client bounds admitted calls");
                 let _previous: Option<Id<Waiting>> = self.calls.insert(call, id).expect("call index matches its slab");
-                self.drive(env, up, io, MAX_OUT.above);
+                self.drive(env, up, io);
             }
             Request::RefusedHint(hint) => self.refused_hint(hint),
             Request::Refused(answer) => {
@@ -296,12 +277,10 @@ impl Component {
             Request::Offer => {
                 self.hooks.offer();
                 self.offer_pullers();
-                let before = up.len();
-                let below = io.len();
                 if self.settings.webhooks.is_some() {
-                    self.hooks.drive(env, &self.settings, up, io, MAX_OUT.above, MAX_OUT.below);
+                    self.hooks.drive(env, &self.settings, up, io);
                 }
-                for _ in 0..MAX_OUT.above.saturating_sub(up.len().saturating_sub(before)) {
+                for _ in 0..self.held.len() {
                     let mut next = None;
                     for (call, held) in &self.held {
                         if held.offer {
@@ -316,13 +295,7 @@ impl Component {
                         up.push(Event::Answered(held.answer));
                     }
                 }
-                self.drive_room(
-                    env,
-                    up,
-                    io,
-                    MAX_OUT.above.saturating_sub(up.len().saturating_sub(before)),
-                    MAX_OUT.below.saturating_sub(io.len().saturating_sub(below)),
-                );
+                self.drive(env, up, io);
             }
             Request::Close => {
                 for _ in 0..self.calls.len() {
@@ -344,7 +317,7 @@ impl Component {
                 }
                 self.closed = true;
                 self.hooks.close();
-                self.drive(env, up, io, MAX_OUT.above);
+                self.drive(env, up, io);
             }
         }
     }
@@ -449,8 +422,6 @@ impl Component {
         up: &mut Queue<Event>,
         io: &mut Queue<skein_io::Request>,
     ) {
-        let above = up.len();
-        let below = io.len();
         let owner = match &event {
             skein_io::Event::Listening { owner, .. }
             | skein_io::Event::Accepted { owner, .. }
@@ -471,13 +442,7 @@ impl Component {
             && self.hooks.owns(owner)
         {
             self.hooks.up(env, event, up);
-            self.drive_room(
-                env,
-                up,
-                io,
-                MAX_OUT.above.saturating_sub(up.len().saturating_sub(above)),
-                MAX_OUT.below.saturating_sub(io.len().saturating_sub(below)),
-            );
+            self.drive(env, up, io);
             return;
         }
         match event {
@@ -535,7 +500,7 @@ impl Component {
             | skein_io::Event::Window { .. }
             | skein_io::Event::Shutdown { .. } => {}
         }
-        self.drive(env, up, io, MAX_OUT.above.saturating_sub(up.len().saturating_sub(above)));
+        self.drive(env, up, io);
     }
     fn own_closed(&mut self, owner: Token, closing: bool, env: &Env<Limits>, up: &mut Queue<Event>) {
         for at in 0..self.own_tokens.len() {
@@ -557,15 +522,10 @@ impl Component {
     }
     pub fn fire(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
         if self.closed {
-            self.drive(env, up, io, MAX_OUT.above);
+            self.drive(env, up, io);
             return;
         }
-        let above = up.len();
-        let below = io.len();
-        for _ in 0..MAX_OUT.above {
-            if io.len().saturating_sub(below) >= MAX_OUT.below {
-                break;
-            }
+        for _ in 0..self.calls.len() {
             let mut due = None;
             for (call, id) in &self.calls {
                 if self.waiting.get(*id).expect("live call").deadline <= env.now {
@@ -578,13 +538,7 @@ impl Component {
             };
             self.expire(call, id, up, io);
         }
-        self.drive_room(
-            env,
-            up,
-            io,
-            MAX_OUT.above.saturating_sub(up.len().saturating_sub(above)),
-            MAX_OUT.below.saturating_sub(io.len().saturating_sub(below)),
-        );
+        self.drive(env, up, io);
     }
     #[must_use]
     pub fn next_deadline(&self) -> Option<Time> {
@@ -661,51 +615,17 @@ impl Component {
             up.push(Event::Connected { forge: forge.number });
         }
     }
-    fn drive_own(
-        &mut self,
-        env: &Env<Limits>,
-        up: &mut Queue<Event>,
-        io: &mut Queue<skein_io::Request>,
-        above_room: u32,
-        below_room: u32,
-    ) {
-        let below = io.len();
-        let above = up.len();
+    fn drive_own(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
         self.wake = None;
         for at in 0..self.starts.len() {
-            if up.len().saturating_sub(above) >= above_room {
-                self.wake = Some(env.now);
-                break;
-            }
             if self.settings.forges.get(at).expect("forge").kind == crate::settings::Kind::GitHub {
-                self.drive_github(
-                    at,
-                    env,
-                    up,
-                    io,
-                    (
-                        above_room.saturating_sub(up.len().saturating_sub(above)),
-                        below_room.saturating_sub(io.len().saturating_sub(below)),
-                    ),
-                );
+                self.drive_github(at, env, up, io);
                 continue;
             }
-            if io.len().saturating_sub(below) >= below_room {
-                self.wake = Some(env.now);
-                break;
-            }
-            self.drive_forgejo(at, env, up, io, (above, below), (above_room, below_room));
+            self.drive_forgejo(at, env, up, io);
         }
     }
-    fn drive_forgejo(
-        &mut self,
-        at: u32,
-        env: &Env<Limits>,
-        up: &mut Queue<Event>,
-        io: &mut Queue<skein_io::Request>,
-        before: (u32, u32),
-        budget: (u32, u32),
-    ) {
+    fn drive_forgejo(&mut self, at: u32, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
         let state = self.starts.get_mut(at).expect("configured start");
         if let Some((until, next)) = backoff(*state)
             && until <= env.now
@@ -726,10 +646,6 @@ impl Component {
             return;
         };
         for _ in 0..64_u32 {
-            if io.len().saturating_sub(before.1) >= budget.1 || up.len().saturating_sub(before.0) >= budget.0 {
-                self.wake = Some(env.now);
-                break;
-            }
             let c = self
                 .connection_slab
                 .get_mut(*self.connections.get(&token).expect("indexed token"))
@@ -760,7 +676,7 @@ impl Component {
                 let forge = self.settings.forges.get(at).expect("configured forge");
                 send_start(c, env, forge, &self.settings.user_agent, plan);
             }
-            c.pump(env, io, budget.1.saturating_sub(io.len().saturating_sub(before.1)).saturating_sub(1));
+            c.pump(env, io);
             if let Some(heard) = c.heard() {
                 let heard = match heard {
                     connection::Heard::Forgejo(heard) => heard,
@@ -804,42 +720,13 @@ impl Component {
             self.wake = Some(env.now);
         }
     }
-    fn drive(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>, above_room: u32) {
-        self.drive_room(env, up, io, above_room, MAX_OUT.below);
-    }
-    fn drive_room(
-        &mut self,
-        env: &Env<Limits>,
-        up: &mut Queue<Event>,
-        io: &mut Queue<skein_io::Request>,
-        above_room: u32,
-        below_room: u32,
-    ) {
-        let above = up.len();
-        let below = io.len();
+    fn drive(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
         if self.settings.webhooks.is_some() {
-            self.hooks.drive(env, &self.settings, up, io, above_room, below_room);
+            self.hooks.drive(env, &self.settings, up, io);
         }
-        self.drive_own(
-            env,
-            up,
-            io,
-            above_room.saturating_sub(up.len().saturating_sub(above)),
-            below_room.saturating_sub(io.len().saturating_sub(below)),
-        );
-        self.drive_calls(
-            env,
-            up,
-            io,
-            above_room.saturating_sub(up.len().saturating_sub(above)),
-            below_room.saturating_sub(io.len().saturating_sub(below)),
-        );
-        if self.closed
-            && self.connections.is_empty()
-            && self.hooks.closed()
-            && !self.ended
-            && up.len().saturating_sub(above) < above_room
-        {
+        self.drive_own(env, up, io);
+        self.drive_calls(env, up, io);
+        if self.closed && self.connections.is_empty() && self.hooks.closed() && !self.ended {
             self.ended = true;
             up.push(Event::Closed);
         }

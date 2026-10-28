@@ -56,11 +56,11 @@ impl Hooked {
             socket,
             deadline: env.now.saturating_add(env.limits.hook_deadline),
             http: http::Server::new(&limits::hook_http(&env.limits)),
-            events: Queue::with_capacity(4),
-            below: Queue::with_capacity(4),
+            events: Queue::uncapped(),
+            below: Queue::uncapped(),
             json: Tokenizer::new(&limits::hook_documents(&env.limits).json),
-            json_events: Queue::with_capacity(1),
-            json_down: Queue::with_capacity(1),
+            json_events: Queue::uncapped(),
+            json_down: Queue::uncapped(),
             decoder: None,
             decoded: None,
             mac: None,
@@ -244,14 +244,8 @@ impl Hooked {
         settings: &Settings,
         up: &mut Queue<Event>,
         io: &mut Queue<skein_io::Request>,
-        room: (u32, u32),
     ) {
-        let (above, below) = room;
-        let (a, b) = (up.len(), io.len());
         for _ in 0_u32..64 {
-            if io.len().saturating_sub(b).saturating_add(2) > below || up.len().saturating_sub(a) >= above {
-                break;
-            }
             if let Some(down) = self.below.pop() {
                 io.push(skein_io::Request::Stream { stream: self.socket, down });
             } else if self.hint_state == HintState::Ready && self.hint.is_some() {
