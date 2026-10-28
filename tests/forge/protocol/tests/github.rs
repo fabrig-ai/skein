@@ -1,5 +1,5 @@
-use skein_forge::api::{Answer, Error, Read, State, Write};
-use skein_forge_client::Outcome;
+use skein_forge::api::{Answer, Error, Read, State};
+use skein_forge_client::{Made, Outcome};
 use skein_forge_protocol_world::{World, fixtures};
 use skein_lib::{Duration, Time};
 use std::collections::BTreeSet;
@@ -19,30 +19,39 @@ fn invariants(world: &mut World) {
 }
 
 #[test]
-fn a_github_issue_creation_is_refused_without_posting() {
-    let mut world = World::github(23, 0);
-    assert!(matches!(world.read(Read::Items { since: Time::ZERO, page: 1, kind: None }), Ok(Answer::Items { .. })));
-    let written = world.accounting().written;
-    assert_eq!(
-        world.write(Write::CreateIssue {
-            key: skein_forge_client::effect_key(b"kit", b"github-refused", fixtures::LIMITS.op_bytes)
-                .expect("effect key"),
-            title: Box::from(b"kit".as_slice()),
-            body: Box::from(b"kit".as_slice()),
-            labels: Box::new([]),
-        }),
-        Outcome::Failed(Error::Refused)
-    );
-    // The client's clock read is the sole request; refusal sends no POST.
-    assert_eq!(world.accounting().written, written + 1);
-    assert_eq!(world.creations(), 0);
-    // The readiness read takes owner number one; the write takes number two.
-    assert!(world.attempt(2).is_some());
+fn a_github_creation_with_a_lost_answer_is_found_after_restart() {
+    let mut world = fixtures::github_lost_creation(23);
+    assert_eq!(world.creations(), 1);
+    assert!(!world.made(1));
+    assert!(world.attempt(1).is_some());
     assert_eq!(world.released_writes(), 1);
     world.restart();
     invariants(&mut world);
-    assert!(!world.made(2));
-    assert_eq!(world.creations(), 0);
+    assert!(world.made(1));
+    assert_eq!(world.creations(), 1);
+    assert_eq!(world.discarded(), 1);
+}
+
+#[test]
+fn a_labelled_issue_is_refused_on_github_and_an_unlabelled_one_is_made() {
+    // A refused labelled creation leaves the first issue number for the unlabelled one.
+    const ISSUE: u64 = 1;
+    // Only the unlabelled call creates an issue.
+    const CREATED_ISSUES: u32 = 1;
+    let mut world = World::github(23, 0);
+    let labelled = world.write(fixtures::github_issue(Box::new([Box::from(b"finding".as_slice())])));
+    let unlabelled = world.write(fixtures::github_issue(Box::new([])));
+    let readback = world.read(Read::Item { number: ISSUE, after: 0 }).expect("created issue");
+    invariants(&mut world);
+    assert_eq!(labelled, Outcome::Failed(Error::Refused));
+    assert_eq!(unlabelled, Outcome::Made { made: Made::Created(ISSUE), found: false });
+    assert_eq!(world.creations(), CREATED_ISSUES);
+    let Answer::Item { item, .. } = readback else { panic!("issue readback") };
+    assert_eq!(item.title.as_ref(), b"kit");
+    assert_eq!(item.key.as_deref(), Some(b"\x01\x00\x03kitgithub-lost".as_slice()));
+    assert!(item.body.starts_with(b"<!-- kit:key "));
+    assert!(item.body.ends_with(b"\nkit"));
+    assert!(item.labels.is_empty());
 }
 
 #[test]

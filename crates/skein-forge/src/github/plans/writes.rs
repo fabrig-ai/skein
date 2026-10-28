@@ -65,6 +65,11 @@ impl Plan {
         if self.stage != Stage::New {
             return Err(api::Error::InvalidAnswer);
         }
+        if let api::Write::CreateIssue { labels, .. } = &self.write
+            && !labels.is_empty()
+        {
+            return Ok(Step::Done(Err(api::Error::Refused)));
+        }
         self.reviewers_check(bounds)?;
         self.row = tables.repository(self.repository).cloned();
         if self.row.is_none() {

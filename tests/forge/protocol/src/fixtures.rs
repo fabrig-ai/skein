@@ -129,6 +129,35 @@ pub fn mixed_calls(seed: u64) -> World {
     world
 }
 
+/// A keyed issue used by GitHub creation and recovery stories.
+#[must_use]
+pub fn github_issue(labels: Box<[Box<[u8]>]>) -> Write {
+    Write::CreateIssue {
+        key: effect_key(b"kit", b"github-lost", LIMITS.op_bytes).expect("effect key"),
+        title: Box::from(b"kit".as_slice()),
+        body: Box::from(b"kit".as_slice()),
+        labels,
+    }
+}
+
+/// A GitHub creation served by the fake, with its response held past the deadline.
+#[must_use]
+pub fn github_lost_creation(seed: u64) -> World {
+    let mut world = World::github(seed, 0);
+    world.startup();
+    world.lose_creation_answer(Entry {
+        number: 1,
+        task: 1,
+        repository: REPO,
+        effect: Effect { write: github_issue(Box::new([])), condition: Condition::None },
+        start: None,
+        attempt: None,
+        failures: 0,
+        queued: false,
+    });
+    world
+}
+
 /// A durable owner decision supplies records to the credential referee.
 pub fn github_close(world: &mut World, number: u64) {
     world.event(skein_forge_client::Event::Make {

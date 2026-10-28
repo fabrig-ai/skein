@@ -602,16 +602,22 @@ impl<'a> Runner<'a> {
     pub fn issue(&mut self, index: usize) -> Result<u64> {
         let repo = self.repo(index)?;
         let title = self.name("issue");
-        self.before(Made::Issue { repo: repo.clone(), title: title.clone() })?;
-        let marked = marker::encode(WORD, title.as_bytes(), title.as_bytes(), fake::bounds().body_bytes)
-            .ok_or("issue marker exceeds body bound")?;
-        let body = json::object(&[("body", &std::str::from_utf8(&marked)?), ("title", &title)])?;
-        let token = self.token(index)?;
-        let answer = self.raw(Method::Post, format!("/repos/{repo}/issues"), &token, &body)?;
-        if answer.status != 201 {
-            return Err("issue fixture POST refused".into());
-        }
-        answer.json()?.root().get("number").u64().ok_or("issue number absent".into())
+        self.before(Made::Issue { repo, title: title.clone() })?;
+        let answer = self
+            .plan(
+                index,
+                api::Op::Write(api::Write::CreateIssue {
+                    key: fake::boxed(title.as_bytes()),
+                    title: fake::boxed(title.as_bytes()),
+                    body: fake::boxed(title.as_bytes()),
+                    labels: Box::new([]),
+                }),
+            )?
+            .map_err(|e| format!("issue plan failed: {e:?}"))?;
+        let api::Answer::Created(number) = answer else {
+            return Err("issue plan answer invalid".into());
+        };
+        Ok(number)
     }
     pub fn copy_branch(&mut self, index: usize, parent: &str) -> Result<String> {
         let repo = self.repo(index)?;

@@ -2,7 +2,10 @@
 use super::{fixtures as f, read_support as r};
 use skein_forge::{
     api,
-    github::plans::{plan::Step, tables::Tables, writes::Plan},
+    github::plans::{
+        plan::{Plan, Step},
+        tables::Tables,
+    },
 };
 use skein_lib::Secret;
 
@@ -42,7 +45,7 @@ fn drive(
     moved: Option<u64>,
     settings: Option<skein_fake_forge_domain::api::Settings>,
 ) -> Result<api::Answer, api::Error> {
-    let mut plan = Plan::new(api::Repository { forge: 1, repository: 2 }, write);
+    let mut plan = Plan::new(api::Repository { forge: 1, repository: 2 }, api::Op::Write(write));
     let mut tables = Tables::new(4, 8);
     let mut step = plan.begin(r::bounds(), b"example-app", &mut tables).expect("begin write");
     for _exchange in 0..32_u32 {

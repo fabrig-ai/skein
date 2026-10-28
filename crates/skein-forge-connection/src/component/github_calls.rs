@@ -633,7 +633,8 @@ fn admitted(op: &api::Op) -> bool {
             | api::Read::Reviews { .. } => true,
         },
         api::Op::Write(write) => match write {
-            api::Write::CreateIssue { .. } | api::Write::Labels { .. } | api::Write::CreateLabel { .. } => false,
+            api::Write::CreateIssue { labels, .. } => labels.is_empty(),
+            api::Write::Labels { .. } | api::Write::CreateLabel { .. } => false,
             api::Write::SetReviewers { .. }
             | api::Write::Merge { .. }
             | api::Write::Dispatch { .. }

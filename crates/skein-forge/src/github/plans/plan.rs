@@ -71,8 +71,8 @@ impl Plan {
                 | api::Read::Permission { .. } => false,
             },
             api::Op::Write(write) => match write {
-                api::Write::CreateIssue { .. }
-                | api::Write::Labels { .. }
+                api::Write::CreateIssue { labels, .. } => !labels.is_empty(),
+                api::Write::Labels { .. }
                 | api::Write::CreateLabel { .. }
                 | api::Write::Dispatch { .. }
                 | api::Write::Rerun { .. }

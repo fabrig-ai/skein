@@ -549,6 +549,18 @@ fn every_landed_write_runs_once_with_full_installation_authorization() {
             Answer::Created(7),
         ),
         (
+            "CreateIssue",
+            Write::CreateIssue {
+                key: Box::from([1]),
+                title: Box::from(b"title".as_slice()),
+                body: Box::from(b"body".as_slice()),
+                labels: Box::new([]),
+            },
+            201,
+            br#"{"number":7}"#,
+            Answer::Created(7),
+        ),
+        (
             "Post",
             Write::Post { number: 7, key: Box::from([1]), body: Box::from(b"body".as_slice()) },
             201,
@@ -843,7 +855,7 @@ fn github_label_writes_refuse_at_zero_cost_before_discovery() {
             key: Box::from(b"key".as_slice()),
             title: Box::from(b"title".as_slice()),
             body: Box::new([]),
-            labels: Box::new([]),
+            labels: Box::new([Box::from(b"finding".as_slice())]),
         },
         Write::Labels { number: 7, labels: Box::new([]) },
         Write::CreateLabel { name: Box::from(b"finding".as_slice()), color: [0; 3] },
