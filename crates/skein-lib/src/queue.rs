@@ -1,7 +1,7 @@
 //! Bounded queues (programming-model.md, section 2): the records between
-//! stages, sized at startup.
+//! stages, growing as they fill under a fixed cap.
 
-#![expect(clippy::disallowed_types, reason = "a queue is a VecDeque allocated once, at its final capacity")]
+#![expect(clippy::disallowed_types, reason = "a queue is a VecDeque grown exactly as it fills, never past its cap")]
 
 use core::hash::{Hash, Hasher};
 
@@ -9,25 +9,27 @@ use alloc::collections::VecDeque;
 use alloc::collections::vec_deque;
 use core::mem::size_of;
 
-/// A first-in, first-out queue that never grows past its capacity.
+/// A first-in, first-out queue of at most `capacity` items, which
+/// allocates as it fills: never past its capacity, never shrinking.
 #[derive(Debug)]
 pub struct Queue<T> {
     items: VecDeque<T>,
     capacity: u32,
 }
 
+const GROWTH_FLOOR: usize = 4;
+
 impl<T> Queue<T> {
     #[must_use]
     pub fn with_capacity(capacity: u32) -> Queue<T> {
-        let size = usize::try_from(capacity).expect("a u32 fits in a usize");
-        Queue { items: VecDeque::with_capacity(size), capacity }
+        Queue { items: VecDeque::new(), capacity }
     }
 
     /// For hops between a service's own components, never for what a peer
     /// can push. It grows as it fills, up to `u32::MAX` items.
     #[must_use]
     pub fn uncapped() -> Queue<T> {
-        Queue { items: VecDeque::new(), capacity: u32::MAX }
+        Self::with_capacity(u32::MAX)
     }
 
     /// The heap a queue of `capacity` takes for its items, or `None` past a
@@ -64,6 +66,7 @@ impl<T> Queue<T> {
     /// calling it, so a full queue here is a bug, not an outcome.
     pub fn push(&mut self, item: T) {
         assert!(self.room() > 0, "the loop reserves room for every output");
+        self.grow();
         self.items.push_back(item);
     }
 
@@ -72,8 +75,19 @@ impl<T> Queue<T> {
         if self.room() == 0 {
             return Err(item);
         }
+        self.grow();
         self.items.push_back(item);
         Ok(())
+    }
+
+    /// Grows a full buffer exactly, while the logical capacity has room.
+    fn grow(&mut self) {
+        if self.items.len() == self.items.capacity() {
+            let cap = usize::try_from(self.capacity).expect("a u32 fits in a usize");
+            let target = self.items.len().saturating_mul(2).max(GROWTH_FLOOR).min(cap);
+            let additional = target.checked_sub(self.items.len()).expect("room for another item");
+            self.items.reserve_exact(additional);
+        }
     }
 
     /// Takes the oldest item.
