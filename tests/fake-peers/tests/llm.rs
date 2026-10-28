@@ -168,6 +168,65 @@ fn fake_peer_refuses_non_loopback_configuration_before_effects() {
 }
 
 #[test]
+fn peer_refuses_unrepresentable_faces_and_incompatible_http_buffers() {
+    let good = limits();
+    let protocol = skein_llm_world::fake::limits(&skein_llm_world::limits());
+    assert!(llm::valid(&good, &protocol));
+    for bad in [
+        Limits { connections: 0, ..good },
+        Limits { connections: u32::MAX, ..good },
+        Limits { queue: 63, ..good },
+        Limits { plaintext: 1, ..good },
+        Limits { ciphertext: 18_431, ..good },
+        Limits { io: skein_io::Limits { sockets: u32::MAX, ..good.io }, ..good },
+        Limits { io: skein_io::Limits { output: good.ciphertext - 1, ..good.io }, ..good },
+    ] {
+        assert!(!llm::valid(&bad, &protocol));
+        let call = skein_llm_world::call(1);
+        assert_eq!(
+            make_scripted_with_limits(
+                call.endpoint,
+                call.credential.unwrap(),
+                (Ipv4Addr::LOCALHOST, 0).into(),
+                Transport::Plaintext,
+                Box::new([]),
+                bad
+            )
+            .err(),
+            Some(skein_fake_peers::Error::Limits),
+        );
+    }
+}
+
+#[test]
+fn provider_constructors_refuse_unrepresentable_edges_and_piece_capacities() {
+    let good = skein_llm_world::fake::limits(&skein_llm_world::limits());
+    assert!(provider::valid(&good));
+    for mut bad in [good; 6].into_iter().enumerate() {
+        match bad.0 {
+            0 => bad.1.http.send = u32::MAX,
+            1 => bad.1.sse.chunk = 0,
+            2 => bad.1.documents.openai.answer = u32::MAX,
+            3 => bad.1.documents.openai.request = u32::MAX,
+            4 => bad.1.documents.model_ceiling = 0,
+            5 => bad.1.http.head = 1,
+            _ => unreachable!(),
+        }
+        assert!(!provider::valid(&bad.1));
+        assert_eq!(provider::Server::new(skein_lib::Token::new(1), &bad.1).err(), Some(provider::Error::Limits));
+        let config = provider::Config {
+            without_credential: false,
+            usage_fields: documents::UsageFields::ALL,
+            echo: skein_llm::openai::Echo::NONE,
+            provider: documents::Provider::OpenAi,
+            path: Box::from(b"/".as_slice()),
+            headers: Box::new([]),
+        };
+        assert_eq!(provider::Service::new(config, &bad.1).err(), Some(provider::Error::Limits));
+    }
+}
+
+#[test]
 fn a_connection_past_the_peers_limit_is_rejected_and_the_peer_settles() {
     let mut peer = make(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), Transport::Plaintext).unwrap();
     let mut sim = skein_sim::Sim::new(23, skein_sim::Config::calm());
@@ -668,19 +727,6 @@ fn without_records_serves_past_a_zero_cap() {
             assert!(peer.observations().is_empty());
         }
     }
-}
-
-#[test]
-fn without_records_omits_the_observation_bound() {
-    let peer = make((Ipv4Addr::LOCALHOST, 0).into(), Transport::Plaintext).unwrap();
-    let before = peer.worst_case();
-    let peer = peer.without_records();
-    support::assert_record_bound::<llm::Observation>(
-        before,
-        peer.worst_case(),
-        limits().observations,
-        limits().observation_bytes,
-    );
 }
 
 #[test]

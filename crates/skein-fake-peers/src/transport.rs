@@ -24,19 +24,6 @@ pub enum Transport {
     Tls,
 }
 
-pub(crate) fn worst_case(limits: &Limits, transport: Transport) -> Option<u64> {
-    let base = u64::from(limits.plaintext).checked_add(u64::from(limits.ciphertext).checked_mul(4)?)?;
-    match transport {
-        Transport::Plaintext => Some(base),
-        // rustls limits a handshake message to 64 KiB, plaintext records to
-        // 16 KiB, and buffers to ciphertext. The fixed unauthenticated server
-        // chain/configuration, decoded hello extensions and crypto workspace
-        // share this conservative 1 MiB envelope. The worst-case tests meter
-        // construction, handshake and full buffers (testing-strategy.md, 6).
-        Transport::Tls => base.checked_add(1_048_576),
-    }
-}
-
 pub(crate) fn validate(limits: &Limits, transport: Transport) -> Result<(), Error> {
     if transport == Transport::Tls && cfg!(not(unix)) {
         // TLS is not available on the portable target: a world runs in plaintext

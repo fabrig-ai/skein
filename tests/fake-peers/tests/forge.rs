@@ -32,7 +32,6 @@ fn forge_peer_publishes_its_bound_loopback_address() {
     assert_eq!(Some(address), world.peer.address());
     assert!(address.ip().is_loopback());
     assert_ne!(address.port(), 0);
-    assert!(world.peer.worst_case() > 0);
     world.settle();
 }
 
@@ -163,9 +162,7 @@ fn a_peer_keeping_connections_and_deliveries_freezes_no_heads_or_calls() {
     assert_eq!(every.domain_calls(), fixtures::WRITE_AND_READBACK);
 
     let mut world = World::delivery(fixtures::SEED);
-    let bound = world.peer.worst_case();
     world.peer = world.peer.keeping(forge::Kept { connections: true, deliveries: true, ..forge::Kept::NONE });
-    assert_eq!(world.peer.worst_case(), bound);
     world.bind_receiver(false);
     let response = world.create_issue_and_settle();
     assert_eq!(response, expected_response);
@@ -173,7 +170,6 @@ fn a_peer_keeping_connections_and_deliveries_freezes_no_heads_or_calls() {
     assert_eq!(world.received_posts(), fixtures::ONE_POST);
     assert_eq!(world.delivery_outcomes(), [&forge::Delivery::Written]);
     assert_eq!(fixtures::record_kinds(&world), ["connection", "delivery"]);
-    assert_eq!(world.peer.worst_case(), bound);
 }
 
 #[test]
@@ -296,26 +292,6 @@ fn without_records_serves_past_a_zero_cap() {
             world.settle();
         }
     }
-}
-
-#[test]
-fn without_records_omits_the_observation_bound() {
-    let mut world = World::new();
-    let before = world.peer.worst_case();
-    world.peer = world.peer.without_records();
-    skein_fake_peers_tests::assert_record_bound::<forge::Observation>(
-        before,
-        world.peer.worst_case(),
-        limits().observations,
-        limits().observation_bytes,
-    );
-    world.pass();
-    skein_fake_peers_tests::assert_record_bound::<forge::Observation>(
-        before,
-        world.peer.worst_case(),
-        limits().observations,
-        limits().observation_bytes,
-    );
 }
 
 #[test]
@@ -527,23 +503,10 @@ fn tls_refuses_a_github_peer_and_limits_below_one_record() {
     )
     .unwrap();
     for mut peer in [github, forgejo] {
-        let bound = peer.worst_case();
         assert_eq!(peer.tls(), Err(Error::Limits));
-        assert_eq!(peer.worst_case(), bound);
         assert_eq!(peer.address(), None);
         assert!(peer.observations().is_empty());
     }
-}
-
-#[test]
-fn a_tls_peer_s_worst_case_counts_its_tls_buffers() {
-    let mut world = World::new();
-    let plaintext = world.peer.worst_case();
-    world.peer.tls().unwrap();
-    assert!(world.peer.worst_case() > plaintext);
-    world.pass();
-    assert!(world.peer.worst_case() > plaintext);
-    world.settle();
 }
 
 #[test]
@@ -554,10 +517,6 @@ fn tls_admission_reserves_the_longest_https_origin() {
         let mut protocol = protocol_limits();
         protocol.documents.target_bytes = target_bytes;
         let mut peer = forge::Peer::new(address(), limits(), config(), protocol, fixtures::shared(), SEED).unwrap();
-        let before = peer.worst_case();
         assert_eq!(peer.tls(), expected);
-        if expected.is_err() {
-            assert_eq!(peer.worst_case(), before);
-        }
     }
 }

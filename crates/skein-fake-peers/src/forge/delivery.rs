@@ -1,17 +1,12 @@
 //! Bounded one-shot loopback clients, separate from server admission and Wire.
 use super::{Delivery, Observation, Peer};
-use crate::Limits;
 use skein_fake_forge_domain as domain;
-use skein_fake_forge_protocol::{
-    self as protocol,
-    delivery::{Endpoint, Post},
-};
+use skein_fake_forge_protocol::delivery::Post;
 use skein_io as io;
 use skein_lib::{
     Token, bytes,
     stream::{Down, Read, Up},
 };
-use std::mem::size_of;
 
 pub(super) struct Outbound {
     owner: Token,
@@ -160,22 +155,4 @@ impl Peer {
         });
         self.observe(Observation::Delivery { post, outcome }, bytes);
     }
-}
-
-pub(super) fn worst_case(limits: &Limits, protocol: &protocol::Limits, endpoint: Option<&Endpoint>) -> Option<u64> {
-    let host = u64::try_from(endpoint.map_or(0, |endpoint| endpoint.host.len()))
-        .ok()?
-        .max(u64::from(protocol.documents.string_bytes));
-    let secret = u64::try_from(endpoint.map_or(0, |endpoint| endpoint.secret.len()))
-        .ok()?
-        .max(u64::from(protocol.documents.string_bytes));
-    // A setup URL and secret each decode at documents.string_bytes; target and Host
-    // each fit that URL bound. Fixed fields and delimiters fit in 512 bytes.
-    let post = host
-        .checked_add(u64::from(protocol.documents.string_bytes))?
-        .checked_add(512)?
-        .checked_add(u64::from(protocol.documents.writer.length))?;
-    let slot =
-        u64::try_from(size_of::<Outbound>()).ok()?.checked_add(post)?.checked_add(u64::from(limits.io.output))?;
-    u64::from(limits.connections).checked_mul(slot)?.checked_add(host)?.checked_add(secret)?.checked_add(post)
 }

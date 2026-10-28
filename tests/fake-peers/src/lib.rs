@@ -29,14 +29,6 @@ pub fn assert_panic<T: std::fmt::Debug>(result: std::thread::Result<T>, expected
     assert!(message.contains(expected), "{message}");
 }
 
-/// A non-recording host's envelope has no record slots or payload allowance.
-pub fn assert_record_bound<T>(before: u64, after: u64, count: u32, bytes: u32) {
-    assert_eq!(
-        before - after,
-        u64::from(count) * u64::try_from(std::mem::size_of::<T>()).expect("record size fits") + u64::from(bytes)
-    );
-}
-
 /// Open and listen before the peer's first pass, retaining the chosen address.
 pub fn held_listener(sim: &mut Sim, pid: Pid) -> (skein_io::kernel::Fd, std::net::SocketAddr) {
     use skein_io::kernel::Family;

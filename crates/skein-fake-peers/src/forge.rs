@@ -118,7 +118,6 @@ pub struct Peer {
     forge: Rc<RefCell<Forge>>,
     service: protocol::Service,
     protocol: protocol::Limits,
-    protocol_bound: u64,
     connections: Vec<Connection>,
     calls: Vec<Call>,
     deliveries: Vec<delivery::Outbound>,
@@ -129,7 +128,6 @@ pub struct Peer {
     observations: Vec<Observation>,
     observed_bytes: u64,
     kept: Kept,
-    bound: u64,
 }
 
 impl Peer {
@@ -153,10 +151,9 @@ impl Peer {
             return Err(Error::Limits);
         }
         config.hooks = None;
-        let protocol_bound = forgejo::worst_case(&protocol, &config).ok_or(Error::Limits)?;
         let service =
             protocol::Service::Forgejo(forgejo::Service::new(config, &protocol, seed).map_err(|_| Error::Limits)?);
-        Self::host(address, limits, protocol::Limits::Forgejo(protocol), service, protocol_bound, forge)
+        Self::host(address, limits, protocol::Limits::Forgejo(protocol), service, forge)
     }
     /// GitHub's API and browser pages share this listener and the owner's forge.
     /// Its second listener serves signed, credential-free job logs (fake-forge.md, 10.5).
@@ -179,11 +176,10 @@ impl Peer {
         {
             return Err(Error::Limits);
         }
-        let protocol_bound = skein_fake_forge_github::worst_case(&protocol, &config).ok_or(Error::Limits)?;
         let service = protocol::Service::Github(
             skein_fake_forge_github::Service::new(config, &protocol, seed).map_err(|_| Error::Limits)?,
         );
-        let mut peer = Self::host(address, limits, protocol::Limits::Github(protocol), service, protocol_bound, forge)?;
+        let mut peer = Self::host(address, limits, protocol::Limits::Github(protocol), service, forge)?;
         peer.face.requests.push(io::Request::Listen { owner: BLOB_LISTENER, addr: io::Addr::Ip(blob) });
         Ok(peer)
     }
@@ -192,11 +188,11 @@ impl Peer {
         limits: Limits,
         protocol: protocol::Limits,
         service: protocol::Service,
-        protocol_bound: u64,
         forge: Rc<RefCell<Forge>>,
     ) -> Result<Self, Error> {
-        let bound = shared::bound(&limits, &protocol, protocol_bound, &forge.borrow(), Transport::Plaintext)
-            .ok_or(Error::Limits)?;
+        if !shared::valid(&limits, &protocol, &forge.borrow()) {
+            return Err(Error::Limits);
+        }
         let call_capacity = call_capacity(&protocol, &forge.borrow(), limits.connections).ok_or(Error::Limits)?;
         let (forgejo_capacity, github_capacity) = match protocol {
             protocol::Limits::Forgejo(_) => (limits.connections, 0),
@@ -212,7 +208,6 @@ impl Peer {
             forge,
             service,
             protocol,
-            protocol_bound,
             connections: Vec::with_capacity(usize::try_from(limits.connections).expect("u32 fits")),
             calls: Vec::with_capacity(usize::try_from(call_capacity).expect("u32 fits")),
             deliveries: Vec::with_capacity(usize::try_from(forgejo_capacity).expect("u32 fits")),
@@ -223,7 +218,6 @@ impl Peer {
             observations: Vec::with_capacity(usize::try_from(limits.observations).expect("u32 fits")),
             observed_bytes: 0,
             kept: Kept::EVERY,
-            bound,
         })
     }
     /// Serves Forgejo over TLS on Skein's fixed test chain (`ROOT`, for `skein.test`
@@ -239,11 +233,10 @@ impl Peer {
         if origin.len() > usize::try_from(protocol.documents.target_bytes).map_err(|_| Error::Limits)? {
             return Err(Error::Limits);
         }
-        let bound =
-            shared::bound(&self.face.limits, &self.protocol, self.protocol_bound, &self.forge.borrow(), Transport::Tls)
-                .ok_or(Error::Limits)?;
+        if !shared::valid(&self.face.limits, &self.protocol, &self.forge.borrow()) {
+            return Err(Error::Limits);
+        }
         self.transport = Transport::Tls;
-        self.bound = bound;
         Ok(())
     }
     /// Keeps only the named kinds of outside records. Call on a fresh peer before its first pass.
@@ -255,11 +248,6 @@ impl Peer {
     /// Keeps no outside records. Call on a fresh peer before its first pass.
     #[must_use]
     pub fn without_records(mut self) -> Self {
-        let slots = u64::from(self.face.limits.observations)
-            .checked_mul(u64::try_from(core::mem::size_of::<Observation>()).expect("record size"))
-            .expect("validated record slots");
-        let records = slots.checked_add(u64::from(self.face.limits.observation_bytes)).expect("validated records");
-        self.bound = self.bound.checked_sub(records).expect("bound includes records");
         self.face.limits.observations = 0;
         self.face.limits.observation_bytes = 0;
         self.observations = Vec::new();
@@ -611,11 +599,6 @@ impl Peer {
 impl Host for Peer {
     fn iterate(&mut self, now: Time, wall: Wall) {
         self.fresh = false;
-        let bound =
-            shared::bound(&self.face.limits, &self.protocol, self.protocol_bound, &self.forge.borrow(), self.transport)
-                .expect("owner updates preserve usable bounds");
-        // An owner reducing a limit does not release already allocated capacities.
-        self.bound = self.bound.max(bound);
         self.forge.borrow_mut().now = now;
         self.face.up(now, wall);
         for _ in 0..self.face.limits.queue {
@@ -672,9 +655,6 @@ impl Host for Peer {
             && self.github_deliveries.is_empty()
             && self.forge.borrow().domain.calls() == 0
     }
-    fn worst_case(&self) -> u64 {
-        self.bound
-    }
     fn operations(&self) -> u32 {
         io::operations(&self.face.limits.io).expect("validated io operations")
     }
@@ -682,15 +662,4 @@ impl Host for Peer {
 
 fn call_capacity(protocol: &protocol::Limits, forge: &Forge, connections: u32) -> Option<u32> {
     protocol.calls(connections).checked_add(forge.config.limits.calls)
-}
-/// Checked envelope for machines, pending payloads, connections, snapshots and frozen records.
-#[must_use]
-pub fn worst_case(limits: &Limits, protocol: &forgejo::Limits, config: &forgejo::Config, forge: &Forge) -> Option<u64> {
-    shared::bound(
-        limits,
-        &protocol::Limits::Forgejo(*protocol),
-        forgejo::worst_case(protocol, config)?,
-        forge,
-        Transport::Plaintext,
-    )
 }
