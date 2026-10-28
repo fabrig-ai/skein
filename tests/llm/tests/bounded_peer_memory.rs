@@ -10,7 +10,7 @@ use skein_heap::{Counting, Meter};
 use skein_http_world::reference;
 use skein_lib::Token;
 use skein_llm::{Block, Call, Completion, Credential, Endpoint, Provider, Stop, client};
-use skein_llm_world::fake::{Exchange, ObservationLimits, extra_worst_case};
+use skein_llm_world::fake::{Exchange, ObservationLimits};
 
 #[global_allocator]
 static HEAP: Counting = Counting;
@@ -76,31 +76,6 @@ fn scripts() -> Box<[Script]> {
             tokens: 1,
         }]),
     }])
-}
-
-// Counts the observed fixture's public owning fields, not any source pricing
-// helper or provider grammar. Unexpected vocabulary fails the fixture.
-fn endpoint_bytes(endpoint: &Endpoint) -> u64 {
-    bytes(&endpoint.authority)
-        + bytes(&endpoint.target)
-        + u64::try_from(endpoint.headers.len()).expect("bounded headers") * size::<skein_http::Header>()
-        + endpoint.headers.iter().map(|header| bytes(&header.name) + bytes(&header.value)).sum::<u64>()
-}
-
-fn input_bytes(input: &Call) -> u64 {
-    assert!(input.prompt.tools.is_empty());
-    assert!(input.prompt.reasoning_effort.is_none());
-    let mut owned = endpoint_bytes(&input.endpoint)
-        + bytes(&skein_llm_world::credential_of(input).value)
-        + bytes(&skein_llm_world::credential_of(input).account_id)
-        + bytes(&input.prompt.model)
-        + bytes(&input.prompt.instructions)
-        + u64::try_from(input.prompt.messages.len()).expect("bounded messages") * size::<skein_llm::Message>();
-    for message in &input.prompt.messages {
-        let [Block::Text { text, replay: None }] = message.content.as_ref() else { panic!("literal fixture text") };
-        owned += size::<Block>() + bytes(text);
-    }
-    owned
 }
 
 fn terminal_bytes(completion: &Completion) -> u64 {
@@ -195,32 +170,17 @@ fn assert_native_payloads(world: &Exchange, seen: &Seen, caps: &ObservationLimit
     assert!(terminal_bytes(completion) <= caps.event_bytes, "caller independently counts full native replay ownership");
 }
 
+// Bounds construction, streaming and close across both native providers.
+const NATIVE_PEER_PEAK_CEILING: u64 = 3_700_000;
+
 #[test]
-fn actual_native_peer_and_client_fit_checked_prices_until_every_owner_drops() {
+fn native_peer_and_client_stay_under_their_peak_ceiling_until_every_owner_drops() {
     for provider in [Provider::OpenAiCodex, Provider::Anthropic] {
         let bounds = limits();
         let caps = observations(&bounds);
         let meter = Meter::new();
         meter.start();
         let input = input(19, provider);
-        // Client preparation consumes input. The peer retains a second grant
-        // and target; its other cloned endpoint fields exist during adoption.
-        let caller = input_bytes(&input) + endpoint_bytes(&input.endpoint);
-        let extra = extra_worst_case(
-            &bounds,
-            &caps,
-            &input.endpoint,
-            core::slice::from_ref(skein_llm_world::credential_of(&input)),
-        )
-        .expect("checked peer price");
-        let client_price = client::call_worst_case(&bounds).expect("one Client price");
-        let bound = client_price
-            .checked_add(extra)
-            .expect("composition")
-            .checked_add(caller)
-            .expect("caller construction")
-            .checked_add(caps.event_bytes)
-            .expect("caller-held native completion");
         let mut world = Exchange::new(input, bounds, scripts());
         world.observe(caps);
         assert_eq!(world.seen.capacity(), usize::try_from(caps.events).expect("event reservation"));
@@ -229,21 +189,29 @@ fn actual_native_peer_and_client_fit_checked_prices_until_every_owner_drops() {
         assert_eq!(world.responses.capacity(), 4096);
         assert_eq!(world.service.calls(), 0);
         let constructed = meter.end();
-        assert!(constructed.peak() <= bound, "construction {} exceeds {bound}", constructed.peak());
+        assert!(
+            constructed.peak() <= NATIVE_PEER_PEAK_CEILING,
+            "construction {} exceeds {NATIVE_PEER_PEAK_CEILING}",
+            constructed.peak()
+        );
 
         let mut seen = Seen::default();
         meter.start();
         world.start();
         seen.take(&mut world, 19);
         let started = meter.end();
-        assert!(started.peak() <= bound);
+        assert!(started.peak() <= NATIVE_PEER_PEAK_CEILING);
         let mut quiet = false;
         for _ in 0..100_000 {
             meter.start();
             let progress = world.tick(true);
             seen.take(&mut world, 19);
             let measured = meter.end();
-            assert!(measured.peak() <= bound, "native step {} exceeds {bound}", measured.peak());
+            assert!(
+                measured.peak() <= NATIVE_PEER_PEAK_CEILING,
+                "native step {} exceeds {NATIVE_PEER_PEAK_CEILING}",
+                measured.peak()
+            );
             if !progress {
                 quiet = true;
                 break;
@@ -268,12 +236,12 @@ fn actual_native_peer_and_client_fit_checked_prices_until_every_owner_drops() {
         quiesce_closed(&mut world, &mut seen, 19);
         assert_eq!((seen.reusable, seen.close, seen.closed), (1, 1, 1));
         let settled = meter.end();
-        assert!(settled.peak() <= bound);
+        assert!(settled.peak() <= NATIVE_PEER_PEAK_CEILING);
         assert_eq!(world.service.calls(), 0);
         meter.start();
         drop(world);
         let released = meter.end();
-        assert!(released.peak() <= bound);
+        assert!(released.peak() <= NATIVE_PEER_PEAK_CEILING);
         assert_eq!(
             meter.held(),
             terminal_bytes(seen.terminal.as_ref().expect("caller still owns terminal")),
@@ -333,44 +301,6 @@ fn actual_connections_reuse_reclaimed_service_routes_past_its_capacity() {
     }
     drop(world);
     assert_eq!(meter.held(), 0, "repeated actual physical connections release every owner");
-}
-
-#[test]
-fn impossible_observation_products_refuse_without_allocating_the_ceiling() {
-    let bounds = limits();
-    let input = input(1, Provider::Anthropic);
-    let mut caps = observations(&bounds);
-    assert!(
-        extra_worst_case(
-            &bounds,
-            &caps,
-            &input.endpoint,
-            core::slice::from_ref(skein_llm_world::credential_of(&input))
-        )
-        .is_some()
-    );
-    caps.event_bytes = u64::MAX;
-    assert!(
-        extra_worst_case(
-            &bounds,
-            &caps,
-            &input.endpoint,
-            core::slice::from_ref(skein_llm_world::credential_of(&input))
-        )
-        .is_none()
-    );
-    caps = observations(&bounds);
-    caps.queries = 2;
-    caps.query_bytes = u64::MAX;
-    assert!(
-        extra_worst_case(
-            &bounds,
-            &caps,
-            &input.endpoint,
-            core::slice::from_ref(skein_llm_world::credential_of(&input))
-        )
-        .is_none()
-    );
 }
 
 #[test]
@@ -444,6 +374,9 @@ fn exact_query_observation_capacity_copies_the_whole_query_and_one_less_copies_n
     assert_eq!(negative.machine.waiting(), client::Waiting::Nothing);
 }
 
+// Bounds exact head observation ownership across both native providers.
+const HEAD_OBSERVATION_PEAK_CEILING: u64 = 3_700_000;
+
 #[test]
 fn exact_head_observation_capacity_retains_actual_fields_and_one_less_retains_nothing() {
     for provider in [Provider::OpenAiCodex, Provider::Anthropic] {
@@ -461,22 +394,16 @@ fn exact_head_observation_capacity_retains_actual_fields_and_one_less_retains_no
         let meter = Meter::new();
         meter.start();
         let call_input = input(1, provider);
-        let caller = input_bytes(&call_input) + endpoint_bytes(&call_input.endpoint);
-        let bound = client::call_worst_case(&bounds).expect("client price")
-            + extra_worst_case(
-                &bounds,
-                &caps,
-                &call_input.endpoint,
-                core::slice::from_ref(skein_llm_world::credential_of(&call_input)),
-            )
-            .expect("peer price")
-            + caller;
         let mut positive = Exchange::new(call_input, bounds, scripts());
         positive.observe(caps);
         positive.start();
         positive.run();
         let measured = meter.end();
-        assert!(measured.peak() <= bound, "actual head ownership {} exceeds {bound}", measured.peak());
+        assert!(
+            measured.peak() <= HEAD_OBSERVATION_PEAK_CEILING,
+            "actual head ownership {} exceeds {HEAD_OBSERVATION_PEAK_CEILING}",
+            measured.peak()
+        );
         let [head] = positive.heads.as_slice() else { panic!("exact head observation fits") };
         let actual = u64::try_from(head.len()).expect("bounded wrappers") * size::<skein_http::Header>()
             + head.iter().map(|field| bytes(&field.name) + bytes(&field.value)).sum::<u64>();

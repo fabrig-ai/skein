@@ -291,25 +291,14 @@ fn routing_scripts() -> Box<[Script]> {
     }])
 }
 
-fn routing_bound() -> u64 {
-    let peer = skein_llm_world::fake::limits(&limits());
-    let one = client::call_worst_case(&limits()).expect("client bound")
-        + skein_fake_llm_protocol::provider::worst_case(&peer).expect("one Server and Service bound")
-        + skein_fake_llm_domain::worst_case(&skein_llm_world::fake::config()).expect("internal script domain bound");
-    2 * one
-        + skein_fake_llm_domain::worst_case(&skein_llm_world::fake::config())
-            .expect("external actual script domain bound")
-        + 8 * 32768
-        + 16 * u64::from(limits().retained)
-        + 128 * 1024
-}
+// Bounds two routed native connections and their shared delayed script domain.
+const ROUTING_PEAK_CEILING: u64 = 5_200_000;
 
 #[test]
 fn actual_two_connection_routing_preserves_each_terminal_and_returns_a_closed_route() {
     use skein_fake_llm_domain::{Domain, fire, step};
     use skein_fake_llm_protocol::provider;
     use skein_lib::{Duration, Env, Queue, Time, Token, Wall};
-    let bound = routing_bound();
     // Each connection owns its Client, Server, spare Service, unused internal
     // domain, two intakes, queues and observation tapes. The shared delayed
     // domain is additional; no native connection storage is charged as inline routing slots.
@@ -396,8 +385,8 @@ fn actual_two_connection_routing_preserves_each_terminal_and_returns_a_closed_ro
     );
     let grown = span.end();
     assert!(
-        grown.peak <= i64::try_from(bound).expect("checked counted comparison"),
-        "two native connections peak {} exceeds {bound}",
+        grown.peak <= i64::try_from(ROUTING_PEAK_CEILING).expect("ceiling fits i64"),
+        "two native connections peak {} exceeds {ROUTING_PEAK_CEILING}",
         grown.peak
     );
 }

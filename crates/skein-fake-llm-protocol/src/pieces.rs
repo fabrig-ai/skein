@@ -64,12 +64,6 @@ fn cap(limits: &documents::Limits) -> u32 {
     limits.anthropic.answer.max(limits.openai.answer)
 }
 
-pub(super) fn worst_case(limits: &documents::Limits) -> Option<u64> {
-    // Every nonempty piece may have one preceding hold. Text payloads together
-    // fit the answer cap; the queue separately prices their wrappers and holds.
-    Queue::<Option<Box<[u8]>>>::worst_case(cap(limits).checked_mul(2)?)?.checked_add(u64::from(cap(limits)))
-}
-
 pub(super) fn head(server: &mut Server) {
     server.requests.push(http::Request::Respond(http::Response {
         status: 200,
