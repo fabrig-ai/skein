@@ -213,3 +213,36 @@ fn lost_mint_waiting_for_room_is_never_written() {
     assert!(world.script_done());
     assert!(world.close());
 }
+
+#[test]
+fn a_refused_answer_is_offered_once_per_offer() {
+    use skein_forge::api;
+    use skein_lib::Token;
+    const FIRST: u64 = 41;
+    const COMPETING: u64 = 42;
+    const REPO: api::Repository = api::Repository { forge: FORGE, repository: 2 };
+    const RESOLVE: &str = "GET /repositories/2";
+    const BRANCH: &str = "GET /repos/acme/widgets/branches/main";
+    let mut world = Machine::github(
+        SEED,
+        fixtures::limits(),
+        settings(),
+        script(&[PAGE_ONE, PAGE_TWO, MINT, MINT, VIEWER, RESOLVE, BRANCH, BRANCH]),
+    );
+    accepted(&mut world, &[1]);
+    world.run_for(SECOND);
+    let branch = || api::Op::Read(api::Read::Branch { branch: Box::from(b"main".as_slice()) });
+    world.call(FIRST, REPO, branch());
+    world.run_for(SECOND);
+    let answer = world.answered(FIRST).expect("first answer").clone();
+    world.action(Request::Refused(answer));
+    world.call(COMPETING, REPO, branch());
+    world.run_for(SECOND);
+    world.action(Request::Offer);
+    world.action(Request::Offer);
+    assert_eq!(
+        world.deliveries().iter().map(|answer| answer.call).collect::<Vec<_>>(),
+        [Token::new(FIRST), Token::new(COMPETING), Token::new(FIRST)]
+    );
+    assert!(world.close());
+}
