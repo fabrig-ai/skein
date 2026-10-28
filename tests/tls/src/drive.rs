@@ -138,13 +138,7 @@ pub struct Pair {
 impl Pair {
     #[must_use]
     pub fn new(client: Client, env: Env<Limits>, server: Server) -> Pair {
-        Pair {
-            client,
-            env,
-            wire: Wire::new(server),
-            events: Queue::uncapped(),
-            requests: Queue::uncapped(),
-        }
+        Pair { client, env, wire: Wire::new(server), events: Queue::uncapped(), requests: Queue::uncapped() }
     }
 
     /// A request of the side above's, and what came of it.
@@ -171,7 +165,6 @@ impl Pair {
     }
 
     fn route(&mut self) -> Vec<Event> {
-
         while let Some(request) = self.requests.pop() {
             self.wire.take(request);
         }

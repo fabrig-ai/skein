@@ -1261,14 +1261,25 @@ fn a_paused_owner_holds_the_client_s_reads_below_however_many_events_wait() {
         assert!(world.demand.is_none_or(|(read, _)| read == Read::Nothing));
         assert_eq!(world.seen.len(), FIRST_DATUM, "one demanded datum throughout the pause");
     }
-    assert!(matches!(world.seen.as_slice(), [client::Event::Delta { delta: Delta::Text { text, .. }, .. }] if text.as_ref() == FIRST_DELTA));
+    assert!(
+        matches!(world.seen.as_slice(), [client::Event::Delta { delta: Delta::Text { text, .. }, .. }] if text.as_ref() == FIRST_DELTA)
+    );
     world.run();
-    let deltas: Vec<_> = world.seen.iter().filter_map(|event| match event {
-        client::Event::Delta { delta: Delta::Text { text, .. }, .. } => Some(text.as_ref()),
-        client::Event::Delta { .. } | client::Event::Block { .. } | client::Event::Completed { .. }
-        | client::Event::Failed { .. } | client::Event::Cancelled { .. }
-        | client::Event::Reusable | client::Event::Close | client::Event::Closed => None,
-    }).collect();
+    let deltas: Vec<_> = world
+        .seen
+        .iter()
+        .filter_map(|event| match event {
+            client::Event::Delta { delta: Delta::Text { text, .. }, .. } => Some(text.as_ref()),
+            client::Event::Delta { .. }
+            | client::Event::Block { .. }
+            | client::Event::Completed { .. }
+            | client::Event::Failed { .. }
+            | client::Event::Cancelled { .. }
+            | client::Event::Reusable
+            | client::Event::Close
+            | client::Event::Closed => None,
+        })
+        .collect();
     let expected: Vec<_> = (0..TINY_DELTAS).map(|index| format!("{index:03}").into_bytes()).collect();
     assert_eq!(deltas.len(), TINY_DELTAS);
     assert_eq!(deltas, expected, "every tiny delta arrives once in provider order");

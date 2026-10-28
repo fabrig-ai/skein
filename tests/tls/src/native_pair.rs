@@ -352,7 +352,6 @@ impl Pair {
     }
 
     fn route(&mut self) -> Vec<native::Event> {
-
         while let Some(request) = self.below.pop() {
             match request {
                 native::LowerRequest::Stream(Down::Demand { read: Read::Nothing, room: 0 }) => {

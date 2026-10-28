@@ -2,8 +2,8 @@
 
 use crate::accounts::Source;
 use crate::component::{Name, State};
-use crate::exchange::{Exchange, ROUTES};
-use skein_lib::{Duration, Id, List, Queue, Slab};
+use crate::exchange::Exchange;
+use skein_lib::{Duration, Id, List, Slab};
 use skein_oauth::ClientLimits;
 
 pub(crate) const MAX_ORIGINS: u32 = 3;
@@ -71,23 +71,13 @@ pub fn valid(limits: &Limits) -> bool {
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
     let record = u64::from(limits.client.document.record_bytes);
-    let routes = Queue::<skein_oauth::Request>::worst_case(skein_oauth::MAX_OUT)?
-        .checked_add(Queue::<skein_http::client::Event>::worst_case(ROUTES)?)?
-        .checked_add(Queue::<skein_http::client::Request>::worst_case(ROUTES)?)?
-        .checked_add(Queue::<skein_lib::stream::Down>::worst_case(ROUTES)?.checked_mul(2)?)?
-        .checked_add(Queue::<skein_tls::client::Event>::worst_case(ROUTES)?)?;
-    let payload = u64::from(limits.http.head.max(limits.http.request).max(limits.http.send))
-        .checked_mul(u64::from(ROUTES))?
-        .checked_add(u64::from(skein_tls::client::largest_room(&limits.tls)).checked_mul(u64::from(ROUTES))?)?;
     // The client and the prepared SignIn each own a bounded registration and hints.
     let exchange = skein_oauth::client_worst_case(&limits.client)?
         .checked_mul(2)?
         .checked_add(skein_http::client::worst_case(&limits.http)?)?
         .checked_add(skein_tls::client::worst_case(&limits.tls)?)?
-        .checked_add(routes)?
         .checked_add(u64::from(limits.client.scope_bytes))?
         .checked_add(u64::from(limits.client.document.subject_bytes))?
-        .checked_add(payload)?
         .checked_add(u64::try_from(crate::RETURN_BYTES).ok()?)?
         .checked_add(
             u64::from(

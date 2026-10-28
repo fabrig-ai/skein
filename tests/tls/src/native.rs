@@ -240,7 +240,6 @@ impl Driver {
     }
 
     fn route(&mut self) {
-
         while let Some(request) = self.below.pop() {
             let socket = self.client_socket.expect("client endpoint");
             match request {

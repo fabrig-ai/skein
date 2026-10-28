@@ -916,11 +916,11 @@ impl Component {
                     Store::Owner => {}
                 }
                 exchange.stage = Stage::Finished;
-                for _ in 0..oauth::MAX_OUT {
+                for _ in 0..exchange.above.len() {
                     drop(exchange.above.pop());
                 }
                 exchange.client.step(oauth::Event::Cancel, &mut exchange.above);
-                for _ in 0..oauth::MAX_OUT {
+                for _ in 0..exchange.above.len() {
                     drop(exchange.above.pop());
                 }
                 match &mut exchange.web {
@@ -988,11 +988,11 @@ impl Component {
         exchange.visit = None;
         exchange.sign_in = None;
         exchange.return_location = None;
-        for _ in 0..oauth::MAX_OUT {
+        for _ in 0..exchange.above.len() {
             drop(exchange.above.pop());
         }
         exchange.client.step(oauth::Event::Cancel, &mut exchange.above);
-        for _ in 0..oauth::MAX_OUT {
+        for _ in 0..exchange.above.len() {
             drop(exchange.above.pop());
         }
         match &mut exchange.web {
