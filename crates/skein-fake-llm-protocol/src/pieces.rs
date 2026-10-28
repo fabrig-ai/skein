@@ -20,14 +20,7 @@ pub(super) struct Stream {
 
 impl Stream {
     pub(super) fn new() -> Self {
-        Self {
-            pending: Queue::uncapped(),
-            bytes: 0,
-            usage: api::Usage::NONE,
-            opening: 0,
-            busy: false,
-            error: None,
-        }
+        Self { pending: Queue::uncapped(), bytes: 0, usage: api::Usage::NONE, opening: 0, busy: false, error: None }
     }
 
     pub(super) fn sent(&mut self) {
@@ -40,7 +33,9 @@ impl Stream {
 
     pub(super) fn clear(&mut self) {
         for _piece in 0..self.pending.len() {
-            self.pending.pop().expect("pending piece present at the start");
+            if self.pending.pop().is_none() {
+                break;
+            }
         }
         self.bytes = 0;
         self.usage = api::Usage::NONE;
@@ -66,9 +61,9 @@ fn cap(limits: &documents::Limits) -> u32 {
     limits.anthropic.answer.max(limits.openai.answer)
 }
 
-pub(super) fn worst_case(limits: &documents::Limits) -> Option<u64> {
+pub(super) fn worst_case(limits: &documents::Limits) -> u64 {
     // Pending text payloads together fit the aggregate answer cap.
-    Some(u64::from(cap(limits)))
+    u64::from(cap(limits))
 }
 
 pub(super) fn head(server: &mut Server) {

@@ -28,12 +28,7 @@ struct Machine {
 
 impl Machine {
     fn new(limits: Limits) -> Machine {
-        Machine {
-            writer: Writer::new(&limits),
-            env: env(limits),
-            above: Queue::uncapped(),
-            below: Queue::uncapped(),
-        }
+        Machine { writer: Writer::new(&limits), env: env(limits), above: Queue::uncapped(), below: Queue::uncapped() }
     }
 
     fn down(&mut self, rq: Request) -> (Vec<Event>, Vec<Down>) {

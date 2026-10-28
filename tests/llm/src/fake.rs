@@ -59,8 +59,8 @@ pub struct ObservationLimits {
 }
 
 /// Checked peer/world heap beyond the caller's one actual Client. Includes the
-/// provider Service/Server, scripted Domain, fixed queues, intakes and delivery
-/// scratch, peer grant/target ownership and bounded observations. The Client,
+/// provider Service/Server, scripted Domain, intakes and delivery scratch,
+/// peer grant/target ownership and bounded observations. The Client,
 /// caller input/configuration copies and records drained to callers are priced
 /// by their owners. Endpoint fields other than target are not retained by this
 /// peer. Contract: docs/design/fake-llm.md, sections 2–5;
@@ -851,11 +851,7 @@ mod tests {
         let machine = client::Client::prepare(input, &bounds).expect("one actual adopted Client");
         let scripts = Box::new([api::Script {
             cue: b"clocked-script".as_slice().into(),
-            turns: Box::new([api::Turn {
-                lines,
-                finish: api::Finish::Stop,
-                tokens: 1,
-            }]),
+            turns: Box::new([api::Turn { lines, finish: api::Finish::Stop, tokens: 1 }]),
         }]);
         Exchange::prepared(machine, endpoint, Some(credential), bounds, scripts)
     }
@@ -929,13 +925,13 @@ mod tests {
     #[test]
     fn a_slow_reader_gets_every_released_piece_in_order_and_one_terminal() {
         for provider in [Provider::OpenAiCodex, Provider::Anthropic] {
-            let expected: Vec<Box<[u8]>> = (0..BURST_PIECES)
-                .map(|index| format!("{index:04}").into_bytes().into_boxed_slice())
+            let expected: Vec<Box<[u8]>> =
+                (0..BURST_PIECES).map(|index| format!("{index:04}").into_bytes().into_boxed_slice()).collect();
+            let pieces = expected
+                .iter()
+                .enumerate()
+                .map(|(index, text)| api::Piece { text: text.clone(), hold: (index == 0).then(|| HOLD.into()) })
                 .collect();
-            let pieces = expected.iter().enumerate().map(|(index, text)| api::Piece {
-                text: text.clone(),
-                hold: (index == 0).then(|| HOLD.into()),
-            }).collect();
             let mut world = scripted(provider, Box::new([api::Line::Pieces { pieces }]));
             world.start();
             quiesce(&mut world);
@@ -963,20 +959,41 @@ mod tests {
                     break;
                 }
             }
-            let received: Vec<&[u8]> = world.seen.iter().filter_map(|event| match event {
-                client::Event::Delta { delta: skein_llm::Delta::Text { text, .. }, .. } => Some(text.as_ref()),
-                client::Event::Delta { .. } | client::Event::Block { .. } | client::Event::Completed { .. }
-                | client::Event::Failed { .. } | client::Event::Cancelled { .. } | client::Event::Reusable
-                | client::Event::Close | client::Event::Closed => None,
-            }).collect();
-            assert_eq!(received, expected.iter().map(AsRef::as_ref).collect::<Vec<&[u8]>>(), "{provider:?}");
+            let received: Vec<Option<&[u8]>> = world
+                .seen
+                .iter()
+                .filter_map(|event| match event {
+                    client::Event::Delta { delta: skein_llm::Delta::Text { text, .. }, .. } => {
+                        Some(Some(text.as_ref()))
+                    }
+                    client::Event::Completed { .. } => Some(None),
+                    client::Event::Delta { .. }
+                    | client::Event::Block { .. }
+                    | client::Event::Failed { .. }
+                    | client::Event::Cancelled { .. }
+                    | client::Event::Reusable
+                    | client::Event::Close
+                    | client::Event::Closed => None,
+                })
+                .collect();
+            let mut ordered: Vec<_> = expected.iter().map(|piece| Some(piece.as_ref())).collect();
+            ordered.push(None);
+            assert_eq!(received, ordered, "pieces precede the terminal for {provider:?}");
             assert_eq!(terminals(&world), 1, "one terminal after every released piece");
-            let completed = world.seen.iter().find_map(|event| match event {
-                client::Event::Completed { completion, .. } => Some(completion),
-                client::Event::Delta { .. } | client::Event::Block { .. } | client::Event::Failed { .. }
-                | client::Event::Cancelled { .. } | client::Event::Reusable | client::Event::Close
-                | client::Event::Closed => None,
-            }).expect("successful burst terminal");
+            let completed = world
+                .seen
+                .iter()
+                .find_map(|event| match event {
+                    client::Event::Completed { completion, .. } => Some(completion),
+                    client::Event::Delta { .. }
+                    | client::Event::Block { .. }
+                    | client::Event::Failed { .. }
+                    | client::Event::Cancelled { .. }
+                    | client::Event::Reusable
+                    | client::Event::Close
+                    | client::Event::Closed => None,
+                })
+                .expect("successful burst terminal");
             let [Block::Text { text, .. }] = completed.content.as_ref() else { panic!("one joined text") };
             assert_eq!(text.as_ref(), expected.concat());
         }

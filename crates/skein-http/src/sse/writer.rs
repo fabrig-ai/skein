@@ -40,7 +40,6 @@ use alloc::boxed::Box;
 use skein_lib::stream::{Down, Fault, Read, Up};
 use skein_lib::{Decimal, Env, Queue, bytes};
 
-
 /// The writer's limits (programming-model.md, 7): the same for every step.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Limits {

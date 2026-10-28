@@ -10,9 +10,9 @@
 
 use std::collections::VecDeque;
 
+use skein_http::Header;
 use skein_http::server::{self, Body, Response, Server};
 use skein_http::sse::writer::{self, Outgoing, Writer};
-use skein_http::Header;
 use skein_json::Token;
 use skein_json::tokenizer::{self as json, Tokenizer};
 use skein_lib::stream::{Down, Read, Up};

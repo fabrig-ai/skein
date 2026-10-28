@@ -1029,7 +1029,7 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         .checked_add(Slab::<Call>::worst_case(limits.calls)?)?
         .checked_add(http::worst_case(&limits.http)?)?
         .checked_add(sse::worst_case(&limits.sse)?)?
-        .checked_add(pieces::worst_case(&limits.documents)?)?
+        .checked_add(pieces::worst_case(&limits.documents))?
         .checked_add(openai::worst_case(&limits.documents.openai)?)?
         .checked_add(anthropic::worst_case(&limits.documents.anthropic)?)?
         // Configured echoes retain this raw request in the existing body List;

@@ -103,11 +103,8 @@ impl Playback {
         Self::from_domain(config, domain, query)
     }
     fn from_domain(config: Config, domain: Domain, query: Query) -> Self {
-        let mut playback = Self {
-            domain,
-            env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config },
-            out: Queue::uncapped(),
-        };
+        let mut playback =
+            Self { domain, env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config }, out: Queue::uncapped() };
         playback.call(CALL, query);
         playback
     }
