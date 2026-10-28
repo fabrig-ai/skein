@@ -209,7 +209,7 @@ impl Component {
     #[cfg(test)]
     pub(crate) fn test_local(&mut self, env: &Env<Limits>, up: &mut Queue<Event>) {
         let before = up.len();
-        for _ in 0..64 {
+        for _ in 0..64_u32 {
             if !self.github_local(0, env, up) || up.len() != before {
                 break;
             }

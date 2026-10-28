@@ -276,11 +276,9 @@ pub fn worst_case(limits: &Limits, config: &Config) -> Option<u64> {
         // One sanitized HTTP call held until its owner drains the entrance.
         .checked_add(u64::try_from(size_of::<Option<skein_http::server::Call>>()).ok()?)?
         .checked_add(u64::from(limits.http.head))?
-        .checked_add(u64::from(limits.http.headers).checked_mul(u64::try_from(size_of::<skein_http::Header>()).ok()?)?)?
-        .checked_add(skein_lib::Queue::<skein_http::server::Event>::worst_case(4)?)?
-        .checked_add(skein_lib::Queue::<skein_http::server::Request>::worst_case(4)?)?
-        .checked_add(skein_lib::Queue::<skein_json::tokenizer::Event>::worst_case(1)?)?
-        .checked_add(skein_lib::Queue::<skein_lib::stream::Down>::worst_case(1)?)?;
+        .checked_add(
+            u64::from(limits.http.headers).checked_mul(u64::try_from(size_of::<skein_http::Header>()).ok()?)?,
+        )?;
     tables
         .checked_add(crate::setup::worst_case(limits)?)?
         .checked_add(crate::delivery::worst_case(limits, config)?)?

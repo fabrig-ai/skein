@@ -357,10 +357,12 @@ impl HostWorld {
             self.tick();
             if self.above.is_empty()
                 && self.below.is_empty()
-                && !self
-                    .peers
-                    .values()
-                    .any(|peer| peer.pipe.has_work() || !peer.above.is_empty() || !peer.below.is_empty())
+                && !self.peers.values().any(|peer| {
+                    peer.pipe.has_work()
+                        || !peer.above.is_empty()
+                        || !peer.below.is_empty()
+                        || peer.server.as_ref().is_some_and(fake::Server::has_work)
+                })
                 && self.host.next_deadline().is_none_or(|at| at > self.env.now)
             {
                 return;
@@ -425,6 +427,7 @@ impl HostWorld {
             let peer = self.peers.get_mut(&owner).expect("peer");
             if let Some(server) = &mut peer.server {
                 fake::resume(server, &mut self.service, &self.fake_env, &mut peer.above, &mut peer.below);
+                drop(server.take_head());
             }
             while let Some(down) = peer.below.pop() {
                 peer.pipe.server_down(down);
@@ -432,6 +435,7 @@ impl HostWorld {
             if let Some(event) = peer.pipe.server_up() {
                 if let Some(server) = &mut peer.server {
                     fake::up(server, &mut self.service, &self.fake_env, event, &mut peer.above, &mut peer.below);
+                    drop(server.take_head());
                 } else if peer.github {
                     github_answer(
                         peer,

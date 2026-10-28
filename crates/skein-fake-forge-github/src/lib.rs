@@ -24,9 +24,7 @@ mod reads;
 mod routes;
 pub mod server;
 pub mod service;
-pub use server::{
-    Event, MAX_DOWN, MAX_UP, Server, close, closed, down, resume, resume_with_domain, start, up, up_with_domain,
-};
+pub use server::{Event, Server, close, closed, down, resume, resume_with_domain, start, up, up_with_domain};
 pub use service::{Config, Limits, Problem, Service, worst_case};
 mod texts;
 mod writes;

@@ -24,8 +24,8 @@ fn exchange(faults: Faults, seed: u64) -> (f::Harness, Box<[u8]>, u32) {
     let original = input.len();
     let env = Env { limits: h.limits, now: h.env.now, wall: h.now };
     let mut server = server::Server::new(Token::new(77), &h.limits).unwrap();
-    let mut above = Queue::with_capacity(server::MAX_UP);
-    let mut below = Queue::with_capacity(server::MAX_DOWN);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let mut output = List::with_capacity(h.limits.response);
     server::start(&mut server, &mut h.service, &env, &mut above, &mut below);
     let mut close = false;
