@@ -225,7 +225,7 @@ fn fake_forgejo_hooks_of_one_repository_are_not_those_of_another() {
     assert_eq!(ids(&h).as_slice(), &[1]);
 }
 #[test]
-fn fake_forgejo_setup_store_full_refuses_one_more_and_worst_case_counts_it() {
+fn fake_forgejo_setup_store_full_refuses_one_more() {
     let mut limits = fixtures::limits();
     limits.documents.inner = 2;
     let config = config();
@@ -243,29 +243,7 @@ fn fake_forgejo_setup_store_full_refuses_one_more_and_worst_case_counts_it() {
     }
     assert_eq!(store.answer(&create(), admin, &config, &limits).unwrap().status, 503);
     assert_eq!(store.repository_hooks(REPOSITORY).count(), 2);
-    assert!(crate::setup::worst_case(&limits).unwrap() > old_store_worst_case(&limits));
-    assert!(crate::worst_case(&limits, &config).is_some());
 }
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "the literal fixture cap and byte widths make the independent store budget calculation bounded"
-)]
-fn old_store_worst_case(limits: &crate::Limits) -> u64 {
-    use crate::setup::{Account, Issued, Organization, Subscription, Team};
-    let cap = limits.documents.inner;
-    let text = u64::from(limits.documents.string_bytes);
-    let count = u64::from(cap);
-    let accounts = List::<Account>::worst_case(cap).unwrap() + count * text * 2;
-    let issued = List::<Issued>::worst_case(cap).unwrap()
-        + count
-            * (List::<Box<[u8]>>::worst_case(cap).unwrap() + text * (count + 1) + u64::from(limits.http.head).max(40));
-    let organizations = List::<Organization>::worst_case(cap).unwrap() + count * text * 2;
-    let teams = List::<Team>::worst_case(cap).unwrap() + count * (text * 2 + List::<u64>::worst_case(cap).unwrap());
-    let hooks = List::<Subscription>::worst_case(cap).unwrap()
-        + count * (text * (count + 2) + u64::from(limits.http.head) + List::<Box<[u8]>>::worst_case(cap).unwrap());
-    accounts * 2 + issued * 2 + (organizations + teams) * 2 + hooks * 2 + List::<u64>::worst_case(cap).unwrap()
-}
-
 use skein_fake_forge_domain::{
     self as domain,
     api::{Error, Permission, What},

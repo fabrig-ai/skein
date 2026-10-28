@@ -107,12 +107,7 @@ impl Store {
 fn document(hook: &RepositoryHook) -> Hook {
     Hook { id: hook.id, url: hook.url.clone(), events: hook.events.clone(), active: hook.active }
 }
-pub(super) fn worst_case(limits: &Limits) -> Option<u64> {
-    let cap = limits.documents.inner;
-    let text = u64::from(limits.documents.string_bytes);
-    let row = text.checked_mul(u64::from(cap).checked_add(2)?)?.checked_add(List::<Box<[u8]>>::worst_case(cap)?)?;
-    List::<RepositoryHook>::worst_case(cap)?.checked_add(u64::from(cap).checked_mul(row)?)?.checked_mul(2)
-}
+
 /// A repository's stored hooks, in creation id order for deterministic inspection.
 #[derive(Debug)]
 pub struct RepositoryHooks<'a> {

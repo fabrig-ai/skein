@@ -332,27 +332,6 @@ fn refusal(status: u16, message: &[u8], limits: &Limits) -> Reply {
         limits,
     )
 }
-/// The store's fixed tables and maximum owned names, token scopes and secrets.
-pub(crate) fn worst_case(limits: &Limits) -> Option<u64> {
-    let cap = limits.documents.inner;
-    let text = u64::from(limits.documents.string_bytes);
-    let account = List::<Account>::worst_case(cap)?.checked_add(u64::from(cap).checked_mul(text.checked_mul(2)?)?)?;
-    let issued = List::<Issued>::worst_case(cap)?.checked_add(
-        u64::from(cap).checked_mul(
-            List::<Box<[u8]>>::worst_case(cap)?
-                .checked_add(text.checked_mul(u64::from(cap).checked_add(1)?)?)?
-                .checked_add(u64::from(limits.http.head).max(40))?,
-        )?,
-    )?;
-    account
-        .checked_mul(2)?
-        .checked_add(issued.checked_mul(2)?)?
-        .checked_add(orgs::worst_case(limits)?)?
-        .checked_add(hooks::worst_case(limits)?)?
-        .checked_add(repo_hooks::worst_case(limits)?)?
-        .checked_add(collaborators::worst_case(limits)?)?
-        .checked_add(List::<u64>::worst_case(cap)?)
-}
 
 fn joined(parts: &[&[u8]]) -> Box<[u8]> {
     let mut length = 0_usize;

@@ -2,7 +2,7 @@
 use crate::{Config, Limits, Tally};
 use alloc::boxed::Box;
 use skein_fake_forge_domain as domain;
-use skein_lib::{Id, List, Map, ReplyTo, Rng, Slab, Token};
+use skein_lib::{Id, List, ReplyTo, Rng, Slab, Token};
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Error {
     Limits,
@@ -27,7 +27,7 @@ impl Service {
         {
             return Err(Error::Limits);
         }
-        if worst_case(limits, &config).is_none()
+        if !valid(limits, &config)
             || config.max_response_items == 0
             || config.default_paging_num == 0
             || config.max_response_items > limits.documents.inner
@@ -211,81 +211,19 @@ fn check_base(base: &[u8], limits: &Limits) -> Result<(), Error> {
     }
     Ok(())
 }
-/// Tables and each connection's HTTP, JSON, request and encoded response ownership.
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// HTTP and document limits are usable, tokenizer reads fit HTTP, git decoding
+/// is finite, and the object walk's four-parent frontier fits u32.
 #[must_use]
-pub fn worst_case(limits: &Limits, config: &Config) -> Option<u64> {
-    if limits.calls == 0
-        || limits.connections == 0
-        || limits.raw_bytes == 0
-        || skein_json::tokenizer::largest_demand(&limits.documents.json) > limits.http.read
-        || skein_forge::forgejo::limits::check(&limits.documents).is_err()
-    {
-        return None;
-    }
-    // A host may replace the base with any origin admitted by set_base.
-    let mut tables = u64::from(limits.documents.target_bytes);
-    if let Some(endpoint) = &config.hooks {
-        tables = tables
-            .checked_add(u64::try_from(endpoint.host.len()).ok()?)?
-            .checked_add(u64::try_from(endpoint.secret.len()).ok()?)?;
-    }
-    tables =
-        tables
-            .checked_add(List::<(skein_lib::Secret, u64)>::worst_case(config.tokens.capacity())?)?
-            .checked_add(List::<(u64, Box<[u8]>)>::worst_case(config.users.capacity())?)?
-            .checked_add(List::<crate::Repository>::worst_case(limits.documents.inner)?.checked_add(
-                u64::from(limits.documents.inner).checked_mul(u64::from(limits.documents.target_bytes))?,
-            )?)?;
-    for (token, _) in &config.tokens {
-        tables = tables.checked_add(u64::try_from(token.len()).ok()?)?;
-    }
-    for (_, login) in &config.users {
-        tables = tables.checked_add(u64::try_from(login.len()).ok()?)?;
-    }
-    for repo in &config.repositories {
-        tables = tables.checked_add(u64::try_from(repo.full.len()).ok()?)?;
-        if let Some(branch) = &repo.protected {
-            tables = tables.checked_add(u64::try_from(branch.len()).ok()?)?;
-        }
-    }
-    let listing = List::<(skein_forge::forgejo::document::Reachable, domain::api::Permission)>::worst_case(
-        limits.documents.inner,
-    )?
-    .checked_add(
-        u64::from(limits.documents.inner).checked_mul(u64::from(limits.documents.string_bytes).checked_mul(2)?)?,
-    )?;
-    let per_connection = skein_http::server::worst_case(&limits.http)?
-        .checked_add(skein_json::tokenizer::worst_case(&limits.documents.json)?.checked_mul(2)?)?
-        .checked_add(u64::from(limits.documents.body_bytes).checked_mul(4)?)?
-        .checked_add(u64::from(limits.documents.writer.length).checked_mul(4)?)?
-        .checked_add(
-            u64::from(limits.documents.inner)
-                .checked_mul(u64::from(limits.documents.string_bytes).checked_add(128)?)?,
-        )?
-        .checked_add(u64::from(limits.documents.target_bytes).checked_mul(2)?)?
-        .checked_add(u64::from(limits.raw_bytes))?
-        .checked_add(listing)?
-        .checked_add(crate::git::decoder_worst_case(limits)?)?
-        // Object walk: selected ids, parent rows, and two parents per
-        // input asked entry or output entry, at most twice the response cap.
-        .checked_add(List::<u64>::worst_case(config.max_response_items)?)?
-        .checked_add(List::<crate::git::Parents>::worst_case(config.max_response_items)?)?
-        .checked_add(skein_lib::Set::<core::cmp::Reverse<u64>>::worst_case(config.max_response_items.checked_mul(4)?)?)?
-        // Basic's decoded login and token live for the entrance pass only.
-        .checked_add(u64::from(limits.http.head))?
-        // One sanitized HTTP call held until its owner drains the entrance.
-        .checked_add(u64::try_from(size_of::<Option<skein_http::server::Call>>()).ok()?)?
-        .checked_add(u64::from(limits.http.head))?
-        .checked_add(u64::from(limits.http.headers).checked_mul(u64::try_from(size_of::<skein_http::Header>()).ok()?)?)?
-        .checked_add(skein_lib::Queue::<skein_http::server::Event>::worst_case(4)?)?
-        .checked_add(skein_lib::Queue::<skein_http::server::Request>::worst_case(4)?)?
-        .checked_add(skein_lib::Queue::<skein_json::tokenizer::Event>::worst_case(1)?)?
-        .checked_add(skein_lib::Queue::<skein_lib::stream::Down>::worst_case(1)?)?;
-    tables
-        .checked_add(crate::setup::worst_case(limits)?)?
-        .checked_add(crate::delivery::worst_case(limits, config)?)?
-        .checked_add(Slab::<Call>::worst_case(limits.calls)?)?
-        .checked_add(Map::<crate::Route, u64>::worst_case(crate::tally::ROUTES)?)?
-        .checked_add(Map::<u64, u64>::worst_case(config.tokens.len().saturating_add(limits.documents.inner))?)?
-        .checked_add(per_connection.checked_mul(u64::from(limits.connections))?)
+pub fn valid(limits: &Limits, config: &Config) -> bool {
+    limits.calls > 0
+        && limits.connections > 0
+        && limits.raw_bytes > 0
+        && skein_http::server::valid(&limits.http)
+        && skein_json::tokenizer::largest_demand(&limits.documents.json) <= limits.http.read
+        && skein_forge::forgejo::limits::check(&limits.documents).is_ok()
+        && skein_json::tokenizer::worst_case(&limits.documents.json).is_some()
+        && crate::git::decoder_worst_case(limits).is_some()
+        && config.max_response_items.checked_mul(4).is_some()
 }

@@ -42,9 +42,10 @@ refresh-rotation checks. HTTP head limits must fit the maximum redirect.
 The world registers endpoints with the address it chooses; the peer's io
 address and the URL metadata are separate explicit inputs.
 
-Each module exports `worst_case`, and each Host reports its complete bound
-and maximum operations. `tests/llm-connection` demonstrates independently
-hosted plaintext and TLS clients, an exact script/answer-cap full delayed
+Constructors validate semantic limits, derived capacities and the bounds of
+adjacent streams. Each Host reports its maximum operations. Fixed memory
+scenarios keep their measured peaks under named ceilings. `tests/llm-connection`
+demonstrates independently hosted plaintext and TLS clients, an exact script/answer-cap full delayed
 pool, outside replay and per-process memory. `tests/oauth` demonstrates a
 three-process plaintext sign-in and refresh, with a scripted browser following
 the redirect through the client's listener, maximum token/plan/code/

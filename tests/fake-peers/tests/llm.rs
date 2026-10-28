@@ -199,21 +199,31 @@ fn peer_refuses_unrepresentable_faces_and_incompatible_http_buffers() {
 }
 
 #[test]
+fn llm_admission_keeps_its_ciphertext_reserve_and_send_allowance() {
+    let limits = limits();
+    let mut protocol = skein_llm_world::fake::limits(&skein_llm_world::limits());
+    protocol.http.send = limits.ciphertext - 1024 - 32;
+    assert!(llm::valid(&limits, &protocol));
+    protocol.http.send += 1;
+    assert!(!llm::valid(&limits, &protocol));
+}
+
+#[test]
 fn provider_constructors_refuse_unrepresentable_edges_and_piece_capacities() {
     let good = skein_llm_world::fake::limits(&skein_llm_world::limits());
     assert!(provider::valid(&good));
-    for mut bad in [good; 6].into_iter().enumerate() {
-        match bad.0 {
-            0 => bad.1.http.send = u32::MAX,
-            1 => bad.1.sse.chunk = 0,
-            2 => bad.1.documents.openai.answer = u32::MAX,
-            3 => bad.1.documents.openai.request = u32::MAX,
-            4 => bad.1.documents.model_ceiling = 0,
-            5 => bad.1.http.head = 1,
+    for (case, mut bad) in [good; 6].into_iter().enumerate() {
+        match case {
+            0 => bad.http.send = u32::MAX,
+            1 => bad.sse.chunk = 0,
+            2 => bad.documents.openai.answer = u32::MAX,
+            3 => bad.documents.openai.request = u32::MAX,
+            4 => bad.documents.model_ceiling = 0,
+            5 => bad.http.head = 1,
             _ => unreachable!(),
         }
-        assert!(!provider::valid(&bad.1));
-        assert_eq!(provider::Server::new(skein_lib::Token::new(1), &bad.1).err(), Some(provider::Error::Limits));
+        assert!(!provider::valid(&bad));
+        assert_eq!(provider::Server::new(skein_lib::Token::new(1), &bad).err(), Some(provider::Error::Limits));
         let config = provider::Config {
             without_credential: false,
             usage_fields: documents::UsageFields::ALL,
@@ -222,7 +232,7 @@ fn provider_constructors_refuse_unrepresentable_edges_and_piece_capacities() {
             path: Box::from(b"/".as_slice()),
             headers: Box::new([]),
         };
-        assert_eq!(provider::Service::new(config, &bad.1).err(), Some(provider::Error::Limits));
+        assert_eq!(provider::Service::new(config, &bad).err(), Some(provider::Error::Limits));
     }
 }
 

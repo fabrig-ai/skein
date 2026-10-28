@@ -9,7 +9,7 @@ use skein_forge::forgejo::{
     document::Body,
     request::ReviewEvent,
 };
-use skein_lib::Secret;
+use skein_lib::{Secret, Token};
 const REPOSITORY: u64 = 2;
 const ITEM: u64 = 3;
 fn decoded(post: &delivery::Post) -> Result<Delivery, skein_forge::forgejo::decode::Malformed> {
@@ -188,10 +188,10 @@ fn a_domain_push_is_delivered_signed_to_the_world() {
 }
 
 #[test]
-fn service_refuses_limits_without_a_worst_case() {
+fn service_refuses_zero_call_capacity() {
     let config = fixtures::config();
     let limits = crate::Limits { calls: 0, ..fixtures::limits() };
-    assert_eq!(crate::worst_case(&limits, &config), None);
+    assert!(!crate::valid(&limits, &config));
     assert_eq!(Service::new(config, &limits, 3).err(), Some(crate::Error::Limits));
 }
 
@@ -209,4 +209,26 @@ fn forgejo_never_delivers_a_merge_queue_group_hook() {
     let limits = fixtures::limits();
     let service = Service::new(fixtures::hooked_config(), &limits, 3).unwrap();
     assert!(service.delivery(&hook(Change::Group { ended: false }), &limits).is_none());
+}
+
+#[test]
+fn constructors_refuse_unrepresentable_http_json_and_walk_limits() {
+    for case in 0_u32..6 {
+        let mut limits = fixtures::limits();
+        let mut config = fixtures::config();
+        match case {
+            0 => limits.http.send = u32::MAX,
+            1 => limits.documents.json.length = u32::MAX,
+            2 => limits.documents.json.chunk = limits.http.read + 1,
+            3 => limits.raw_bytes = 0,
+            4 => limits.connections = 0,
+            5 => config.max_response_items = u32::MAX,
+            _ => unreachable!(),
+        }
+        assert!(!crate::valid(&limits, &config));
+        assert_eq!(Service::new(config, &limits, 3).err(), Some(crate::Error::Limits));
+        if case < 5 {
+            assert_eq!(crate::Server::new(Token::new(1), &limits).err(), Some(crate::Error::Limits));
+        }
+    }
 }

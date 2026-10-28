@@ -69,7 +69,8 @@ pub struct Server {
 }
 impl Server {
     pub fn new(owner: Token, limits: &Limits) -> Result<Self, Error> {
-        if http::worst_case(&limits.http).is_none()
+        if !http::valid(&limits.http)
+            || json::worst_case(&limits.documents.json).is_none()
             || limits.calls == 0
             || limits.connections == 0
             || limits.raw_bytes == 0

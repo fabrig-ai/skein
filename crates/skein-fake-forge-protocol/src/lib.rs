@@ -18,7 +18,7 @@ pub mod tally;
 pub use server::{
     Event, MAX_DOWN, MAX_UP, Server, close, closed, down, resume, resume_with_domain, start, up, up_with_domain,
 };
-pub use service::{Error, Service, worst_case};
+pub use service::{Error, Service, valid};
 pub use tally::{Route, Tally, route};
 /// Caps owned by the protocol layer, in addition to the fake domain's.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

@@ -599,6 +599,10 @@ impl Peer {
 impl Host for Peer {
     fn iterate(&mut self, now: Time, wall: Wall) {
         self.fresh = false;
+        assert!(
+            shared::valid(&self.face.limits, &self.protocol, &self.forge.borrow()),
+            "owner updates preserve usable limits"
+        );
         self.forge.borrow_mut().now = now;
         self.face.up(now, wall);
         for _ in 0..self.face.limits.queue {

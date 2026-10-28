@@ -2,7 +2,6 @@ use super::{Store, absent, empty, full};
 use crate::{Config, Error, Limits, response::Reply};
 use alloc::boxed::Box;
 use skein_forge::forgejo::request::{Grant, Repo};
-use skein_lib::List;
 #[derive(Debug)]
 pub(super) struct Collaborator {
     repository: u32,
@@ -104,11 +103,6 @@ impl Store {
         }
         Ok(())
     }
-}
-pub(super) fn worst_case(limits: &Limits) -> Option<u64> {
-    let cap = limits.documents.inner;
-    List::<Collaborator>::worst_case(cap)?
-        .checked_add(u64::from(cap).checked_mul(u64::from(limits.documents.string_bytes))?)
 }
 
 /// Setup `Read`, `Write` and `Admin` grant domain `Read`, `Write` and `Admin`, respectively.

@@ -24,6 +24,14 @@ fn forge_peer_refuses_unusable_configuration_before_effects() {
 }
 
 #[test]
+fn owner_updates_must_preserve_representable_capacities() {
+    let mut world = World::new();
+    world.forge.borrow_mut().config.limits.files = u32::MAX;
+    let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| world.pass()));
+    skein_fake_peers_tests::assert_panic(refusal, "owner updates preserve usable limits");
+}
+
+#[test]
 fn forge_peer_publishes_its_bound_loopback_address() {
     let mut world = World::new();
     assert_eq!(world.peer.address(), None);

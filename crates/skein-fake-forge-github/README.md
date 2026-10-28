@@ -34,9 +34,10 @@ path. The fixture defaults leave both choices unset.
 `Limits::blob_records` retains recent requests, evicting the oldest when
 full. Each record contains a path bounded by `Limits::http.head` and only
 the presence of Authorization and Range. `Service::blob_records` and the
-peer's corresponding accessor expose them. Blob record and response Debug output hides signed paths
-and credentials. `worst_case` counts records, paths, origins, the signing
-key and target scratch; per-connection buffers use the API's envelope.
+peer's corresponding accessor expose them. Blob record and response Debug output
+hides signed paths and credentials. The full-store memory scenario bounds
+retained records and paths with a named ceiling. Origins and target scratch
+retain their configured edge limits.
 
 `Config::tokens` maps invented person secrets to account user numbers. Their
 repository reads, reviews and writes use that person's domain permissions and
@@ -54,8 +55,8 @@ replaces it with `500`. Writes remain applied in both cases. The scenario seed
 and clock make faults, expiry and generated identities replayable.
 
 `Limits` bounds retained stores, HTTP buffers, document decoding and responses.
-`worst_case(&limits, &config)` includes the service and one HTTP connection;
-the hosted peer prices its additional connections and shared domain. Dedicated
+`valid(&limits, &config)` checks semantic limits, edge bounds and derived capacities.
+Fixed scenarios keep measured peaks under named ceilings. Dedicated
 counting-allocator tests live in `tests/fake-forge/tests/github_memory.rs` and
 `tests/fake-peers/tests/github_memory.rs`. They fill the layer's stores while
 every domain repository holds a queued pull; the peer test also holds both
@@ -79,8 +80,8 @@ capacity remove the oldest entries; redelivery adds a newer entry carrying
 the same guid. `revoke_key` refuses subsequent App requests with 401.
 
 GitHub wire documents are encoded through `skein_forge::github::server`.
-Payloads carry seeded UUIDs and HMAC-SHA256 signatures. The layer's
-`worst_case` includes the bounded log and encoding scratch.
+Payloads carry seeded UUIDs and HMAC-SHA256 signatures. The full-delivery-store
+scenario keeps retained entries and payloads under a named ceiling.
 
 Installation mutations queue bounded lifecycle events, including repository changes
 and renames. `Service::poll` releases them on the forge clock; hosts drain

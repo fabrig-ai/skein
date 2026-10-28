@@ -206,19 +206,3 @@ fn destination(url: &[u8]) -> Option<(SocketAddr, &[u8], &[u8])> {
     };
     Some((address(host)?, host, target))
 }
-
-pub(crate) fn worst_case(limits: &Limits, config: &crate::Config) -> Option<u64> {
-    let count = limits.documents.inner.max(1);
-    let host = match &config.hooks {
-        Some(endpoint) => u64::try_from(endpoint.host.len()).ok()?,
-        None => 0,
-    }
-    .max(u64::from(limits.documents.string_bytes));
-    let post = host
-        .checked_add(u64::from(limits.documents.string_bytes))?
-        .checked_add(512)?
-        .checked_add(u64::from(limits.documents.writer.length))?;
-    List::<Delivery>::worst_case(count)?
-        .checked_add(u64::from(count).checked_mul(post)?)?
-        .checked_add(u64::from(limits.documents.writer.length))
-}
