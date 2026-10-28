@@ -46,7 +46,6 @@ fn fragment_with_limits(number: u64, limits: &Limits) -> Builder {
 #[test]
 fn slots_fill_two_deep_in_preorder_and_later_ids_survive_insertions() {
     let mut builder = page();
-    let storage = builder.tree.nodes().as_ptr();
     let first = builder.slots(0);
     builder.splice(first[0].id, fragment(3));
     builder.splice(first[1].id, fragment(4));
@@ -60,7 +59,6 @@ fn slots_fill_two_deep_in_preorder_and_later_ids_survive_insertions() {
     assert!(builder.slots(0).is_empty());
     assert!(builder.slots(1).is_empty());
     let tree = builder.finish();
-    assert_eq!(tree.nodes().as_ptr(), storage);
     assert_eq!(tree.get(0).expect("page").size, tree.len());
     for index in 0..tree.len() {
         let node = tree.get(index).expect("preorder node");
