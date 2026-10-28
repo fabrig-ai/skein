@@ -126,6 +126,7 @@ fn dispatch_world() -> World {
         Settings::calm(47),
         Box::new([raw::Workflow {
             fails: Box::new([]),
+            flaky: Box::new([]),
             report: None,
             select: None,
             file: Box::from(b"gate.yml".as_slice()),

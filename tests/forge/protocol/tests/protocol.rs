@@ -92,6 +92,7 @@ use skein_forge_client_world::translate::commit;
 fn workflow() -> raw::Workflow {
     raw::Workflow {
         fails: Box::new([]),
+        flaky: Box::new([]),
         report: None,
         select: None,
         file: Box::from(b"gate.yml".as_slice()),
@@ -329,32 +330,43 @@ fn runs_ignore_other_workflows_and_page_by_the_raw_forgejo_listing() {
     world.finish();
 }
 
+fn report_workflow(fails: &[&[u8]], flaky: &[&[u8]], deflate: bool) -> raw::Workflow {
+    let mut workflow = workflow();
+    workflow.passes = 1000;
+    workflow.fails = fails.iter().map(|id| Box::from(*id)).collect();
+    workflow.flaky = flaky.iter().map(|id| Box::from(*id)).collect();
+    workflow.select = Some(Box::from(*b"select"));
+    workflow.report = Some(raw::Report { artifact: Box::from(*b"tests"), format: raw::ReportFormat::Lines, deflate });
+    workflow
+}
+fn dispatch_report(world: &mut World, selected: Option<&[u8]>) -> (api::Commit, api::Run) {
+    let head = branch(world, b"main");
+    let inputs: Box<[api::Input]> = match selected {
+        Some(ids) => Box::new([api::Input { name: Box::from(*b"select"), value: Box::from(ids) }]),
+        None => Box::new([]),
+    };
+    world.write(Write::Dispatch { workflow: Box::from(*b"gate.yml"), branch: Box::from(*b"main"), inputs });
+    let Answer::Runs { runs, .. } =
+        world.read(Read::Runs { workflow: Box::from(*b"gate.yml"), commit: head, page: 1 }).expect("dispatch listing")
+    else {
+        panic!("runs");
+    };
+    (head, completed(world, runs[0].id))
+}
+fn failed_report(world: &mut World, run: u64) -> Result<Answer, api::Error> {
+    const REPORT_BYTES: u32 = 6; // a, b and c, each with a newline, is the largest report.
+    world.read(Read::Artifact { run, name: Box::from(*b"tests"), max_bytes: REPORT_BYTES })
+}
+
 #[test]
 fn a_completed_dispatch_reads_its_selected_failed_ids_through_http() {
     const ARTIFACT_REQUESTS: u64 = 3; // Listing, run commit, complete ZIP.
     const UNKNOWN_RUN: u64 = 9999; // Outside the fixture's four run slots.
     const FAILED_BYTES: u32 = 2; // b plus its newline.
     for deflate in [false, true] {
-        let mut workflow = workflow();
-        workflow.passes = 1000;
-        workflow.fails = Box::new([Box::from(*b"a"), Box::from(*b"b")]);
-        workflow.select = Some(Box::from(*b"select"));
-        workflow.report =
-            Some(raw::Report { artifact: Box::from(*b"tests"), format: raw::ReportFormat::Lines, deflate });
+        let workflow = report_workflow(&[b"a", b"b"], &[], deflate);
         let mut world = World::turn(61, Box::new([workflow]), Box::new([]));
-        let head = branch(&mut world, b"main");
-        world.write(Write::Dispatch {
-            workflow: Box::from(*b"gate.yml"),
-            branch: Box::from(*b"main"),
-            inputs: Box::new([api::Input { name: Box::from(*b"select"), value: Box::from(*b"b") }]),
-        });
-        let Answer::Runs { runs, .. } = world
-            .read(Read::Runs { workflow: Box::from(*b"gate.yml"), commit: head, page: 1 })
-            .expect("dispatch listing")
-        else {
-            panic!("runs");
-        };
-        let run = completed(&mut world, runs[0].id);
+        let (head, run) = dispatch_report(&mut world, Some(b"b"));
         let before = world.accounting();
         assert_eq!(
             world.read(Read::Artifact { run: run.id, name: Box::from(*b"tests"), max_bytes: FAILED_BYTES }),
@@ -372,6 +384,51 @@ fn a_completed_dispatch_reads_its_selected_failed_ids_through_http() {
         );
         world.finish();
     }
+}
+
+#[test]
+fn a_flaky_test_fails_in_a_whole_run_and_its_report_names_it() {
+    let workflow = report_workflow(&[b"b"], &[b"c", b"a", b"b", b"a"], true);
+    let mut world = World::turn(61, Box::new([workflow]), Box::new([]));
+    let (head, run) = dispatch_report(&mut world, None);
+    assert_eq!(
+        failed_report(&mut world, run.id),
+        Ok(Answer::File { head, path: Box::from(*b"failed.txt"), bytes: Box::from(*b"a\nb\nc\n"), truncated: false })
+    );
+    assert_eq!(run.conclusion, Some(Conclusion::Failure));
+    for job in &run.jobs {
+        assert_eq!(job.conclusion, Some(Conclusion::Failure));
+    }
+    world.finish();
+}
+#[test]
+fn a_flaky_test_passes_when_its_selection_lists_it() {
+    let workflow = report_workflow(&[], &[b"a"], true);
+    let mut world = World::turn(61, Box::new([workflow]), Box::new([]));
+    let (head, whole) = dispatch_report(&mut world, None);
+    let (selected_head, selected) = dispatch_report(&mut world, Some(b"a"));
+    assert_eq!((whole.commit, selected_head, selected.commit), (head, head, head));
+    assert_eq!(
+        failed_report(&mut world, selected.id),
+        Ok(Answer::File { head, path: Box::from(*b"failed.txt"), bytes: Box::new([]), truncated: false })
+    );
+    assert_eq!((whole.conclusion, selected.conclusion), (Some(Conclusion::Failure), Some(Conclusion::Success)));
+    for job in &selected.jobs {
+        assert_eq!(job.conclusion, Some(Conclusion::Success));
+    }
+    world.finish();
+}
+#[test]
+fn a_selection_of_a_failing_and_a_flaky_test_fails_only_the_failing_one() {
+    let workflow = report_workflow(&[b"b"], &[b"a", b"b"], true);
+    let mut world = World::turn(61, Box::new([workflow]), Box::new([]));
+    let (head, run) = dispatch_report(&mut world, Some(b"b\na\nb\n"));
+    assert_eq!(
+        failed_report(&mut world, run.id),
+        Ok(Answer::File { head, path: Box::from(*b"failed.txt"), bytes: Box::from(*b"b\n"), truncated: false })
+    );
+    assert_eq!(run.conclusion, Some(Conclusion::Failure));
+    world.finish();
 }
 
 #[test]

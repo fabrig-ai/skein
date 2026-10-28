@@ -81,7 +81,7 @@ pub(crate) fn failed(
         Some(Cue::Message { .. } | Cue::File { .. }) | None => workflow.fails.clone(),
     };
     let Some(selected) = selection(workflow, run, limits)? else {
-        return Ok(ids);
+        return merge(ids, &workflow.flaky);
     };
     let mut failures = List::with_capacity(u32::try_from(ids.len()).expect("bounded ids"));
     let mut position = 0usize;
@@ -98,6 +98,31 @@ pub(crate) fn failed(
         }
     }
     Ok(failures.into_boxed())
+}
+/// Merge two normalized id sets without imposing a bound on their union.
+fn merge(first: Ids, second: &[Box<[u8]>]) -> Result<Ids, Error> {
+    if second.is_empty() {
+        return Ok(first);
+    }
+    let capacity = first.len().checked_add(second.len()).ok_or(Error::TooLarge)?;
+    let mut merged = List::with_capacity(u32::try_from(capacity).or(Err(Error::TooLarge))?);
+    let mut position = 0usize;
+    for id in first {
+        for candidate in second.get(position..).expect("second set position") {
+            if candidate > &id {
+                break;
+            }
+            if candidate < &id {
+                merged.push(copy_of(candidate)).expect("at most one per input id");
+            }
+            position = position.saturating_add(1);
+        }
+        merged.push(id).expect("at most one per input id");
+    }
+    for id in second.get(position..).expect("second set remainder") {
+        merged.push(copy_of(id)).expect("at most one per input id");
+    }
+    Ok(merged.into_boxed())
 }
 fn put(out: &mut List<u8>, bytes: &[u8]) -> Result<(), Error> {
     for byte in bytes {

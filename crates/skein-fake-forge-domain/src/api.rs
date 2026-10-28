@@ -971,6 +971,9 @@ pub struct Protection {
 pub struct Workflow {
     /// The test ids failed by the workflow, beside its cue (fake-forge.md, 2.3).
     pub fails: Box<[Box<[u8]>]>,
+    /// Tests that fail in a run not given the selection input and pass in a
+    /// run whose selection lists them: a flake, at the same commit.
+    pub flaky: Box<[Box<[u8]>]>,
     /// The artifact a completed run uploads, naming the ids it failed.
     pub report: Option<Report>,
     /// The dispatch input selecting ids to run alone.

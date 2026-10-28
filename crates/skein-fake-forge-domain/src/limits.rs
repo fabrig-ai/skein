@@ -139,11 +139,11 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         .checked_add(kept_run_heap(limits, limits.workflow_runs > 0)?)?
         .checked_add(job_heap(limits)?)?
         .checked_add(u64::from(limits.name_bytes).checked_mul(2)?)?;
-    // Line parsing, canonicalization and selection can overlap four id arrays,
-    // their owned bytes, and the report's bounded output.
+    // The cloned workflow, merged failures, line parsing and selection can
+    // overlap six id arrays, their owned bytes, and the bounded report output.
     let reports_scratch = List::<Box<[u8]>>::worst_case(limits.content_bytes)?
-        .checked_mul(4)?
-        .checked_add(u64::from(limits.content_bytes).checked_mul(4)?)?;
+        .checked_mul(6)?
+        .checked_add(u64::from(limits.content_bytes).checked_mul(6)?)?;
     let queue_scratch = u64::from(limits.name_bytes).checked_mul(4)?;
     let merge_scratch = queue_scratch
         .checked_add(tree(limits)?.checked_mul(2)?.max(changes(limits)?))?
@@ -209,11 +209,13 @@ fn repository(limits: &Limits) -> Option<u64> {
         .checked_add(Map::<u64, RunKept>::worst_case(limits.workflow_runs)?)?
         .checked_add(times(limits.statuses, kept_run_heap(limits, false)?)?)?
         .checked_add(times(limits.workflow_runs, kept_run_heap(limits, true)?)?)?;
+    // Each of fails and flaky owns an id array and at most content_bytes of ids.
+    let ids = times(limits.content_bytes, u64::try_from(size_of::<Box<[u8]>>()).ok()?)?
+        .checked_add(u64::from(limits.content_bytes))?;
     let workflow = u64::try_from(size_of::<Workflow>())
         .ok()?
         .checked_add(name.checked_mul(4)?)?
-        .checked_add(times(limits.content_bytes, u64::try_from(size_of::<Box<[u8]>>()).ok()?)?)?
-        .checked_add(u64::from(limits.content_bytes))?
+        .checked_add(ids.checked_mul(2)?)?
         .checked_add(names(limits.contexts, limits)?)?
         .checked_add(u64::from(limits.content_bytes))?;
     let workflows = times(limits.workflows, workflow)?;

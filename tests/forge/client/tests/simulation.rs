@@ -822,6 +822,7 @@ fn a_completed_dispatch_exposes_its_failed_ids_artifact() {
             file: Box::from(*b"gate.yml"),
             jobs: Box::new([Box::from(b"tests".as_slice())]),
             fails: Box::new([Box::from(b"a".as_slice()), Box::from(b"b".as_slice())]),
+            flaky: Box::new([]),
             report: Some(raw::Report {
                 artifact: Box::from(*b"tests"),
                 format: raw::ReportFormat::Lines,

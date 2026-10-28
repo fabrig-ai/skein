@@ -77,6 +77,7 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
             assert!(jobs.insert(copy_of(job)).expect("bounded jobs"), "unique job names");
         }
         workflow.fails = crate::reports::normalize(&workflow.fails, limits).expect("failed ids fit");
+        workflow.flaky = crate::reports::normalize(&workflow.flaky, limits).expect("flaky ids fit");
         if let Some(select) = &workflow.select {
             fits(select, limits.name_bytes).expect("selection input fits");
         }

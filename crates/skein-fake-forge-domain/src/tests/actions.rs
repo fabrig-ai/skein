@@ -356,6 +356,7 @@ fn ci_job(id: u64, run: u64, index: u32, attempt: u32) -> Job {
 fn workflow(jobs: &[&[u8]]) -> crate::api::Workflow {
     crate::api::Workflow {
         fails: Box::new([]),
+        flaky: Box::new([]),
         report: None,
         select: None,
         file: copy_of(b"gate.yml"),
