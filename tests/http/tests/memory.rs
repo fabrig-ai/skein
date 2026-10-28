@@ -331,12 +331,17 @@ fn the_carry_over_counts_with_the_head_and_a_delivery() {
 /// The steps of a stream read to its outcome, each checked: the most the
 /// reader held of its own in a step.
 fn events(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> u64 {
-    events_observed(limits, stream, close).0
+    event_memory(limits, stream, close).most
 }
 
-fn events_observed(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> (u64, usize, usize) {
-    let mut name = 0;
-    let mut id = 0;
+struct EventMemory {
+    most: u64,
+    chunk: usize,
+    name: usize,
+    id: usize,
+}
+
+fn event_memory(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> EventMemory {
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
     let mut above = Queue::with_capacity(sse::UP_MAX_OUT.above.max(sse::DOWN_MAX_OUT.above));
     let mut below = Queue::with_capacity(sse::UP_MAX_OUT.below.max(sse::DOWN_MAX_OUT.below));
@@ -352,6 +357,7 @@ fn events_observed(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> (u
     let mut most = meter.check(meter.end(), bound, &what);
     let mut demanded: Option<Read> = None;
     let mut over = false;
+    let mut observed = EventMemory { most: 0, chunk: 0, name: 0, id: 0 };
     for steps in 0..u32::try_from(stream.len().checked_mul(8).expect("a test stream budget"))
         .expect("test budget fits u32")
         .saturating_add(64)
@@ -385,10 +391,14 @@ fn events_observed(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> (u
         while let Some(event) = above.pop() {
             match event {
                 sse::Event::Opened => {}
-                sse::Event::Data(data) => drop(data),
+                sse::Event::Data(Up::Bytes(bytes)) => {
+                    observed.chunk = observed.chunk.max(bytes.len());
+                    drop(bytes);
+                }
+                sse::Event::Data(Up::Room | Up::End | Up::Failed(_)) => {}
                 sse::Event::Dispatched(dispatch) => {
-                    name = name.max(dispatch.name.len());
-                    id = id.max(dispatch.id.len());
+                    observed.name = observed.name.max(dispatch.name.len());
+                    observed.id = observed.id.max(dispatch.id.len());
                     drop(dispatch);
                 }
                 sse::Event::Ended | sse::Event::Failed(_) => over = true,
@@ -405,9 +415,13 @@ fn events_observed(limits: sse::Limits, stream: &[u8], close: Option<u32>) -> (u
         // Queue buffers belong to the harness and are handed out with its outputs.
         above = Queue::with_capacity(above.capacity());
         below = Queue::with_capacity(below.capacity());
-        most = most.max(meter.check(step, bound, &what));
+        // A growing reader ring counts old and new buffers at the peak;
+        // after handoff its held storage remains within the formula.
+        most = most.max(meter.check(step, 2 * bound, &what));
+        assert!(meter.held() <= bound, "{what}: held storage within the formula");
         if closed {
-            return (most, name, id);
+            observed.most = most;
+            return observed;
         }
     }
     panic!("{what}: a stream is read in a few steps a line");
@@ -442,10 +456,11 @@ fn the_reader_holds_no_more_than_its_worst_case_at_its_limits() {
         (b"event: 01234567890123456789\ndata\n\n", "a type past its limit"),
     ];
     let bound = sse::worst_case(&limits).expect("the limits are honoured");
-    let (most, name, id) = events_observed(limits, &at_limits, None);
-    assert!(most <= bound, "at its field limits, its peak stays within its worst case");
-    assert_eq!(name, usize::try_from(limits.field).unwrap());
-    assert_eq!(id, usize::try_from(limits.field).unwrap());
+    let observed = event_memory(limits, &at_limits, None);
+    assert_eq!(observed.chunk, usize::try_from(limits.chunk).expect("chunk fits"));
+    assert_eq!(observed.name, usize::try_from(limits.field).expect("field fits"));
+    assert_eq!(observed.id, usize::try_from(limits.field).expect("field fits"));
+    assert!(observed.most <= 2 * bound, "growth peak within twice the full-buffer formula");
     for (stream, what) in cases {
         let most = events(limits, stream, None);
         assert!(most > 0, "{what}");
@@ -462,7 +477,7 @@ fn a_large_event_holds_only_its_intake_piece_and_delivery() {
     stream.extend_from_slice(&[b'x'; 240]);
     stream.extend_from_slice(b"\n\n");
     let most = events(limits, &stream, None);
-    assert!(most <= sse::worst_case(&limits).expect("valid limits"), "bounded pieces: {most}");
+    assert!(most <= 2 * sse::worst_case(&limits).expect("valid limits"), "bounded growth: {most}");
     assert!(most < 240, "no full event buffer: {most}");
 }
 

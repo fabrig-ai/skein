@@ -291,7 +291,7 @@ fn collect_memory(
     document: &[u8],
     filter: skein_json::collector::Filter,
     limits: skein_json::collector::Limits,
-) -> (u64, u64, u32, u32) {
+) -> (u64, u64, skein_json::collector::Counts) {
     collect_memory_caps(document, filter, limits, &[])
 }
 
@@ -300,7 +300,7 @@ fn collect_memory_caps(
     filter: skein_json::collector::Filter,
     limits: skein_json::collector::Limits,
     caps: &[u32],
-) -> (u64, u64, u32, u32) {
+) -> (u64, u64, skein_json::collector::Counts) {
     use skein_json::collector::{self, Collector, Event, Request};
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
     let mut above = Queue::with_capacity(1);
@@ -342,11 +342,13 @@ fn collect_memory_caps(
         above = Queue::with_capacity(above.capacity());
         below = Queue::with_capacity(below.capacity());
         most = most.max(meter.check(measured, bound, &"collector entry point"));
-        if let Some(counts) = collected {
+        if let Some(delivered) = collected {
             let span = skein_heap::Span::start();
+            let counts = collector.counts();
+            assert_eq!(delivered, (counts.tokens, counts.text), "delivered document retains the selected counts");
             collector.restart();
             assert_eq!(span.end(), skein_heap::Grown { peak: 0, net: 0 }, "restart keeps every buffer");
-            return (most, bound, counts.0, counts.1);
+            return (most, bound, counts);
         }
     }
     panic!("bounded progress")
@@ -365,10 +367,9 @@ fn collector_skipped_long_text_adds_no_memory_and_full_counts_stay_within_the_bo
     let large = format!("{{\"keep\":1,\"omit\":\"{}\"}}", "a".repeat(1 << 12));
     assert_eq!(collect_memory(small.as_bytes(), filter, limits).0, collect_memory(large.as_bytes(), filter, limits).0);
     let exact = Limits { tokenizer: json::Limits { chunk: 4, ..limits.tokenizer }, tokens: 4, text: 5, ..limits };
-    let (peak, bound, tokens, text) = collect_memory(br#"{"keep":1}"#, filter, exact);
-    assert!(peak <= bound, "one reusable document and its emitted copy stay within the bound");
-    assert_eq!(tokens, exact.tokens);
-    assert_eq!(text, exact.text);
+    let (peak, bound, counts) = collect_memory(br#"{"keep":1}"#, filter, exact);
+    assert_eq!((counts.tokens, counts.text), (exact.tokens, exact.text), "retained document fills both counts");
+    assert!(peak <= bound, "one full reusable document, with its emitted copy handed out");
 }
 
 #[test]
@@ -391,10 +392,9 @@ fn tagged_losing_candidates_hold_no_memory_after_their_counts() {
     };
     let small = format!("{{\"body\":\"{}\",\"id\":1,\"type\":\"small\"}}", "a".repeat(64));
     let large = format!("{{\"body\":\"{}\",\"id\":1,\"type\":\"small\"}}", "a".repeat(1 << 12));
-    let (peak, bound, tokens, text) = collect_memory_caps(small.as_bytes(), filter, limits, &[2]);
+    let (peak, bound, counts) = collect_memory_caps(small.as_bytes(), filter, limits, &[2]);
+    assert_eq!((counts.tokens, counts.text), (limits.tokens, limits.text), "selected variant fills both counts");
     assert!(peak <= bound, "the selected variant stays within the retained document bound");
-    assert_eq!(tokens, limits.tokens);
-    assert_eq!(text, limits.text);
     assert_eq!(
         collect_memory_caps(small.as_bytes(), filter, limits, &[2]).0,
         collect_memory_caps(large.as_bytes(), filter, limits, &[2]).0

@@ -379,7 +379,7 @@ fn every_entry_point_of_the_server_holds_no_more_than_its_worst_case_at_its_limi
 }
 
 #[test]
-fn the_server_at_its_head_limits_stays_within_its_worst_case_in_either_phase() {
+fn the_server_filled_to_its_head_limits_stays_within_its_worst_case() {
     // Reading a head, the larger phase under these limits: a request line
     // filling the head, ended by an LF alone, and its target's copy.
     let mut line = b"GET /".to_vec();
@@ -405,6 +405,10 @@ fn the_server_at_its_head_limits_stays_within_its_worst_case_in_either_phase() {
     let (most, observed) = serve_observed(limits, &request, script, Interrupt::Discard(0));
     assert!(most <= server::worst_case(&limits).unwrap(), "a response head at its limit, held");
     assert_eq!(observed.largest_send, usize::try_from(limits.response).unwrap());
+    assert_eq!(
+        head_len(&response) - "Connection: close\r\n".len(),
+        usize::try_from(limits.response).expect("response fits")
+    );
 }
 
 #[test]
