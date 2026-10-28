@@ -576,3 +576,95 @@ fn request_goldens_follow_the_declared_calls_per_response() {
         }
     }
 }
+
+#[test]
+fn valid_accepts_test_limits() {
+    assert!(valid(&limits()));
+}
+
+fn refuses_limits(bounds: Limits) {
+    assert!(!valid(&bounds));
+    assert!(Client::prepare(call(), &bounds).is_err());
+}
+
+#[test]
+fn valid_refuses_zero_error_bytes() {
+    refuses_limits(Limits { error_bytes: 0, ..limits() });
+}
+
+#[test]
+fn valid_refuses_too_few_http_headers() {
+    refuses_limits(Limits { http: http::Limits { headers: 5, ..limits().http }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_zero_output_items() {
+    refuses_limits(Limits { output_items: 0, ..limits() });
+}
+
+#[test]
+fn valid_refuses_zero_depth() {
+    refuses_limits(Limits { depth: 0, ..limits() });
+}
+
+#[test]
+fn valid_refuses_zero_tokens() {
+    refuses_limits(Limits { tokens: 0, ..limits() });
+}
+
+#[test]
+fn valid_refuses_an_http_head_below_blank_line() {
+    refuses_limits(Limits { http: http::Limits { head: 1, ..limits().http }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_a_zero_http_read() {
+    refuses_limits(Limits { http: http::Limits { read: 0, ..limits().http }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_a_zero_http_send() {
+    refuses_limits(Limits { http: http::Limits { send: 0, ..limits().http }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_a_zero_sse_chunk() {
+    refuses_limits(Limits { sse: sse::Limits { chunk: 0, ..limits().sse }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_sse_demand_past_http_read() {
+    refuses_limits(Limits { http: http::Limits { read: 1, ..limits().http }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_json_demand_past_sse_chunk() {
+    refuses_limits(Limits { sse: sse::Limits { chunk: 1, ..limits().sse }, ..limits() });
+}
+
+#[test]
+fn valid_refuses_a_wire_length_past_tokenizer() {
+    refuses_limits(Limits { skip: u32::MAX, ..limits() });
+}
+
+#[test]
+fn valid_refuses_an_error_length_past_tokenizer() {
+    refuses_limits(Limits { error_bytes: u32::MAX, ..limits() });
+}
+
+#[test]
+fn valid_refuses_tagged_token_capacity_past_u32() {
+    refuses_limits(Limits { tokens: u32::MAX, ..limits() });
+}
+
+#[test]
+fn valid_refuses_tagged_text_capacity_past_u32() {
+    refuses_limits(Limits { retained: u32::MAX, ..limits() });
+}
+
+#[test]
+fn valid_ignores_heap_opened_items() {
+    let bounds = Limits { output_items: u32::MAX, input: u32::MAX, retained: 1, ..limits() };
+    assert!(valid(&bounds));
+    assert_eq!(worst_case(&bounds), None);
+}

@@ -36,3 +36,17 @@ pub(crate) const fn field(name: &'static [u8], keep: collector::Keep) -> collect
 pub(crate) const fn each(keep: collector::Keep) -> collector::Node {
     collector::Node { key: collector::Key::Each, keep }
 }
+
+// Tagged candidates reserve one token range per variant and a combined
+// projection with one shared range plus each tag's alternative ranges.
+pub(crate) fn projection_bound(limits: &client::Limits, tags: &[&collector::Tagged]) -> Option<()> {
+    let mut copies = 1_u32;
+    for tag in tags {
+        let variants = u32::try_from(tag.known.len()).ok()?;
+        limits.tokens.checked_mul(variants.max(1))?;
+        copies = copies.checked_add(variants.saturating_sub(1))?;
+    }
+    limits.tokens.checked_mul(copies)?;
+    limits.retained.checked_mul(copies)?;
+    Some(())
+}
