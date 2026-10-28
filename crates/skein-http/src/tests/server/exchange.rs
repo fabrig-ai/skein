@@ -160,7 +160,7 @@ fn the_stream_failing_tells_each_stream_still_open_then_fails_the_exchange() {
     assert_eq!(
         events,
         [Event::Reply(Up::Failed(fault)), Event::Body(Up::Failed(fault)), Event::Failed(Error::Stream(fault))],
-        "three at once: UP_MAX_OUT"
+        "the body streams and exchange each report failure"
     );
 }
 

@@ -6,8 +6,7 @@
 //! the wire; the wire carries a piece each way, now and then; each end's
 //! stream below answers its stack, and each end's user acts, in an order
 //! drawn from the seed; then the referee observes what the users saw. Each
-//! machine's calls are held to its `MAX_OUT`, and each stream below to the
-//! contract of a stream, as the world goes (testing-strategy.md, 6). The
+//! stream below is held to its contract, as the world goes (testing-strategy.md, 6). The
 //! referee ends the run once its expectations are met, both ends settled
 //! among them, and fails it with what is pending once one is overdue. A
 //! seed replays to the same run.

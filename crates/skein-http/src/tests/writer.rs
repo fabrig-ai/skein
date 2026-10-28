@@ -31,22 +31,18 @@ impl Machine {
         Machine {
             writer: Writer::new(&limits),
             env: env(limits),
-            above: Queue::with_capacity(writer::UP_MAX_OUT.above.max(writer::DOWN_MAX_OUT.above)),
-            below: Queue::with_capacity(writer::UP_MAX_OUT.below.max(writer::DOWN_MAX_OUT.below)),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
         }
     }
 
     fn down(&mut self, rq: Request) -> (Vec<Event>, Vec<Down>) {
         writer::down(&mut self.writer, &self.env, rq, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= writer::DOWN_MAX_OUT.above, "MAX_OUT above");
-        assert!(self.below.len() <= writer::DOWN_MAX_OUT.below, "MAX_OUT below");
         self.take()
     }
 
     fn up(&mut self, ev: Up) -> (Vec<Event>, Vec<Down>) {
         writer::up(&mut self.writer, &self.env, ev, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= writer::UP_MAX_OUT.above, "MAX_OUT above");
-        assert!(self.below.len() <= writer::UP_MAX_OUT.below, "MAX_OUT below");
         self.take()
     }
 

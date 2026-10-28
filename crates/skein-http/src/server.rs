@@ -49,9 +49,8 @@
 //! body's size lines in all, and the trailer section, at most
 //! [`Limits::head`] each; a body at most [`Limits::body`], refused at its
 //! head if its length says more, failed at the chunk whose size would take
-//! it past. A response head is at most [`Limits::response`]. Each entry point emits at most
-//! [`UP_MAX_OUT`] or [`DOWN_MAX_OUT`]; [`worst_case`] is what a server
-//! holds; [`largest_read`] and [`largest_room`] are what whoever stacks it
+//! it past. A response head is at most [`Limits::response`]. [`worst_case`]
+//! is what a server holds; [`largest_read`] and [`largest_room`] are what whoever stacks it
 //! checks against the caps of the stream below at startup.
 
 use core::mem;
@@ -62,7 +61,7 @@ use skein_lib::stream::{Delimiter, Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, List, Queue, Wall, bytes};
 
 use crate::body::{self, Allowance, Face, Incoming, Pumped, Rest};
-use crate::{Header, MaxOut, Method, Version};
+use crate::{Header, Method, Version};
 
 mod head;
 mod response;
@@ -168,16 +167,6 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     let exchanging = u64::from(limits.response).checked_add(u64::from(limits.read.max(limits.head)))?;
     intake.checked_add(reading.max(exchanging))
 }
-
-/// [`up`]'s: above, the stream's failure told to both bodies' streams and
-/// the exchange; below, the response head and the reply's room, or a 100
-/// (Continue) and the read it goes before.
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 3, below: 2 };
-
-/// [`down`]'s: above, the request body's stream told it is given up, or
-/// its end, and `Done`; below, a read withdrawn and the response head, or
-/// a 100 (Continue) and the read it goes before.
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 2, below: 2 };
 
 /// From the side above.
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -480,7 +469,7 @@ impl Server {
     }
 }
 
-/// An event from the stream below. Emits at most [`UP_MAX_OUT`].
+/// An event from the stream below. Use uncapped output queues.
 pub fn up(server: &mut Server, env: &Env<Limits>, ev: Up, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let state = mem::replace(&mut server.state, State::Closed);
@@ -495,7 +484,7 @@ pub fn up(server: &mut Server, env: &Env<Limits>, ev: Up, above: &mut Queue<Even
     };
 }
 
-/// A request from the side above. Emits at most [`DOWN_MAX_OUT`].
+/// A request from the side above. Use uncapped output queues.
 pub fn down(server: &mut Server, env: &Env<Limits>, rq: Request, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let intake = &mut server.intake;

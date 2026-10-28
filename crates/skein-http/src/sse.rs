@@ -42,8 +42,7 @@
 //! event, at most [`Limits::event`] bytes of its lines, endings and blank
 //! line included, so a stream that never ends an event fails, whatever it
 //! sends; an event's type or id, at most [`Limits::field`]. Past any of
-//! them, the stream fails. Each entry point emits at most [`UP_MAX_OUT`] or
-//! [`DOWN_MAX_OUT`]; [`worst_case`] is what a reader holds;
+//! them, the stream fails. [`worst_case`] is what a reader holds;
 //! [`largest_demand`] is what whoever stacks it checks against the side
 //! below at startup.
 
@@ -52,7 +51,6 @@ use alloc::boxed::Box;
 use skein_lib::stream::{Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, List, Queue, bytes};
 
-use crate::MaxOut;
 
 mod lines;
 pub mod writer;
@@ -105,13 +103,6 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     let fields = List::<u8>::worst_case(limits.field)?.checked_mul(4)?;
     data.checked_add(fields)?.checked_add(u64::from(limits.chunk))
 }
-
-/// [`up`]'s: an event or the outcome, or the next demand.
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 2, below: 1 };
-
-/// [`down`]'s: for a `Next`, an event or the outcome, or a demand; for a
-/// `Close`, `Closed` and the demand withdrawn.
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 1, below: 1 };
 
 /// From the owner: an event demand, its data face, or the reader's close.
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -266,7 +257,7 @@ impl Reader {
     }
 }
 
-/// Receives the body stream, emitting at most [`UP_MAX_OUT`].
+/// Receives the body stream, using uncapped output queues.
 pub fn up(reader: &mut Reader, env: &Env<Limits>, event: Up, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     match reader.state {
         State::Closed => match event {
@@ -310,7 +301,7 @@ pub fn up(reader: &mut Reader, env: &Env<Limits>, event: Up, above: &mut Queue<E
     demand(reader, env, below);
 }
 
-/// Receives an event/data demand or close, emitting at most [`DOWN_MAX_OUT`].
+/// Receives an event/data demand or close, using uncapped output queues.
 pub fn down(
     reader: &mut Reader,
     env: &Env<Limits>,

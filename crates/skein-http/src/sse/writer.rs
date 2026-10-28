@@ -40,7 +40,6 @@ use alloc::boxed::Box;
 use skein_lib::stream::{Down, Fault, Read, Up};
 use skein_lib::{Decimal, Env, Queue, bytes};
 
-use crate::MaxOut;
 
 /// The writer's limits (programming-model.md, 7): the same for every step.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -78,15 +77,6 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     }
     Some(u64::from(limits.event))
 }
-
-/// [`up`]'s: for room, a piece sent and the room for the next, or the last
-/// piece and `Sent`; for a failure, `Failed`.
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 1, below: 2 };
-
-/// [`down`]'s: for an event, the room for its first piece, or `Refused` or
-/// `Failed`; for `Finish`, the stream's end; for `Close`, `Closed` and the
-/// demand withdrawn.
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 1, below: 1 };
 
 /// From the side above.
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -194,7 +184,7 @@ impl Writer {
     }
 }
 
-/// An event from the stream below. Emits at most [`UP_MAX_OUT`].
+/// An event from the stream below. Use uncapped output queues.
 pub fn up(writer: &mut Writer, env: &Env<Limits>, ev: Up, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let state = mem::replace(&mut writer.state, State::Closed);
@@ -219,7 +209,7 @@ pub fn up(writer: &mut Writer, env: &Env<Limits>, ev: Up, above: &mut Queue<Even
     };
 }
 
-/// A request from the side above. Emits at most [`DOWN_MAX_OUT`].
+/// A request from the side above. Use uncapped output queues.
 pub fn down(writer: &mut Writer, env: &Env<Limits>, rq: Request, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let state = mem::replace(&mut writer.state, State::Closed);

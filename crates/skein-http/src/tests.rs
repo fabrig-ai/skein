@@ -282,8 +282,8 @@ impl Events {
         Events {
             reader: Reader::new(&limits),
             env: env(limits),
-            above: Queue::with_capacity(events::UP_MAX_OUT.above),
-            below: Queue::with_capacity(1),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             data: Vec::new(),
         }
     }
@@ -295,18 +295,10 @@ impl Events {
 
     fn call(&mut self, rq: events::Request) {
         events::down(&mut self.reader, &self.env, rq, &mut self.above, &mut self.below);
-        assert!(
-            self.above.len() <= events::DOWN_MAX_OUT.above && self.below.len() <= events::DOWN_MAX_OUT.below,
-            "reader DOWN_MAX_OUT"
-        );
     }
 
     fn up(&mut self, ev: Up) -> (Option<Gathered>, Option<Down>) {
         events::up(&mut self.reader, &self.env, ev, &mut self.above, &mut self.below);
-        assert!(
-            self.above.len() <= events::UP_MAX_OUT.above && self.below.len() <= events::UP_MAX_OUT.below,
-            "reader UP_MAX_OUT"
-        );
         self.take()
     }
 

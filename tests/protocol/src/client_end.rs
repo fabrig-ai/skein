@@ -350,22 +350,17 @@ impl End {
 
     fn reader_down(&mut self, rq: sse::Request, work: &mut Work) {
         let reader = self.reader.as_mut().expect("a reader");
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         sse::down(reader, &env(self.limits.reader), rq, &mut above, &mut below);
-        assert!(
-            above.len() <= sse::DOWN_MAX_OUT.above && below.len() <= sse::DOWN_MAX_OUT.below,
-            "the reader's MAX_OUT"
-        );
         queued(above, below, Routed::Reader, Routed::ReaderBelow, work);
     }
 
     fn reader_up(&mut self, up: Up, work: &mut Work) {
         let reader = self.reader.as_mut().expect("a reader");
-        let mut above = Queue::with_capacity(8);
-        let mut below = Queue::with_capacity(8);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         sse::up(reader, &env(self.limits.reader), up, &mut above, &mut below);
-        assert!(above.len() <= sse::UP_MAX_OUT.above && below.len() <= sse::UP_MAX_OUT.below, "the reader's MAX_OUT");
         queued(above, below, Routed::Reader, Routed::ReaderBelow, work);
     }
 

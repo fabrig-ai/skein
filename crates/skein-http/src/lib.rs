@@ -35,14 +35,3 @@ mod tests;
 
 pub use header::Header;
 pub use message::{Method, Version};
-
-/// The most an entry point emits in one call, into each of its two queues.
-/// Whoever calls it reserves this much room in each first
-/// (programming-model.md, 2).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MaxOut {
-    /// Events for the side above.
-    pub above: u32,
-    /// Requests for the side below.
-    pub below: u32,
-}
