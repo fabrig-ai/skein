@@ -6,7 +6,7 @@ use skein_io::kernel::Addr;
 use skein_io::{Event as IoEvent, Request as IoRequest};
 use skein_lib::Wall;
 use skein_lib::{Duration, Env, List, Queue, Time, Token};
-use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, MAX_OUT, Request};
+use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, Request};
 use skein_llm_connection_world::plaintext::Wire;
 use skein_world::domain::assert_replays;
 
@@ -33,6 +33,18 @@ fn limits() -> Limits {
         },
         tls: skein_tls::client::Limits { read: 4096, send: 4096, records: skein_tls::client::MAX_RECORD },
     }
+}
+
+fn plaintext_endpoints(client_limits: skein_llm::client::Limits, llm: skein_llm::Endpoint) -> List<Endpoint> {
+    let mut endpoints = List::with_capacity(1);
+    endpoints.push(Endpoint {
+        address: Addr::from((Ipv4Addr::LOCALHOST, 443)),
+        transport: skein_llm_connection::Transport::Plaintext,
+        llm,
+        limits: client_limits,
+        credential: skein_llm::client::CredentialLimits { value: 2048, account_id: 128 },
+    }).expect("one plaintext endpoint");
+    endpoints
 }
 
 fn complete_requests(bytes: &[u8]) -> usize {
@@ -64,19 +76,10 @@ fn complete_requests(bytes: &[u8]) -> usize {
 #[expect(clippy::too_many_lines, reason = "the story drives both calls through one connection")]
 fn run(seed: u64) -> (Vec<String>, (u32, u32, bool)) {
     let call = skein_llm_world::call(7);
-    let mut endpoints = List::with_capacity(1);
-    endpoints
-        .push(Endpoint {
-            address: Addr::from((Ipv4Addr::LOCALHOST, 443)),
-            transport: skein_llm_connection::Transport::Plaintext,
-            llm: call.endpoint,
-            limits: skein_llm_world::limits(),
-            credential: skein_llm::client::CredentialLimits { value: 2048, account_id: 128 },
-        })
-        .expect("one endpoint");
+    let endpoints = plaintext_endpoints(skein_llm_world::limits(), call.endpoint);
     let mut component = Component::new(endpoints, &limits()).expect("valid component");
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
     component.down(
         &env,
@@ -240,20 +243,11 @@ fn per_call_reasoning_policy(endpoint_default: bool) {
     let mut client_limits = skein_llm_world::limits();
     client_limits.drop_reasoning = endpoint_default;
     client_limits.reasoning = 5;
-    let mut endpoints = List::with_capacity(1);
-    endpoints
-        .push(Endpoint {
-            address: Addr::from((Ipv4Addr::LOCALHOST, 443)),
-            transport: skein_llm_connection::Transport::Plaintext,
-            llm: skein_llm::Endpoint::codex(),
-            limits: client_limits,
-            credential: skein_llm::client::CredentialLimits { value: 2048, account_id: 128 },
-        })
-        .expect("one shared endpoint");
+    let endpoints = plaintext_endpoints(client_limits, skein_llm::Endpoint::codex());
     let mut component = Component::new(endpoints, &limits()).expect("configured endpoint");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let mut wire = Wire::new(37);
     let documents = [
         r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"r","type":"reasoning"}}"#,
@@ -374,4 +368,132 @@ fn model_reasoning_policy_overrides_both_defaults_and_does_not_leak_on_reuse() {
     for endpoint_default in [false, true] {
         per_call_reasoning_policy(endpoint_default);
     }
+}
+
+#[test]
+#[expect(clippy::too_many_lines, reason = "one wire story observes demand pause and ordered reuse of two admitted calls")]
+fn a_paused_owner_holds_the_connection_s_reads_and_its_reuse() {
+    use skein_lib::stream::{Down, Up};
+    use skein_llm_world::{TINY_DELTAS, tiny_delta_response};
+    const FIRST: Token = Token::new(7);
+    const SECOND: Token = Token::new(8);
+    const SOCKET: Token = Token::new(100);
+    // Two admitted calls, with just one binding allowed to this endpoint.
+    const CALLS: u32 = 2;
+    const COMPLETED_CALLS: usize = 2;
+    const ONE_REQUEST: usize = 1;
+    const PAUSE_TURNS: usize = 1024;
+    const PROGRESS_TURNS: usize = 100_000;
+    let mut profile = limits();
+    profile.calls = CALLS;
+    profile.connections = CALLS;
+    profile.io.sockets = CALLS;
+    let mut component = Component::new(plaintext_endpoints(skein_llm_world::limits(), skein_llm::Endpoint::codex()), &profile)
+        .expect("two admitted calls on one endpoint binding");
+    let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: profile };
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
+    for owner in [FIRST, SECOND] {
+        let call = skein_llm_world::call(owner.raw());
+        component.down(&env, Request::Start {
+            drop_reasoning: false,
+            call: owner,
+            endpoint: 0,
+            prompt: call.prompt,
+            credential: call.credential,
+            deadlines: Deadlines::none(),
+        }, &mut up, &mut io);
+    }
+    component.down(&env, Request::Next { call: FIRST }, &mut up, &mut io);
+    component.down(&env, Request::Next { call: SECOND }, &mut up, &mut io);
+    let mut wire = Wire::new(29);
+    let burst = tiny_delta_response();
+    let mut owner = None;
+    let mut responded = 0;
+    let mut connected = 0;
+    let mut deltas = Vec::new();
+    let mut completed = Vec::new();
+    let mut read_bytes = 0;
+    let mut paused_bytes = None;
+    let mut pause = 0;
+    for _ in 0..PROGRESS_TURNS {
+        if let Some(event) = up.pop() {
+            match event {
+                Event::Delta { call, delta: skein_llm::Delta::Text { text, .. } } => {
+                    if call == FIRST {
+                        deltas.push(text);
+                        if paused_bytes.is_none() {
+                            paused_bytes = Some(read_bytes);
+                        } else {
+                            component.down(&env, Request::Next { call }, &mut up, &mut io);
+                        }
+                    } else {
+                        assert_eq!(completed, [FIRST], "the first terminal reaches the owner before reuse");
+                        component.down(&env, Request::Next { call }, &mut up, &mut io);
+                    }
+                }
+                Event::Delta { call, .. } | Event::Block { call, .. } => {
+                    component.down(&env, Request::Next { call }, &mut up, &mut io);
+                }
+                Event::Completed { call, .. } => completed.push(call),
+                other @ (Event::Closed | Event::Refused { .. } | Event::Failed { .. } | Event::Cancelled { .. }) => panic!("unexpected owner event: {other:?}"),
+            }
+        }
+        if let Some(request) = io.pop() {
+            match request {
+                IoRequest::Connect { owner: token, .. } => {
+                    connected += 1;
+                    owner = Some(token);
+                    component.up(&env, IoEvent::Connecting { owner: token, socket: SOCKET }, &mut up, &mut io);
+                    component.up(&env, IoEvent::Connected { owner: token }, &mut up, &mut io);
+                }
+                IoRequest::Stream { stream, down } => {
+                    assert_eq!(stream, SOCKET);
+                    if responded == ONE_REQUEST && completed.is_empty() {
+                        assert!(!matches!(&down, Down::Send(_)), "no second request before the first terminal");
+                    }
+                    wire.take(down);
+                }
+                other @ (IoRequest::Listen { .. } | IoRequest::Bind { .. } | IoRequest::Reject { .. }
+                | IoRequest::Output { .. } | IoRequest::Spawn { .. } | IoRequest::Window { .. }
+                | IoRequest::Usage { .. } | IoRequest::Signal { .. } | IoRequest::Close { .. }
+                | IoRequest::Abort { .. }) => panic!("unexpected lower request: {other:?}"),
+            }
+        }
+        let requests = complete_requests(&wire.received);
+        if requests > responded {
+            let response = if responded == 0 { burst.clone() } else { skein_llm_world::text_response(false) };
+            wire.write(&response);
+            responded += 1;
+        }
+        if let Some(answer) = wire.answer() {
+            if let Up::Bytes(bytes) = &answer {
+                read_bytes += bytes.len();
+            }
+            component.up(&env, IoEvent::Stream { owner: owner.expect("connected"), up: answer }, &mut up, &mut io);
+        }
+        if component.has_work() {
+            component.fire(&env, &mut up, &mut io);
+        }
+        if let Some(bytes) = paused_bytes {
+            if pause < PAUSE_TURNS {
+                assert_eq!(read_bytes, bytes, "no response bytes are consumed during the pause");
+                assert_eq!(deltas.len(), ONE_REQUEST, "only one datum was demanded");
+                assert_eq!(complete_requests(&wire.received), ONE_REQUEST, "second call stays unbound");
+                assert!(completed.is_empty());
+                pause += 1;
+                if pause == PAUSE_TURNS {
+                    component.down(&env, Request::Next { call: FIRST }, &mut up, &mut io);
+                }
+            }
+        }
+        if completed.len() == COMPLETED_CALLS && !component.has_work() && up.is_empty() && io.is_empty() {
+            break;
+        }
+    }
+    let expected: Vec<Box<[u8]>> = (0..TINY_DELTAS).map(|index| format!("{index:03}").into_bytes().into()).collect();
+    assert_eq!(deltas, expected, "the paused call loses and duplicates no delta");
+    assert_eq!(pause, PAUSE_TURNS);
+    assert_eq!(completed, [FIRST, SECOND]);
+    assert_eq!(connected, ONE_REQUEST, "both calls reuse one physical connection");
 }

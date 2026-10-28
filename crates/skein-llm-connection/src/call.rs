@@ -105,10 +105,10 @@ impl Connection {
             waiting: false,
             activity: 0,
             control: Control::Live,
-            llm_events: Queue::with_capacity(64),
-            plain_down: Queue::with_capacity(256),
-            tls_events: Queue::with_capacity(64),
-            cipher_down: Queue::with_capacity(256),
+            llm_events: Queue::uncapped(),
+            plain_down: Queue::uncapped(),
+            tls_events: Queue::uncapped(),
+            cipher_down: Queue::uncapped(),
         }
     }
 

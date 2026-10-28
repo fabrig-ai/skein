@@ -11,7 +11,7 @@ use skein_io::{Event as IoEvent, Request as IoRequest};
 use skein_lib::stream::{Down, Read, Up};
 use skein_lib::{Duration, Env, Intake, List, Queue, Time, Token, Wall};
 use skein_llm::Credential;
-use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, MAX_OUT, Request};
+use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, Request};
 
 use crate::plaintext::Wire;
 
@@ -341,8 +341,8 @@ impl World {
             events: Vec::new(),
             trace: Vec::new(),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            above: Queue::with_capacity(MAX_OUT.above),
-            below: Queue::with_capacity(MAX_OUT.below),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             peers: BTreeMap::new(),
             connecting: Vec::new(),
             seed,
