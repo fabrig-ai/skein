@@ -206,12 +206,7 @@ impl Browser {
     /// The browser token is also the owner of its terminal `Closed` event.
     #[must_use]
     pub fn new(owner: Token, limits: &Limits) -> Browser {
-        assert!(limits.commands > 0 && limits.command > 0 && limits.message > 0, "the wire has positive limits");
-        assert!(
-            crate::limits::largest_read(limits).is_some() && crate::limits::largest_room(limits).is_some(),
-            "framing limits include a NUL byte"
-        );
-        assert!(limits.answer.as_nanos() > 0 && limits.poll.as_nanos() > 0, "deadlines advance time");
+        assert!(crate::limits::valid(limits), "browser limits must be representable");
         Browser {
             owner,
             phase: Phase::Starting,

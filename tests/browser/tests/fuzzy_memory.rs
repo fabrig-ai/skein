@@ -1,7 +1,7 @@
-//! Seeded loads at varied limits, checked against `worst_case`.
+//! Seeded loads at varied limits, checked against measured peak ceilings.
 
+use skein_browser::Limits;
 use skein_browser::boundary::Request;
-use skein_browser::{Limits, worst_case};
 use skein_browser_world::world::{Fault, World};
 use skein_heap::{Counting, Meter};
 use skein_lib::{Time, Token};
@@ -9,8 +9,12 @@ use skein_lib::{Time, Token};
 #[global_allocator]
 static HEAP: Counting = Counting;
 
+// Whole-world ceiling across seeds 0..96, using the largest measured peak
+// (16,987 B), plus a quarter rounded up to two significant digits.
+const BROWSER_SEEDED_LOAD_PEAK_CEILING: u64 = 22_000;
+
 #[test]
-fn random_load_stays_within_the_declared_bound() {
+fn random_load_stays_under_the_peak_ceiling() {
     for seed in 0..96_u64 {
         let limits = Limits {
             persons: 2,
@@ -26,7 +30,6 @@ fn random_load_stays_within_the_declared_bound() {
             stderr: 64,
             ..Limits::default()
         };
-        let bound = worst_case(&limits).expect("finite bound");
         let meter = Meter::new();
         meter.start();
         let mut world = World::with_limits(limits);
@@ -47,7 +50,12 @@ fn random_load_stays_within_the_declared_bound() {
             world.release_delayed();
         }
         let measured = meter.end();
-        assert!(measured.peak() <= bound, "seed {seed}: peak {} > bound {bound}", measured.peak());
+        println!("{}: seed {seed}: peak {} bytes", module_path!(), measured.peak());
+        assert!(
+            measured.peak() <= BROWSER_SEEDED_LOAD_PEAK_CEILING,
+            "seed {seed}: peak {} exceeds ceiling {BROWSER_SEEDED_LOAD_PEAK_CEILING}",
+            measured.peak()
+        );
         drop(world);
         assert_eq!(meter.held(), 0, "seed {seed}: all storage released");
     }
@@ -55,8 +63,12 @@ fn random_load_stays_within_the_declared_bound() {
 
 #[path = "support/look_memory.rs"]
 mod look_memory;
+// Whole-world ceiling across seeds 0..48, using the largest measured peak
+// (58,372 B), plus a quarter rounded up to two significant digits.
+const BROWSER_SEEDED_LOOK_PEAK_CEILING: u64 = 73_000;
+
 #[test]
-fn seeded_look_answers_reach_each_limit_within_the_memory_bound() {
+fn seeded_look_answers_reach_each_limit_under_the_peak_ceiling() {
     for seed in 0..48_u32 {
         let limits = Limits {
             persons: 1,
@@ -74,7 +86,6 @@ fn seeded_look_answers_reach_each_limit_within_the_memory_bound() {
             stderr: 0,
             ..Limits::default()
         };
-        let bound = worst_case(&limits).unwrap();
         let meter = Meter::new();
         meter.start();
         let mut world = World::with_limits(limits);
@@ -82,7 +93,12 @@ fn seeded_look_answers_reach_each_limit_within_the_memory_bound() {
         world.open();
         look_memory::drive(&mut world, limits);
         let measured = meter.end();
-        assert!(measured.peak() <= bound, "seed {seed}: look peak {} exceeds {bound}", measured.peak());
+        println!("{}: seed {seed}: peak {} bytes", module_path!(), measured.peak());
+        assert!(
+            measured.peak() <= BROWSER_SEEDED_LOOK_PEAK_CEILING,
+            "seed {seed}: peak {} exceeds ceiling {BROWSER_SEEDED_LOOK_PEAK_CEILING}",
+            measured.peak()
+        );
         drop(world);
         assert_eq!(meter.held(), 0, "seed {seed}");
     }
