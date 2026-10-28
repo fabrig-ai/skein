@@ -356,7 +356,10 @@ fn collector_skipped_long_text_adds_no_memory_and_full_counts_stay_within_the_bo
     let filter = Filter { root: Keep::Into(&[Node { key: Key::Field(b"keep"), keep: Keep::Value }]) };
     let small = format!("{{\"keep\":1,\"omit\":\"{}\"}}", "a".repeat(64));
     let large = format!("{{\"keep\":1,\"omit\":\"{}\"}}", "a".repeat(1 << 12));
-    assert_eq!(collect_memory(small.as_bytes(), filter, limits, CEILING).0, collect_memory(large.as_bytes(), filter, limits, CEILING).0);
+    assert_eq!(
+        collect_memory(small.as_bytes(), filter, limits, CEILING).0,
+        collect_memory(large.as_bytes(), filter, limits, CEILING).0
+    );
     let exact = Limits { tokenizer: json::Limits { chunk: 4, ..limits.tokenizer }, tokens: 4, text: 5, ..limits };
     let (peak, bound, tokens, text) = collect_memory(br#"{"keep":1}"#, filter, exact, CEILING);
     assert!(peak <= bound, "one reusable document and its emitted copy stay within the bound");

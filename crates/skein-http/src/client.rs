@@ -55,8 +55,8 @@ use alloc::boxed::Box;
 use skein_lib::stream::{Delimiter, Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, List, Queue};
 
-use crate::body::{self, Face, Incoming, Pumped, Rest};
 use crate::Header;
+use crate::body::{self, Face, Incoming, Pumped, Rest};
 
 mod head;
 mod request;

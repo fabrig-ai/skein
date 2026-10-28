@@ -37,13 +37,15 @@ fn limits() -> Limits {
 
 fn plaintext_endpoints(client_limits: skein_llm::client::Limits, llm: skein_llm::Endpoint) -> List<Endpoint> {
     let mut endpoints = List::with_capacity(1);
-    endpoints.push(Endpoint {
-        address: Addr::from((Ipv4Addr::LOCALHOST, 443)),
-        transport: skein_llm_connection::Transport::Plaintext,
-        llm,
-        limits: client_limits,
-        credential: skein_llm::client::CredentialLimits { value: 2048, account_id: 128 },
-    }).expect("one plaintext endpoint");
+    endpoints
+        .push(Endpoint {
+            address: Addr::from((Ipv4Addr::LOCALHOST, 443)),
+            transport: skein_llm_connection::Transport::Plaintext,
+            llm,
+            limits: client_limits,
+            credential: skein_llm::client::CredentialLimits { value: 2048, account_id: 128 },
+        })
+        .expect("one plaintext endpoint");
     endpoints
 }
 
@@ -371,7 +373,10 @@ fn model_reasoning_policy_overrides_both_defaults_and_does_not_leak_on_reuse() {
 }
 
 #[test]
-#[expect(clippy::too_many_lines, reason = "one wire story observes demand pause and ordered reuse of two admitted calls")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one wire story observes demand pause and ordered reuse of two admitted calls"
+)]
 fn a_paused_owner_holds_the_connection_s_reads_and_its_reuse() {
     use skein_lib::stream::{Down, Up};
     use skein_llm_world::{TINY_DELTAS, tiny_delta_response};
@@ -388,21 +393,27 @@ fn a_paused_owner_holds_the_connection_s_reads_and_its_reuse() {
     profile.calls = CALLS;
     profile.connections = CALLS;
     profile.io.sockets = CALLS;
-    let mut component = Component::new(plaintext_endpoints(skein_llm_world::limits(), skein_llm::Endpoint::codex()), &profile)
-        .expect("two admitted calls on one endpoint binding");
+    let mut component =
+        Component::new(plaintext_endpoints(skein_llm_world::limits(), skein_llm::Endpoint::codex()), &profile)
+            .expect("two admitted calls on one endpoint binding");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: profile };
     let mut up = Queue::uncapped();
     let mut io = Queue::uncapped();
     for owner in [FIRST, SECOND] {
         let call = skein_llm_world::call(owner.raw());
-        component.down(&env, Request::Start {
-            drop_reasoning: false,
-            call: owner,
-            endpoint: 0,
-            prompt: call.prompt,
-            credential: call.credential,
-            deadlines: Deadlines::none(),
-        }, &mut up, &mut io);
+        component.down(
+            &env,
+            Request::Start {
+                drop_reasoning: false,
+                call: owner,
+                endpoint: 0,
+                prompt: call.prompt,
+                credential: call.credential,
+                deadlines: Deadlines::none(),
+            },
+            &mut up,
+            &mut io,
+        );
     }
     component.down(&env, Request::Next { call: FIRST }, &mut up, &mut io);
     component.down(&env, Request::Next { call: SECOND }, &mut up, &mut io);
@@ -436,7 +447,9 @@ fn a_paused_owner_holds_the_connection_s_reads_and_its_reuse() {
                     component.down(&env, Request::Next { call }, &mut up, &mut io);
                 }
                 Event::Completed { call, .. } => completed.push(call),
-                other @ (Event::Closed | Event::Refused { .. } | Event::Failed { .. } | Event::Cancelled { .. }) => panic!("unexpected owner event: {other:?}"),
+                other @ (Event::Closed | Event::Refused { .. } | Event::Failed { .. } | Event::Cancelled { .. }) => {
+                    panic!("unexpected owner event: {other:?}")
+                }
             }
         }
         if let Some(request) = io.pop() {
@@ -454,9 +467,15 @@ fn a_paused_owner_holds_the_connection_s_reads_and_its_reuse() {
                     }
                     wire.take(down);
                 }
-                other @ (IoRequest::Listen { .. } | IoRequest::Bind { .. } | IoRequest::Reject { .. }
-                | IoRequest::Output { .. } | IoRequest::Spawn { .. } | IoRequest::Window { .. }
-                | IoRequest::Usage { .. } | IoRequest::Signal { .. } | IoRequest::Close { .. }
+                other @ (IoRequest::Listen { .. }
+                | IoRequest::Bind { .. }
+                | IoRequest::Reject { .. }
+                | IoRequest::Output { .. }
+                | IoRequest::Spawn { .. }
+                | IoRequest::Window { .. }
+                | IoRequest::Usage { .. }
+                | IoRequest::Signal { .. }
+                | IoRequest::Close { .. }
                 | IoRequest::Abort { .. }) => panic!("unexpected lower request: {other:?}"),
             }
         }
@@ -475,16 +494,16 @@ fn a_paused_owner_holds_the_connection_s_reads_and_its_reuse() {
         if component.has_work() {
             component.fire(&env, &mut up, &mut io);
         }
-        if let Some(bytes) = paused_bytes {
-            if pause < PAUSE_TURNS {
-                assert_eq!(read_bytes, bytes, "no response bytes are consumed during the pause");
-                assert_eq!(deltas.len(), ONE_REQUEST, "only one datum was demanded");
-                assert_eq!(complete_requests(&wire.received), ONE_REQUEST, "second call stays unbound");
-                assert!(completed.is_empty());
-                pause += 1;
-                if pause == PAUSE_TURNS {
-                    component.down(&env, Request::Next { call: FIRST }, &mut up, &mut io);
-                }
+        if let Some(bytes) = paused_bytes
+            && pause < PAUSE_TURNS
+        {
+            assert_eq!(read_bytes, bytes, "no response bytes are consumed during the pause");
+            assert_eq!(deltas.len(), ONE_REQUEST, "only one datum was demanded");
+            assert_eq!(complete_requests(&wire.received), ONE_REQUEST, "second call stays unbound");
+            assert!(completed.is_empty());
+            pause += 1;
+            if pause == PAUSE_TURNS {
+                component.down(&env, Request::Next { call: FIRST }, &mut up, &mut io);
             }
         }
         if completed.len() == COMPLETED_CALLS && !component.has_work() && up.is_empty() && io.is_empty() {

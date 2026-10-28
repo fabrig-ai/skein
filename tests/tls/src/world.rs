@@ -597,7 +597,6 @@ impl<'a> World<'a> {
 
     /// What one call emitted, to each side, checked.
     fn route(&mut self, closing: bool) {
-
         if !self.events.is_empty() || !self.requests.is_empty() {
             self.moved = self.iteration;
         }
