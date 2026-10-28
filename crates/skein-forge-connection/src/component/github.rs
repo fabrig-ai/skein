@@ -679,8 +679,17 @@ impl Component {
             self.github_progress(at, progress, env, up);
         }
     }
-    // Local output consumes only above room; socket work separately reserves below room.
-    fn github_local(&mut self, at: u32, env: &Env<Limits>, up: &mut Queue<Event>) -> bool {
+    // A listing's local output reaches its owner before the next remote exchange.
+    fn local_output_pending(&self, at: u32) -> bool {
+        let gh = self.github.get(at).expect("forge slot").as_ref().expect("GitHub state");
+        match &gh.read {
+            Read::Changes(_) => true,
+            Read::Reading(reading) => reading.fact.is_some() || reading.complete,
+            Read::Idle => gh.held.is_some(),
+            Read::Waiting { .. } => false,
+        }
+    }
+    pub(super) fn github_local(&mut self, at: u32, env: &Env<Limits>, up: &mut Queue<Event>) -> bool {
         let state = *self.starts.get(at).expect("forge start");
         let busy = self.own_plans.get(at).expect("forge plan").is_some();
         let gh = self.github.get_mut(at).expect("forge slot").as_mut().expect("GitHub state");
@@ -865,7 +874,6 @@ impl Component {
         env: &Env<Limits>,
         up: &mut Queue<Event>,
         io: &mut Queue<skein_io::Request>,
-        budget: (u32, u32),
     ) {
         self.github.get_mut(at).expect("forge slot").as_mut().expect("GitHub state").fire(env.now);
         let gh = self.github.get_mut(at).expect("forge slot").as_mut().expect("GitHub state");
@@ -873,8 +881,6 @@ impl Component {
         if !self.closed && super::ready(*self.starts.get(at).expect("forge start")) {
             let _started = gh.puller.fire(env);
         }
-        let above = up.len();
-        let below = io.len();
         if let Some((until, next)) = backoff(*self.starts.get(at).expect("forge start"))
             && until <= env.now
             && !self.closed
@@ -882,21 +888,19 @@ impl Component {
             *self.starts.get_mut(at).expect("forge start") = Start::Listing { next };
         }
         for turn in 0..64_u32 {
-            if up.len().saturating_sub(above) >= budget.0 {
-                self.wake = Some(env.now);
-                break;
+            if !self.closed && self.local_output_pending(at) {
+                let progressed = self.github_local(at, env, up);
+                assert!(progressed, "pending local output advances before remote work");
+                if turn == 63 {
+                    self.wake = Some(env.now);
+                }
+                continue;
             }
             if !self.closed && self.github_local(at, env, up) {
                 if turn == 63 {
                     self.wake = Some(env.now);
                 }
                 continue;
-            }
-            if up.len().saturating_sub(above).saturating_add(2) > budget.0
-                || io.len().saturating_sub(below).saturating_add(2) > budget.1
-            {
-                self.wake = Some(env.now);
-                break;
             }
             let state = self.github_state(at);
             let gh = self.github.get(at).expect("forge slot").as_ref().expect("GitHub state");
@@ -943,7 +947,7 @@ impl Component {
                 continue;
             }
             let c = self.connection_slab.get_mut(id).expect("own connection");
-            c.pump(env, io, budget.1.saturating_sub(io.len().saturating_sub(below)).saturating_sub(1));
+            c.pump(env, io);
             if let Some(heard) = c.heard() {
                 self.github_heard(at, heard, env, up);
                 let c = self.connection_slab.get_mut(id).expect("own connection");
@@ -997,15 +1001,15 @@ fn active_next(state: Start) -> Duration {
 mod tests {
     use super::*;
     use crate::{
-        Account, Change, Fact, MAX_OUT, Request,
+        Account, Change, Fact, Request,
         installations::{Metadata, Row},
         tests::fixtures,
     };
     use alloc::boxed::Box;
     use skein_lib::{List, Time, Wall};
 
-    // More changes than one entry point reserves, including lifecycle then rename on id 1.
-    const ROWS: u32 = MAX_OUT.above.saturating_add(4);
+    // Twenty rows include lifecycle then rename on id 1.
+    const ROWS: u32 = 20;
     fn pending() -> (Component, Env<Limits>) {
         let limits = Limits { installations: ROWS, ..fixtures::limits() };
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
@@ -1076,11 +1080,10 @@ mod tests {
         (Queue::with_capacity(128), Queue::with_capacity(128))
     }
     #[test]
-    fn installation_output_resumes_with_remaining_room() {
+    fn installation_output_preserves_lifecycle_then_rename() {
         let (mut component, env) = pending();
         let (mut up, mut io) = queues();
-        // The caller has spent all below room and all but one above slot on other work.
-        component.drive_room(&env, &mut up, &mut io, 1, 0);
+        component.test_local(&env, &mut up);
         match up.pop().expect("first phase") {
             Event::Installation { installation, change, .. } => {
                 assert_eq!((installation, change), (1, Change::Suspended));
@@ -1095,11 +1098,9 @@ mod tests {
             | Event::Stopped { .. }
             | Event::Closed => unreachable!("lifecycle"),
         }
-        assert_eq!(component.next_deadline(), Some(env.now));
         let mut changes = List::with_capacity(ROWS.saturating_add(1));
         for _ in 0_u32..4 {
             component.fire(&env, &mut up, &mut io);
-            assert!(up.len() <= MAX_OUT.above);
             for _ in 0..up.len() {
                 match up.pop().expect("queued") {
                     Event::Installation { installation, change, .. } => {
@@ -1126,7 +1127,7 @@ mod tests {
         assert_eq!(component.next_deadline(), Some(env.now.saturating_add(env.limits.log_poll)));
     }
     #[test]
-    fn held_unkept_blocks_the_next_page_until_output_room() {
+    fn held_unkept_precedes_the_next_page() {
         let limits = Limits { installations: 1, ..fixtures::limits() };
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
         let mut component = Component::new(fixtures::github_settings(), &limits, &fixtures::shared()).expect("fixture");
@@ -1146,10 +1147,7 @@ mod tests {
             Read::Idle | Read::Changes(_) | Read::Waiting { .. } => unreachable!("reading"),
         }
         let (mut up, mut io) = queues();
-        component.drive_room(&env, &mut up, &mut io, 0, MAX_OUT.below);
-        assert!(io.is_empty());
-        assert!(up.is_empty());
-        component.drive_room(&env, &mut up, &mut io, 1, 0);
+        component.test_local(&env, &mut up);
         match up.pop().expect("held fact") {
             Event::Fact { fact, .. } => assert_eq!(fact, Fact::Unkept { installation: 2 }),
             Event::Installation { .. }
@@ -1171,7 +1169,7 @@ mod tests {
     fn close_abandons_pending_installation_output() {
         let (mut component, env) = pending();
         let (mut up, mut io) = queues();
-        component.drive_room(&env, &mut up, &mut io, 1, 0);
+        component.test_local(&env, &mut up);
         drop(up.pop());
         component.down(&env, Request::Close, &mut up, &mut io);
         match up.pop().expect("closed") {
@@ -1194,7 +1192,7 @@ mod tests {
     fn connect_replacement_abandons_pending_installation_output() {
         let (mut component, env) = pending();
         let (mut up, mut io) = queues();
-        component.drive_room(&env, &mut up, &mut io, 1, 0);
+        component.test_local(&env, &mut up);
         drop(up.pop());
         component.down(
             &env,
@@ -1290,7 +1288,7 @@ mod tests {
             &env,
             &mut up,
         );
-        component.drive_room(&env, &mut up, &mut io, 1, 0);
+        component.test_local(&env, &mut up);
         component.github_progress(0, Progress::Paged(Err(api::Error::InvalidAnswer)), &env, &mut up);
         let gh = component.github.get(0).expect("forge").as_ref().expect("GitHub");
         let row = gh.rows.get(&1).expect("committed row");
@@ -1322,7 +1320,7 @@ mod tests {
             &env,
             &mut up,
         );
-        component.drive_room(&env, &mut up, &mut io, MAX_OUT.above, MAX_OUT.below);
+        component.drive(&env, &mut up, &mut io);
         assert!(up.is_empty());
         assert!(io.is_empty());
         assert!(

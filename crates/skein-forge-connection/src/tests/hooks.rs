@@ -26,8 +26,8 @@ impl Listening {
         settings.webhooks = Some(crate::hooks::Webhooks { listener: requested });
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: fixtures::limits() };
         let mut component = Component::new(settings, &env.limits, &fixtures::shared()).expect("listener limits");
-        let mut up = Queue::with_capacity(crate::MAX_OUT.above);
-        let mut io = Queue::with_capacity(crate::MAX_OUT.below);
+        let mut up = Queue::uncapped();
+        let mut io = Queue::uncapped();
         component.begin(&env, &mut up, &mut io);
         assert!(up.is_empty());
         let owner = match io.pop().expect("listen request") {

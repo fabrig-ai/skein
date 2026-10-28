@@ -1,4 +1,4 @@
-//! Calls share the component's connections and entry-point output reservations.
+//! Calls share the component's connections and advance their held plans.
 use super::{Body, CallPlan, Component, Heard, Phase, Plan, Start, Step, Waiting, api};
 use crate::connection::{self, Exchange};
 use crate::{
@@ -47,27 +47,12 @@ impl Component {
         let _call = self.calls.remove(&call);
         up.push(Event::Answered(Answered { call, cost, free, rate, result }));
     }
-    pub(super) fn drive_calls(
-        &mut self,
-        env: &Env<Limits>,
-        up: &mut Queue<Event>,
-        io: &mut Queue<skein_io::Request>,
-        above_room: u32,
-        below_room: u32,
-    ) {
-        let above = up.len();
-        let below = io.len();
+    pub(super) fn drive_calls(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
         let mut calls = List::with_capacity(self.calls.capacity());
         for (call, id) in &self.calls {
             calls.push((*call, *id)).expect("bounded calls");
         }
         for (call, id) in calls.into_boxed() {
-            if up.len().saturating_sub(above).saturating_add(1) >= above_room
-                || io.len().saturating_sub(below).saturating_add(1) >= below_room
-            {
-                self.wake = Some(env.now);
-                break;
-            }
             if self.closed {
                 break;
             }
@@ -114,41 +99,17 @@ impl Component {
                 }
             }
             if self.settings.forges.get(at).expect("forge").kind == crate::settings::Kind::GitHub {
-                self.drive_github_call(
-                    (call, id),
-                    at,
-                    env,
-                    up,
-                    io,
-                    (
-                        above_room.saturating_sub(up.len().saturating_sub(above)),
-                        below_room.saturating_sub(io.len().saturating_sub(below)),
-                    ),
-                );
+                self.drive_github_call((call, id), at, env, up, io);
                 continue;
             }
             if !self.assign(call, id, at, env, up, io) {
                 continue;
             }
-            self.pump_call(
-                (call, id),
-                at,
-                env,
-                up,
-                io,
-                (
-                    above_room.saturating_sub(up.len().saturating_sub(above)),
-                    below_room.saturating_sub(io.len().saturating_sub(below)),
-                ),
-            );
+            self.pump_call((call, id), at, env, up, io);
         }
         for (_, id) in &self.connections {
-            if io.len().saturating_sub(below) >= below_room {
-                self.wake = Some(env.now);
-                break;
-            }
             let c = self.connection_slab.get_mut(*id).expect("indexed connection");
-            if c.drain_redirect(env, io, below_room.saturating_sub(io.len().saturating_sub(below)).saturating_sub(1)) {
+            if c.drain_redirect(env, io) {
                 self.wake = Some(env.now);
             }
             if self.closed || (c.phase == Phase::Idle && c.deadline <= Some(env.now)) || c.phase == Phase::Closed {
@@ -274,20 +235,11 @@ impl Component {
         env: &Env<Limits>,
         up: &mut Queue<Event>,
         io: &mut Queue<skein_io::Request>,
-        budget: (u32, u32),
     ) {
         let (call, id) = holder;
-        let above = up.len();
-        let below = io.len();
         let token = self.waiting.get(id).expect("call").connection.expect("holder");
         let connection = *self.connections.get(&token).expect("indexed connection");
         for _ in 0..64_u32 {
-            if up.len().saturating_sub(above) >= budget.0
-                || io.len().saturating_sub(below).saturating_add(1) >= budget.1
-            {
-                self.wake = Some(env.now);
-                break;
-            }
             let c = self.connection_slab.get_mut(connection).expect("holding connection");
             if c.phase == Phase::Idle {
                 let waiting = self.waiting.get_mut(id).expect("indexed call");
@@ -330,7 +282,7 @@ impl Component {
                     self.waiting.get_mut(id).expect("call").charged = false;
                 }
             }
-            c.pump(env, io, budget.1.saturating_sub(io.len().saturating_sub(below)).saturating_sub(1));
+            c.pump(env, io);
             let waiting = self.waiting.get_mut(id).expect("indexed call");
             if c.written && !waiting.charged {
                 waiting.cost = waiting.cost.checked_add(1).expect("bounded exchanges");

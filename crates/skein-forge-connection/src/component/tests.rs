@@ -8,7 +8,7 @@ fn token_fixture() -> (Component, Env<Limits>, Queue<skein_io::Request>) {
     let limits = fixtures::limits();
     let c = Component::new(fixtures::settings(), &limits, &fixtures::shared()).expect("valid");
     let env = Env { now: Time::ZERO, wall: skein_lib::Wall::EPOCH, limits };
-    (c, env, Queue::with_capacity(MAX_OUT.below))
+    (c, env, Queue::uncapped())
 }
 #[test]
 #[should_panic(expected = "connection token prefix")]
@@ -44,8 +44,8 @@ fn forgejo_starts_leave_the_github_reserved_slot_free() {
     settings.forges = forges;
     let env = Env { now: Time::ZERO, wall: skein_lib::Wall::EPOCH, limits };
     let mut c = Component::new(settings, &limits, &fixtures::shared()).expect("fixture limits");
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     c.begin(&env, &mut up, &mut io);
     assert_eq!(c.call_connections(), limits.connections);
     assert!(c.own_tokens.get(GITHUB_AT).expect("GitHub slot").is_some());

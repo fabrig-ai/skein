@@ -306,10 +306,10 @@ fn duplicate_forge_numbers_are_refused_before_any_connection() {
 // Decoder = 32*128 + 8*(3*128+2*48+2*16) + 2*1042 + 16*128 + 4096
 // + fixed decoder 272 = 16_692. Socket = 32768+4096+32768+4*16 = 69_696.
 // Connection = HTTP 44032 + TLS 456809 + tokenizer 2082 + decoder 16692
-// + raw 2*65536 + routing 5056 + send 32768 + encoding (6*1042+1024)
-// + socket 69696 + JSON intake/delivery 2*1024 = 767_531.
-// Four hooks = 4*(18418+2082+16692+69696+208+88+1170+368+8192+2048)
-// + slab/index 4832 = 480_680.
+// + raw 2*65536 + send 32768 + encoding (6*1042+1024)
+// + socket 69696 + JSON intake/delivery 2*1024 = 762_475.
+// Four hooks = 4*(18418+2082+16692+69696+208+88+1170+8192+2048)
+// + slab/index 4832 = 479_208.
 // Common calls = 2*560 Waiting slots + holders tree 288 + drive lists 2*16
 // + call index 288 + operation copies 2*3*512 + held tree 2768
 // + held answers 2*65536 = 138_624.
@@ -322,14 +322,14 @@ fn duplicate_forge_numbers_are_refused_before_any_connection() {
 // Configured lists = 2*(Forge168+Start24+GitHub box8+token16+OwnPlan360) = 1152.
 // Credentials/secret/send/TLS = 64+128+32768+456809 = 489769.
 // Owner/framing/answer = 2*16+(3+9)+16+Answered224 = 284.
-// Total = 2*767531+288+2*1504+480680+138624+2*133232+3800+1152+489769+284.
-const FIXTURE_HEAP: u64 = 2_919_131;
+// Total = 2*762475+288+2*1504+479208+138624+2*133232+3800+1152+489769+284.
+const FIXTURE_HEAP: u64 = 2_907_547;
 
 // Complete GitHub fixture: decoder = 32*128+8*592+2*1042+16*128+4096
 // + owner/name 39+100 + fixed decoder2416 = 19615. App overlap per entry
 // = max(3*128+2*48+2*16,4*128+2*24+2*16) = 592.
-// Connection is 770590, including a 136-byte boxed exchange; hooks are
-// 4*121885+4832 = 492372. Installations = live tree2136+metadata2*552
+// Connection is 765534, including a 136-byte boxed exchange; hooks are
+// 4*121517+4832 = 490900. Installations = live tree2136+metadata2*552
 // + accepted2*552+missing464+id sets3*200+id lists2*3*8
 // + pages2*100*48+2*100*128+row credentials3*(6*128+64)+handoffs7*64
 // + Event224+cursor accounts3*128 = 44208.
@@ -342,9 +342,9 @@ const FIXTURE_HEAP: u64 = 2_919_131;
 // Puller = handoffs2*(8*(104+2*128)+2*128)+validators4*128
 // + LogPage416+LogDelivery336+decoder304+common decoder19615
 // + event copies2*128+hint88+text128+body1042 = 28969.
-// Total = 3*770590+288+3*1504+492372+138624+2*256634+3888+1152
-// + 489769+49426+284+28969 = 4034322.
-const GITHUB_FIXTURE_HEAP: u64 = 4_034_322;
+// Total = 3*765534+288+3*1504+490900+138624+2*256634+3888+1152
+// + 489769+49426+284+28969 = 4017682.
+const GITHUB_FIXTURE_HEAP: u64 = 4_017_682;
 
 // One call slot: Waiting slab560 + drive pair16 + operation copies3*512
 // + held answer65536 + dialect payload. Tree node counts stay fixed at 2 -> 3.
@@ -392,7 +392,7 @@ fn a_github_forge_pays_its_app_share() {
     assert_eq!(size_of::<crate::installations::GitHub>(), 776);
     assert_eq!(limits::puller_heap(&fixtures::limits()), Some(28_969));
     assert_eq!(
-        (3 * 770_590_u64 + 288 + 3 * 1504 + 492_372 + 138_624 + 2 * 256_634 + 3888 + 1152 + 489_769 + 49_426 + 284)
+        (3 * 765_534_u64 + 288 + 3 * 1504 + 490_900 + 138_624 + 2 * 256_634 + 3888 + 1152 + 489_769 + 49_426 + 284)
             .checked_add(28_969),
         Some(GITHUB_FIXTURE_HEAP)
     );
@@ -563,7 +563,7 @@ fn the_worst_case_counts_answers_and_refuses_overflow() {
 }
 
 #[test]
-fn many_due_calls_keep_the_timer_output_bound() {
+fn all_due_calls_finish_in_the_same_timer_turn() {
     let limits = Limits { connections: 20, ..fixtures::limits() };
     let shared = fixtures::shared();
     let shared = crate::Shared { calls: 20, ..shared };
@@ -572,7 +572,7 @@ fn many_due_calls_keep_the_timer_output_bound() {
         h.call(call, fixtures::REPO, api::Op::Read(api::Read::Settings));
     }
     for (name, span, count, deadline) in [
-        ("first batch", Duration::from_secs(10), 16, Some(Time::from_nanos(10_000_000_000))),
+        ("all due", Duration::from_secs(10), 20, Some(Time::from_nanos(11_000_000_000))),
         ("rest", Duration::ZERO, 20, Some(Time::from_nanos(11_000_000_000))),
     ] {
         h.run(span);
@@ -582,7 +582,7 @@ fn many_due_calls_keep_the_timer_output_bound() {
 }
 
 #[test]
-fn many_held_answers_keep_the_offer_output_bound() {
+fn one_offer_drains_all_eligible_held_answers() {
     let limits = Limits { connections: 20, ..fixtures::limits() };
     let shared = fixtures::shared();
     let shared = crate::Shared { calls: 20, ..shared };
@@ -596,7 +596,7 @@ fn many_held_answers_keep_the_offer_output_bound() {
             result: Err(api::Error::Unavailable),
         }));
     }
-    for (name, count) in [("first batch", 16), ("second batch", 4), ("empty", 0)] {
+    for (name, count) in [("all held", 20), ("empty", 0)] {
         h.send(Request::Offer);
         assert_eq!(h.up.len(), count, "{name}: offer batch");
         for _ in 0..count {

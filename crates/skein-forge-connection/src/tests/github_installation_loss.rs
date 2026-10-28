@@ -7,7 +7,7 @@ use super::{
     },
 };
 use crate::{
-    Change, Event, MAX_OUT, Request, StartRead, Stopped,
+    Change, Event, Request, StartRead, Stopped,
     installations::{Read, Tokens},
     start::Start,
 };
@@ -91,8 +91,7 @@ fn mint_at(stage: Stage) -> Harness {
         Stage::Held => {
             full(&mut h);
             h.run(Duration::ZERO);
-            // Exhausting the output reservation is exercised separately; this is
-            // the same held value, before the local output transition.
+            // Hold the minted value before the local output transition.
             let gh = h.component.test_github_mut();
             let selected = gh.selected.expect("selected Contents");
             gh.held = Some(crate::installations::HeldToken {
@@ -495,10 +494,10 @@ fn loss_suppresses_held_git_token() {
     assert!(h.component.test_github().held.is_none());
 }
 #[test]
-fn ready_jobs_share_output_room() {
+fn ready_changes_precede_the_held_token() {
     let mut h = at(Stage::Held);
     commit(&mut h, Box::from([row(1, false), row(2, false)]));
-    // A lifecycle diff precedes the held token, using the same remaining reservation.
+    // A lifecycle diff precedes the held token.
     h.component.test_github_mut().read = Read::Changes(crate::installations::Diff {
         old: skein_lib::Map::with_capacity(3),
         accepted: skein_lib::Set::with_capacity(3),
@@ -507,9 +506,9 @@ fn ready_jobs_share_output_room() {
         after: None,
         renamed: None,
     });
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
-    h.component.test_room(&h.env, &mut up, &mut io, 1, 0);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
+    h.component.test_local(&h.env, &mut up);
     assert_eq!(up.len(), 1);
     assert!(h.component.test_github().held.is_some());
     assert!(io.is_empty());
@@ -825,7 +824,7 @@ fn replace_during_ready_diff_discards_private_work() {
 fn lost_unsent_mint_is_retired_without_sending() {
     let mut h = empty_start();
     h.component.test_github_mut().accept(&[1]);
-    h.component.test_room(&h.env, &mut h.up, &mut h.io, MAX_OUT.above, 0);
+    h.component.test_local(&h.env, &mut h.up);
     accepted(&mut h, &[]);
     h.run(Duration::ZERO);
     assert_eq!(requests(&h), 2);

@@ -125,15 +125,8 @@ impl Hooks {
         settings: &crate::settings::Settings,
         up: &mut Queue<Event>,
         io: &mut Queue<skein_io::Request>,
-        above: u32,
-        below: u32,
     ) {
-        let (a, b) = (up.len(), io.len());
         self.wake = None;
-        if below < 2 || above == 0 {
-            self.wake = Some(env.now);
-            return;
-        }
         if self.closing {
             if let Some(listener) = self.listener
                 && !self.close_sent
@@ -159,17 +152,12 @@ impl Hooks {
         }
         for (owner, id) in &self.connections {
             let c = self.slab.get_mut(*id).expect("indexed hook");
-            let room = below.saturating_sub(io.len().saturating_sub(b));
-            if room < 2 || up.len().saturating_sub(a) >= above {
-                self.wake = Some(env.now);
-                break;
-            }
             if c.closing != Closing::Sent && (self.closing || c.deadline <= env.now) {
                 c.closing = Closing::Sent;
                 io.push(skein_io::Request::Abort { entity: c.socket });
             }
             if c.closing != Closing::Sent {
-                c.pump(*owner, env, settings, up, io, (above.saturating_sub(up.len().saturating_sub(a)), room));
+                c.pump(*owner, env, settings, up, io);
                 if c.pending() {
                     self.wake = Some(env.now);
                 }

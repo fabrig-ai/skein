@@ -184,12 +184,12 @@ impl Connection {
             tls,
             json: tokenizer::Tokenizer::new(&limits::documents(l).json),
             shared,
-            http_up: Queue::with_capacity(8),
-            http_down: Queue::with_capacity(8),
-            tls_up: Queue::with_capacity(8),
-            tls_down: Queue::with_capacity(8),
-            json_up: Queue::with_capacity(8),
-            json_down: Queue::with_capacity(8),
+            http_up: Queue::uncapped(),
+            http_down: Queue::uncapped(),
+            tls_up: Queue::uncapped(),
+            tls_down: Queue::uncapped(),
+            json_up: Queue::uncapped(),
+            json_down: Queue::uncapped(),
             json_next: None,
             json_body: JsonBody {
                 intake: Intake::with_capacity(l.chunk.max(5)),
@@ -197,7 +197,7 @@ impl Connection {
                 below: false,
                 ended: false,
             },
-            heard: Queue::with_capacity(16),
+            heard: Queue::uncapped(),
             request: None,
             receive: Receiving::Empty,
             done: None,
@@ -320,14 +320,14 @@ impl Connection {
         }
         Ok(())
     }
-    pub fn drain_redirect(&mut self, env: &Env<Limits>, io: &mut Queue<skein_io::Request>, budget: u32) -> bool {
+    pub fn drain_redirect(&mut self, env: &Env<Limits>, io: &mut Queue<skein_io::Request>) -> bool {
         if !self.draining {
             return false;
         }
         if self.deadline <= Some(env.now) {
             self.timeout();
         }
-        self.pump(env, io, budget);
+        self.pump(env, io);
         drop(self.heard());
         if self.phase == Phase::Idle || self.phase == Phase::Closed {
             self.draining = false;
@@ -394,15 +394,13 @@ impl Connection {
         tokenizer::down(&mut self.json, &j, request, &mut self.json_up, &mut self.json_down);
     }
     /// Routes at most a fixed number of child-machine movements. Remaining work stays owned.
-    pub fn pump(&mut self, env: &Env<Limits>, io: &mut Queue<skein_io::Request>, budget: u32) {
-        let mut emitted = 0_u32;
+    pub fn pump(&mut self, env: &Env<Limits>, io: &mut Queue<skein_io::Request>) {
         for _ in 0_u32..64 {
-            if emitted >= budget || !self.heard.is_empty() || self.closing || self.phase == Phase::Closed {
+            if self.answer_pending() || self.closing || self.phase == Phase::Closed {
                 break;
             }
             if let Some(down) = self.tls_down.pop() {
                 self.send(down, io);
-                emitted = emitted.saturating_add(1);
                 continue;
             }
             if let Some(event) = self.tls_up.pop() {
@@ -423,7 +421,6 @@ impl Connection {
                     }
                     None => {
                         self.send(down, io);
-                        emitted = emitted.saturating_add(1);
                     }
                 }
                 continue;
@@ -937,6 +934,9 @@ impl Connection {
             });
         }
     }
+    fn answer_pending(&self) -> bool {
+        !self.heard.is_empty()
+    }
     pub fn heard(&mut self) -> Option<Heard> {
         self.heard.pop()
     }
@@ -990,14 +990,6 @@ impl core::fmt::Debug for Connection {
             .field("deadline", &self.deadline)
             .finish_non_exhaustive()
     }
-}
-/// The fixed routing queues, allocated once per connection.
-pub(crate) fn routing_bytes() -> Option<u64> {
-    Queue::<http::Event>::worst_case(8)?
-        .checked_add(Queue::<Down>::worst_case(8)?.checked_mul(3)?)?
-        .checked_add(Queue::<skein_tls::client::Event>::worst_case(8)?)?
-        .checked_add(Queue::<tokenizer::Event>::worst_case(8)?)?
-        .checked_add(Queue::<Heard>::worst_case(16)?)
 }
 impl Connection {
     fn decoder(&mut self) -> Option<&mut Decoder> {
