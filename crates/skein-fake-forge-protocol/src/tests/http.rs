@@ -365,15 +365,15 @@ fn unauthorized_heads_are_drained_and_counted_in_the_bound() {
     // and target_bytes reserved for the host's bound origin.
     // The tally reserves 80 route entries; repository identities and full paths
     // reserve documents.inner slots for repositories created during a run.
-    const BASE_BYTES: u64 = 10_254_596;
+    const BASE_BYTES: u64 = 10_252_868;
     const HEAD_BYTES: u64 = 4_664;
     let config = fixtures::config();
     let mut limits = fixtures::limits();
     let deliveries = crate::delivery::worst_case(&limits, &config).unwrap();
     assert_eq!(crate::worst_case(&limits, &config), Some(BASE_BYTES + CONNECTIONS * HEAD_BYTES + deliveries));
-    assert_eq!(crate::worst_case(&limits, &config), Some(10_273_252 + deliveries));
+    assert_eq!(crate::worst_case(&limits, &config), Some(10_271_524 + deliveries));
     limits.http.head += 1;
-    assert_eq!(crate::worst_case(&limits, &config), Some(10_273_396 + deliveries));
+    assert_eq!(crate::worst_case(&limits, &config), Some(10_271_668 + deliveries));
     let mut h = Harness::new(config);
     h.ask_as(b"GET", b"/api/v1/user", b"", b"wrong-token");
     assert_eq!(h.status(), 401);

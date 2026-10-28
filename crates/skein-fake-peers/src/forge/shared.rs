@@ -81,21 +81,16 @@ pub(super) fn bound(
     let payload = domain_bound.checked_add(protocol_bound)?;
     let connection = transport::worst_case(limits, transport)?
         .checked_add(u64::try_from(size_of::<Connection>()).ok()?)?
-        .checked_add(Queue::<protocol::Event>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<skein_lib::stream::Down>::worst_case(limits.queue)?)?
         .checked_add(Queue::<skein_lib::stream::Up>::worst_case(limits.queue)?)?
         .checked_add(u64::from(limits.queue).checked_mul(payload.checked_add(u64::from(limits.plaintext))?)?)?;
     let layer_bound = match protocol {
-        protocol::Limits::Forgejo(_) => protocol_bound
-            .checked_add(Queue::<skein_fake_forge_protocol::Event>::worst_case(skein_fake_forge_protocol::MAX_UP)?)?,
+        protocol::Limits::Forgejo(_) => protocol_bound,
         // The GitHub layer envelope includes one connection. Each additional
         // hosted connection retains its own HTTP buffers and continuation.
-        protocol::Limits::Github(github) => protocol_bound
-            .checked_add(
-                skein_fake_forge_github::server::worst_case(github)?
-                    .checked_mul(u64::from(limits.connections.saturating_sub(1)))?,
-            )?
-            .checked_add(Queue::<skein_fake_forge_github::Event>::worst_case(skein_fake_forge_github::MAX_UP)?)?,
+        protocol::Limits::Github(github) => protocol_bound.checked_add(
+            skein_fake_forge_github::server::worst_case(github)?
+                .checked_mul(u64::from(limits.connections.saturating_sub(1)))?,
+        )?,
     };
     face::worst_case(limits)?
         .checked_add(match protocol {

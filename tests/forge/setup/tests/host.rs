@@ -392,6 +392,7 @@ fn runs_finishing_together_keep_each_run_s_needs_with_it_and_in_order() {
     const RUNS: [(u64, u16); 3] = [(11, 1), (22, 2), (33, 3)];
     const COUNT: u32 = 3;
     const PREPARE: u64 = 99;
+    const CHECK_READS: [Item; 3] = [Item::ApiToken, Item::GitToken, Item::User];
     let mut settings = fixtures::host_settings();
     let mut forges = List::with_capacity(COUNT);
     for (_, number) in RUNS {
@@ -421,7 +422,7 @@ fn runs_finishing_together_keep_each_run_s_needs_with_it_and_in_order() {
     }
     world.settle();
     // Hold each round of needs, then answer every run before allowing the next turn.
-    for _ in [Item::ApiToken, Item::GitToken, Item::User] {
+    for _ in CHECK_READS {
         for (run, _) in RUNS {
             world.read_pending(run);
         }
@@ -437,5 +438,5 @@ fn runs_finishing_together_keep_each_run_s_needs_with_it_and_in_order() {
             |event| matches!(event, Heard::Done { run: token, at: Duration::ZERO, .. } if *token == Token::new(run))
         ));
     }
-    assert_eq!(world.needs_by_run().len() - baseline, RUNS.len() * 3);
+    assert_eq!(world.needs_by_run().len() - baseline, RUNS.len() * CHECK_READS.len());
 }

@@ -13,8 +13,6 @@ use skein_http::{Header, Method, server as http};
 use skein_json::tokenizer::{self as json, Tokenizer};
 use skein_lib::stream::{Down, Read, Up};
 use skein_lib::{Env, Id, List, Queue, ReplyTo, Token, bytes};
-pub const MAX_UP: u32 = 3;
-pub const MAX_DOWN: u32 = 18;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum State {
     New,
@@ -82,12 +80,12 @@ impl Server {
             owner,
             state: State::New,
             http: http::Server::new(&limits.http),
-            events: Queue::with_capacity(4),
-            requests: Queue::with_capacity(4),
+            events: Queue::uncapped(),
+            requests: Queue::uncapped(),
             json: Tokenizer::new(&limits.documents.json),
             json_started: false,
-            json_events: Queue::with_capacity(1),
-            json_down: Queue::with_capacity(1),
+            json_events: Queue::uncapped(),
+            json_down: Queue::uncapped(),
             decoder: None,
             git: None,
             git_decoder: None,
@@ -104,6 +102,9 @@ impl Server {
             offset: 0,
             send: limits.http.send,
         })
+    }
+    fn head_pending(&self) -> bool {
+        self.head.is_some()
     }
     /// Takes the sanitized head captured at the last request entrance.
     pub fn take_head(&mut self) -> Option<http::Call> {
@@ -320,11 +321,11 @@ fn resume_on(
     below: &mut Queue<Down>,
 ) {
     for _ in 0..8u32 {
-        if above.room() < 2 || below.room() < 2 {
-            break;
-        }
         if let Some(event) = server.events.pop() {
             http_event(server, service, domain.as_mut(), env, event, above, below);
+            if server.head_pending() {
+                break;
+            }
         } else if let Some(event) = server.json_events.pop() {
             if let Some(decoder) = &mut server.git_decoder {
                 match crate::git::server::body(decoder, &env.limits, &event) {
@@ -379,17 +380,25 @@ pub fn close(
     server.reply = None;
     server.decoder = None;
     server.git_decoder = None;
-    for _ in 0..server.events.capacity() {
+    for _ in 0..server.events.len() {
         drop(server.events.pop());
     }
-    for _ in 0..server.requests.capacity() {
+    for _ in 0..server.requests.len() {
         drop(server.requests.pop());
     }
-    drop(server.json_events.pop());
-    drop(server.json_down.pop());
+    for _ in 0..server.json_events.len() {
+        drop(server.json_events.pop());
+    }
+    for _ in 0..server.json_down.len() {
+        drop(server.json_down.pop());
+    }
     json_down(server, env, json::Request::Close);
-    drop(server.json_events.pop());
-    drop(server.json_down.pop());
+    for _ in 0..server.json_events.len() {
+        drop(server.json_events.pop());
+    }
+    for _ in 0..server.json_down.len() {
+        drop(server.json_down.pop());
+    }
     http_down(server, env, http::Request::Close, below);
     server.state = State::Closing;
     above.push(Event::Close);

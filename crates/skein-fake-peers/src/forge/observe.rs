@@ -55,13 +55,6 @@ impl Peer {
             };
             let owner = self.calls[index].connection;
             let target = self.connections.iter().position(|connection| connection.owner == owner);
-            if let Some(target) = target {
-                let connection = &self.connections[target];
-                if connection.above.room() < protocol::MAX_UP || connection.below.room() < protocol::MAX_DOWN {
-                    forge.pending.push(reply);
-                    continue;
-                }
-            }
             let call = self.calls.remove(index);
             let domain::Request::Reply { result, .. } = &reply else { unreachable!("reply snapshot") };
             if let Some((repository, op)) = call.snapshot {

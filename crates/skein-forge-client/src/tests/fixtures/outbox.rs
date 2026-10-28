@@ -1,7 +1,5 @@
 use super::super::{LIMITS, REPO, Sent, at};
-use crate::{
-    Condition, Domain, Effect, Entry, Event, Limits, Outcome, RecoveryClock, Request, fire, resume, step,
-};
+use crate::{Condition, Domain, Effect, Entry, Event, Limits, Outcome, RecoveryClock, Request, fire, resume, step};
 use alloc::boxed::Box;
 use skein_forge::api::{self, Answer, Error, Op, Read, Write};
 use skein_lib::{Env, List, Map, Queue, Wall};

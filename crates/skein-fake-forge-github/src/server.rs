@@ -13,8 +13,6 @@ use skein_lib::{
     stream::{Down, Read, Up},
 };
 
-pub const MAX_UP: u32 = 3;
-pub const MAX_DOWN: u32 = 18;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum State {
     New,
@@ -61,8 +59,8 @@ impl Server {
             issue_write: false,
             state: State::New,
             http: http::Server::new(&limits.http),
-            events: Queue::with_capacity(4),
-            requests: Queue::with_capacity(4),
+            events: Queue::uncapped(),
+            requests: Queue::uncapped(),
             call: None,
             head: None,
             body: Intake::with_capacity(limits.body),
@@ -79,6 +77,9 @@ impl Server {
         Ok(server)
     }
     /// Takes the head with every Authorization value removed.
+    fn head_pending(&self) -> bool {
+        self.head.is_some()
+    }
     pub fn take_head(&mut self) -> Option<http::Call> {
         self.head.take()
     }
@@ -100,8 +101,6 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         return None;
     }
     http::worst_case(&limits.http)?
-        .checked_add(Queue::<http::Event>::worst_case(4)?)?
-        .checked_add(Queue::<http::Request>::worst_case(4)?)?
         // One Respond owns rate fields, a validator, Link, Location and media.
         .checked_add(List::<Header>::worst_case(11)?)?
         // A call moves from events into call; its redacted clone lives in head.
@@ -311,13 +310,9 @@ fn resume_inner(
     below: &mut Queue<Down>,
 ) {
     for _ in 0..8u32 {
-        if above.room() < 2 || below.room() < 2 {
-            break;
-        }
         if let Some(event) = server.events.pop() {
             event_up(server, service, env, event, hosted.as_mut(), above, below);
-            // The host records this entrance before another buffered head can arrive.
-            if server.head.is_some() {
+            if server.head_pending() {
                 break;
             }
         } else if let Some(request) = server.requests.pop() {
@@ -342,10 +337,10 @@ pub fn close(
     server.call = None;
     server.reply = None;
     server.body.clear();
-    for _ in 0..server.events.capacity() {
+    for _ in 0..server.events.len() {
         drop(server.events.pop());
     }
-    for _ in 0..server.requests.capacity() {
+    for _ in 0..server.requests.len() {
         drop(server.requests.pop());
     }
     http_down(server, env, http::Request::Close, below);
@@ -699,8 +694,8 @@ mod tests {
         let mut server = Server::new(Token::new(1), &limits).expect("bounded HTTP server");
         let mut service = Service::new(fixtures::config(), &limits, 1).expect("bounded service");
         let env = Env { now: skein_lib::Time::ZERO, wall: skein_lib::Wall::EPOCH, limits };
-        let mut above = Queue::with_capacity(MAX_UP);
-        let mut below = Queue::with_capacity(MAX_DOWN);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         let mut call = http::Call {
             method: HttpMethod::Post,
             version: skein_http::Version::Http11,
@@ -752,6 +747,15 @@ mod git_tests {
     use super::*;
     use crate::{GitCall, Minted, service::PendingKind, tests::fixtures};
 
+    fn git_call(target: &[u8], body: http::Body) -> http::Call {
+        http::Call {
+            method: HttpMethod::Post,
+            version: skein_http::Version::Http11,
+            body,
+            target: bytes::copy_of(target),
+            headers: Box::new([]),
+        }
+    }
     #[test]
     fn a_git_record_uses_the_status_after_a_server_fault() {
         let mut h = fixtures::Harness::new();
@@ -762,9 +766,21 @@ mod git_tests {
         let minted = Some(Minted { installation: 1, mint: 1 });
         server.pending =
             Some(Pending { rate: None, kind: PendingKind::Git(crate::git::Pending { name: git::Name::Push, minted }) });
-        // Hold HTTP progression so the framed status can be inspected directly.
-        let mut above = Queue::with_capacity(0);
-        let mut below = Queue::with_capacity(MAX_DOWN);
+        let env = Env { now: h.env.now, wall: h.now, limits: h.limits };
+        let http_env = Env { now: env.now, wall: env.wall, limits: env.limits.http };
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
+        http::down(&mut server.http, &http_env, http::Request::Next, &mut server.events, &mut below);
+        let Some(Down::Demand { read: Read::Nothing, room }) = below.pop() else { panic!("response reservation") };
+        assert!(room > 0);
+        http::up(&mut server.http, &http_env, Up::Room, &mut server.events, &mut below);
+        for line in [b"POST /.fake/git/push HTTP/1.1\r\n".as_slice(), b"Host: forge.test\r\n", b"\r\n"] {
+            let Some(Down::Demand { .. }) = below.pop() else { panic!("request head demand") };
+            http::up(&mut server.http, &http_env, Up::Bytes(bytes::copy_of(line)), &mut server.events, &mut below);
+        }
+        let Some(http::Event::Call(call)) = server.events.pop() else { panic!("captured HTTP call") };
+        server.head = Some(call);
+        drop(server.take_head());
         down(
             &mut server,
             &mut h.service,
@@ -777,8 +793,8 @@ mod git_tests {
             &mut above,
             &mut below,
         );
-        let Some(http::Request::Respond(response)) = server.requests.pop() else { panic!("framed reply") };
-        assert_eq!(response.status, 500);
+        let Some(Down::Send(head)) = below.pop() else { panic!("reply head bytes") };
+        assert!(head.starts_with(b"HTTP/1.1 500 "));
         assert_eq!(h.service.git_calls().len(), 1);
         assert_eq!(h.service.git_calls().iter().next(), Some(&GitCall { minted, writes: true, status: 500 }));
     }
@@ -787,19 +803,13 @@ mod git_tests {
     fn a_private_git_credential_refusal_precedes_the_body_demand() {
         let mut h = fixtures::Harness::new();
         let mut server = Server::new(Token::new(77), &h.limits).expect("fixture HTTP server");
-        let mut above = Queue::with_capacity(MAX_UP);
-        let mut below = Queue::with_capacity(MAX_DOWN);
+        let mut above = Queue::uncapped();
+        let mut below = Queue::uncapped();
         event_up(
             &mut server,
             &mut h.service,
             &Env { now: h.env.now, wall: h.now, limits: h.limits },
-            http::Event::Call(http::Call {
-                method: HttpMethod::Post,
-                version: skein_http::Version::Http11,
-                body: http::Body::Length(u64::from(h.limits.body)),
-                target: bytes::copy_of(b"/.fake/git/clone"),
-                headers: Box::new([]),
-            }),
+            http::Event::Call(git_call(b"/.fake/git/clone", http::Body::Length(u64::from(h.limits.body)))),
             None,
             &mut above,
             &mut below,
