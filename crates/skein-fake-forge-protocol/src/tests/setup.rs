@@ -383,6 +383,7 @@ fn user_repos_harness(all_repositories: bool) -> fixtures::Harness {
                 tree: Box::from([]),
                 labels: Box::from([]),
                 checks: a::Checks {
+                    cues: Box::new([]),
                     contexts: Box::from([]),
                     latency_min: Duration::ZERO,
                     latency_max: Duration::ZERO,

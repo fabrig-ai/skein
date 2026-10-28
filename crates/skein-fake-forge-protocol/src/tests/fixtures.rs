@@ -119,6 +119,7 @@ impl Harness {
                 tree: Box::from([]),
                 labels: Box::from([]),
                 checks: a::Checks {
+                    cues: Box::new([]),
                     contexts: Box::new([boxed(b"build")]),
                     latency_min: Duration::ZERO,
                     latency_max: Duration::ZERO,

@@ -52,6 +52,7 @@ pub fn create_repository(
         Object { parent: None, merge_parent: None, tree, message: Box::new([]), author: None, committer: None },
     )?;
     let checks = Checks {
+        cues: Box::new([]),
         contexts: Box::new([]),
         latency_min: Duration::ZERO,
         latency_max: Duration::ZERO,

@@ -37,6 +37,7 @@ fn harness_with_default(default: &[u8]) -> Harness {
                 tree: Box::from([]),
                 labels: Box::from([]),
                 checks: a::Checks {
+                    cues: Box::new([]),
                     contexts: Box::from([]),
                     latency_min: Duration::ZERO,
                     latency_max: Duration::ZERO,

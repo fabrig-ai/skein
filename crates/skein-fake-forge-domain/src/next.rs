@@ -130,6 +130,7 @@ pub(crate) fn checks(repository: &Repository, limits: &Limits, commit: u64, ci_u
     for status in pulls::statuses(repository, limits, commit) {
         let description: &[u8] = match status.state {
             Check::Pending => b"CI pending",
+            Check::Skipped => b"CI skipped",
             Check::Passed => b"CI passed",
             Check::Failed => b"CI failed",
         };
@@ -153,7 +154,15 @@ pub(crate) fn checks(repository: &Repository, limits: &Limits, commit: u64, ci_u
 
 pub(crate) fn job(repository: &Repository, id: u64, ci_user: u64) -> Result<Answer, Error> {
     let (job, context, failing) = failed_job(repository, id, ci_user)?;
-    Ok(Answer::Job { job, steps: crate::actions::steps(context, failing) })
+    Ok(Answer::Job {
+        job,
+        steps: crate::actions::steps(
+            context,
+            failing,
+            crate::ci::cue(&repository.checks, context),
+            crate::actions::run(repository, job.run)?.pull,
+        ),
+    })
 }
 
 pub(crate) fn log(
@@ -167,7 +176,13 @@ pub(crate) fn log(
     if job.attempt != attempt {
         return Err(Error::Missing(What::Job));
     }
-    Ok(Answer::File(crate::actions::log(context, failing, step)?))
+    Ok(Answer::File(crate::actions::log(
+        context,
+        failing,
+        crate::ci::cue(&repository.checks, context),
+        crate::actions::run(repository, job.run)?.pull,
+        step,
+    )?))
 }
 
 fn failed_job(

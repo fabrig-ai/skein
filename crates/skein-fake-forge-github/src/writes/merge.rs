@@ -188,7 +188,7 @@ fn context(out: &mut Writer, name: &[u8], state: Option<a::Check>) -> Option<()>
         None => texts::CHECK_EXPECTED,
         Some(a::Check::Pending) => texts::CHECK_PROGRESS,
         Some(a::Check::Failed) => texts::CHECK_FAILING,
-        Some(a::Check::Passed) => return Some(()),
+        Some(a::Check::Passed | a::Check::Skipped) => return Some(()),
     };
     out.put(texts::CHECK_START).ok()?;
     out.put(name).ok()?;

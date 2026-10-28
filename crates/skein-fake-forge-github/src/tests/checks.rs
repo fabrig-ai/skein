@@ -21,6 +21,7 @@ fn github_fake_ci_contexts_keep_actions_run_job_and_rerun_attempt_ids() {
             domain_config,
             None,
             a::Checks {
+                cues: Box::new([]),
                 contexts: Box::from([f::boxed(b"build"), f::boxed(b"lint")]),
                 latency_min: Duration::from_secs(1),
                 latency_max: Duration::from_secs(1),

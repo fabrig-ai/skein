@@ -493,6 +493,7 @@ fn write_verdict(value: a::Verdict) -> &'static [u8] {
 fn check(value: a::Check) -> &'static [u8] {
     match value {
         a::Check::Pending => b"pending",
+        a::Check::Skipped => b"skipped",
         a::Check::Passed => b"passed",
         a::Check::Failed => b"failed",
     }

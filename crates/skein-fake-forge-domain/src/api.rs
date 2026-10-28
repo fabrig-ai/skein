@@ -689,6 +689,8 @@ pub struct Status {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Check {
+    /// The cue does not run for this event.
+    Skipped,
     Pending,
     Passed,
     Failed,
@@ -836,6 +838,8 @@ pub struct Setup {
 /// and some of them run again. Chances are per mille.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Checks {
+    /// Context-specific cues; an absent entry inherits `cue`, then `passes`.
+    pub cues: Box<[ContextCue]>,
     pub contexts: Box<[Box<[u8]>]>,
     pub latency_min: Duration,
     pub latency_max: Duration,
@@ -851,9 +855,21 @@ pub struct Checks {
     pub cue: Option<Cue>,
 }
 
+/// A configured context's own cue, overriding the repository cue.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct ContextCue {
+    pub context: Box<[u8]>,
+    pub cue: Cue,
+}
+
 /// A verdict cued by a commit's file content or message.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Cue {
+    /// Passes when the head contains `path`, substituting the pull number
+    /// for `{pull}`. Without a pull it reports `no_pull` (never pending).
+    /// A failure names `step` and ends its workflow log with `log`, also
+    /// substituting `{pull}`. Templates fit their limits at 20 digits.
+    PullFile { path: Box<[u8]>, no_pull: Check, step: Box<[u8]>, log: Box<[u8]> },
     /// Passes when the file at `path` contains `green`, and fails otherwise.
     File { path: Box<[u8]>, green: Box<[u8]> },
     /// Fails when the commit message contains `fail`, and passes otherwise.

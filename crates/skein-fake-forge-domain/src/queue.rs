@@ -328,7 +328,7 @@ fn settled(repository: &Repository, number: u64, commit: u64) -> Check {
         match state {
             Check::Failed => return Check::Failed,
             Check::Pending => pending = true,
-            Check::Passed => {}
+            Check::Passed | Check::Skipped => {}
         }
     }
     if pending { Check::Pending } else { Check::Passed }
@@ -374,7 +374,7 @@ pub(crate) fn process(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>
                     changed = true;
                     break;
                 }
-                Check::Passed | Check::Pending => {}
+                Check::Passed | Check::Pending | Check::Skipped => {}
             }
         }
         if !changed {

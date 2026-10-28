@@ -2,6 +2,7 @@
 
 mod actions;
 mod creation;
+mod cues;
 mod locate;
 mod next;
 mod promises;
@@ -160,6 +161,7 @@ fn setup() -> Setup {
         tree: files(&[(b"README", b"hello"), (b"ci", b"green")]),
         labels: names(&[b"kit", b"bug"]),
         checks: Checks {
+            cues: Box::new([]),
             contexts: names(&[b"ci"]),
             latency_min: Duration::from_secs(5),
             latency_max: Duration::from_secs(5),

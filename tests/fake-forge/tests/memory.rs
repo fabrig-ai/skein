@@ -7,7 +7,8 @@
 #![cfg(test)]
 
 use skein_fake_forge_domain::api::{
-    Answer, Check, Checks, Cue, Error, File, Git, Op, Order, Permission, Protection, Read, Setup, Verdict, Write,
+    Answer, Check, Checks, ContextCue, Cue, Error, File, Git, Op, Order, Permission, Protection, Read, Setup, Verdict,
+    Write,
 };
 use skein_fake_forge_domain::{Config, Domain, Event, Limits, MAX_OUT, Request, Skew, fire, step, worst_case};
 use skein_lib::{Duration, Env, List, Queue, ReplyTo, Time, Token, Wall, Writer};
@@ -114,6 +115,14 @@ fn tree(tag: u8) -> Box<[File]> {
 }
 
 fn setup(index: u64) -> Setup {
+    let mut cues = List::with_capacity(LIMITS.contexts);
+    for context in 0..u64::from(LIMITS.contexts) {
+        cues.push(ContextCue {
+            context: name(b'c', context),
+            cue: Cue::File { path: name(b'p', 0), green: text(LIMITS.content_bytes, b'g') },
+        })
+        .expect("cue capacity");
+    }
     Setup {
         id: u32::try_from(index).expect("scenario id fits").checked_add(1).expect("scenario id fits"),
         name: name(b'r', index),
@@ -121,6 +130,7 @@ fn setup(index: u64) -> Setup {
         tree: tree(b'0'),
         labels: names(b'l', LIMITS.labels),
         checks: Checks {
+            cues: cues.into_boxed(),
             contexts: names(b'c', LIMITS.contexts),
             latency_min: Duration::from_secs(3600),
             latency_max: Duration::from_secs(3600),

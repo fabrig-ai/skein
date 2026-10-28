@@ -132,6 +132,7 @@ impl World {
                 tree: Box::new([]),
                 labels: Box::new([]),
                 checks: raw::Checks {
+                    cues: Box::new([]),
                     contexts: Box::new([]),
                     latency_min: Duration::ZERO,
                     latency_max: Duration::ZERO,

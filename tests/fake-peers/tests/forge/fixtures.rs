@@ -159,6 +159,7 @@ pub(super) fn configured_forge(seed: u64, config: domain::Config, hooked: bool) 
         config,
         hooked,
         api::Checks {
+            cues: Box::new([]),
             contexts: Box::new([]),
             latency_min: Duration::ZERO,
             latency_max: Duration::ZERO,

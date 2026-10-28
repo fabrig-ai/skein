@@ -17,6 +17,7 @@ pub fn status(state: a::Check) -> d::StatusState {
     match state {
         a::Check::Pending => d::StatusState::Pending,
         a::Check::Passed => d::StatusState::Success,
+        a::Check::Skipped => d::StatusState::Skipped,
         a::Check::Failed => d::StatusState::Failure,
     }
 }
@@ -353,8 +354,8 @@ fn checks(config: &Config, setup: &Store, request: &Request, values: &[a::CheckS
         match value.status.state {
             a::Check::Failed => combined = Some(d::StatusState::Failure),
             a::Check::Pending if combined != Some(d::StatusState::Failure) => combined = Some(d::StatusState::Pending),
-            a::Check::Passed if combined.is_none() => combined = Some(d::StatusState::Success),
-            a::Check::Pending | a::Check::Passed => {}
+            a::Check::Passed | a::Check::Skipped if combined.is_none() => combined = Some(d::StatusState::Success),
+            a::Check::Pending | a::Check::Passed | a::Check::Skipped => {}
         }
         rows.push(d::CommitStatus {
             creator: if value.link.is_empty() { Some(setup.resolve_user(config, value.status.author)) } else { None },

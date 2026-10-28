@@ -3,8 +3,10 @@
 //! is pending at once, then passes or fails after a drawn latency, or never
 //! reports, by the repository's chances; or, where a cue is configured, as the
 //! commit's file content or message says (testing.md, 4.2: the stand-in until CI
-//! follows content for real). CI runs once per commit and repository; a
-//! context that reported may be run again once, by the repository's chance:
+//! follows content for real). Pull-file cues start a new run when a push
+//! head becomes a pull head, binding its number; other CI runs once per
+//! commit and repository. A context that reported may be run again once,
+//! by the repository's chance:
 //! pending again at once, then a verdict drawn again, so a head's CI can
 //! move after it settled. Users with write permission report statuses of
 //! their own.
@@ -15,9 +17,9 @@
 use alloc::boxed::Box;
 
 use skein_lib::bytes::{copy_of, find};
-use skein_lib::{Env, Id, Map};
+use skein_lib::{Env, Id, List, Map};
 
-use crate::api::{Answer, Check, Cue, Ended, Error, Permission, What};
+use crate::api::{Answer, Check, Checks, Cue, Ended, Error, Permission, What};
 use crate::domain::{self, Alarm, Config, Domain};
 use crate::faults;
 use crate::hooks::Hook;
@@ -25,17 +27,31 @@ use crate::observe::Observation;
 use crate::store::{Repository, Status, fits};
 
 /// CI starts on `commit`, which became a head in the repository `id`, unless
-/// it ran on it already.
+/// it ran on it already with the same pull binding.
 pub(crate) fn start(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, commit: u64) {
     let limits = &env.limits.limits;
     let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
+    let pull = repository.heads(commit).as_slice().first().copied();
     let Some(first) = repository.checks.contexts.first() else {
         return;
     };
     if let Some(statuses) = repository.statuses.get(&commit)
         && statuses.contains_key(&**first)
     {
-        return;
+        let changed = match repository.runs.get(&commit) {
+            Some(run) => run.pull != pull,
+            None => false,
+        };
+        let mut templated = false;
+        for context in &repository.checks.contexts {
+            match cue(&repository.checks, context) {
+                Some(Cue::PullFile { .. }) => templated = true,
+                Some(Cue::File { .. } | Cue::Message { .. }) | None => {}
+            }
+        }
+        if !changed || !templated {
+            return;
+        }
     }
     if !repository.statuses.contains_key(&commit) {
         if !room(domain, id) {
@@ -45,10 +61,12 @@ pub(crate) fn start(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>, 
         let repository = domain.repositories.get_mut(id).expect("a repository of the forge");
         repository.statuses.insert(commit, Map::with_capacity(limits.contexts)).expect("room was made");
     }
-    crate::actions::start(domain, id, commit);
+    crate::actions::start(domain, id, commit, pull);
     let repository = domain.repositories.get(id).expect("a repository of the forge");
     let contexts = u32::try_from(repository.checks.contexts.len()).expect("contexts within the limits");
     for context in 0..contexts {
+        domain.timers.cancel(Alarm::Check { repository: id, commit, context });
+        domain.timers.cancel(Alarm::Rerun { repository: id, commit, context });
         let Some(name) = name(domain, id, context) else {
             break;
         };
@@ -78,8 +96,18 @@ pub(crate) fn report(domain: &mut Domain, env: &Env<Config>, id: Id<Repository>,
     let Some(name) = name(domain, id, context) else {
         unreachable!("a check's context is one of its repository's");
     };
-    let checks = &domain.repositories.get(id).expect("a repository of the forge").checks;
-    let state = match &checks.cue {
+    let repository = domain.repositories.get(id).expect("a repository of the forge");
+    let pull = repository.runs.get(&commit).expect("a CI run").pull;
+    let checks = &repository.checks;
+    let state = match cue(checks, &name) {
+        Some(Cue::PullFile { path, no_pull, .. }) => match pull {
+            Some(number) => {
+                let path = template(path, Some(number));
+                let tree = &domain.commits.get(&commit).expect("a commit of the store").tree;
+                if tree.contains_key(&*path) { Check::Passed } else { Check::Failed }
+            }
+            None => *no_pull,
+        },
         Some(Cue::File { path, green }) => {
             let tree = &domain.commits.get(&commit).expect("a commit of the store").tree;
             let green = match tree.get(&**path) {
@@ -244,7 +272,7 @@ fn reported(
     let observation = Observation::Reported { repository: copy_of(&repository.name), commit, context, state, by };
     let ended = match state {
         Check::Passed | Check::Failed => true,
-        Check::Pending => false,
+        Check::Pending | Check::Skipped => false,
     };
     if by == env.limits.ci
         && ended
@@ -254,4 +282,44 @@ fn reported(
     } else {
         domain.observations.push(observation);
     }
+}
+
+/// A context inherits the repository cue only when it names none.
+pub(crate) fn cue<'a>(checks: &'a Checks, context: &[u8]) -> Option<&'a Cue> {
+    for entry in &checks.cues {
+        if *entry.context == *context {
+            return Some(&entry.cue);
+        }
+    }
+    checks.cue.as_ref()
+}
+
+/// The maximum expanded length, including a full u64 pull number.
+pub(crate) fn template_bound(bytes: &[u8]) -> u32 {
+    let mut rest = bytes;
+    let mut size = u32::try_from(bytes.len()).expect("bounded template");
+    while let Some(index) = find(rest, b"{pull}") {
+        size = size.checked_add(14).expect("bounded template expansion");
+        rest = rest.get(index.checked_add(6).expect("template offset")..).expect("matched template");
+    }
+    size
+}
+
+pub(crate) fn template(bytes: &[u8], pull: Option<u64>) -> Box<[u8]> {
+    let Some(number) = pull else { return copy_of(bytes) };
+    let mut out = List::with_capacity(template_bound(bytes));
+    let mut rest = bytes;
+    while let Some(index) = find(rest, b"{pull}") {
+        for &byte in rest.get(..index).expect("matched prefix") {
+            out.push(byte).expect("expanded template capacity");
+        }
+        for &byte in skein_lib::Decimal::of(number).as_bytes() {
+            out.push(byte).expect("expanded template capacity");
+        }
+        rest = rest.get(index.checked_add(6).expect("template offset")..).expect("matched template");
+    }
+    for &byte in rest {
+        out.push(byte).expect("expanded template capacity");
+    }
+    out.into_boxed()
 }

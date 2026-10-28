@@ -791,6 +791,7 @@ fn verdict(value: &[u8]) -> Option<a::Verdict> {
 fn check(value: &[u8]) -> Option<a::Check> {
     Some(match value {
         b"pending" => a::Check::Pending,
+        b"skipped" => a::Check::Skipped,
         b"passed" => a::Check::Passed,
         b"failed" => a::Check::Failed,
         _ => return None,

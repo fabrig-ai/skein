@@ -210,6 +210,7 @@ impl World {
             config,
             hooked,
             da::Checks {
+                cues: Box::new([]),
                 contexts: Box::new([]),
                 latency_min: skein_lib::Duration::ZERO,
                 latency_max: skein_lib::Duration::ZERO,
@@ -746,6 +747,7 @@ fn failed_job() -> (World, Secret, api::JobAttempt) {
     let mut world = World::with_checks(
         f::SEED,
         da::Checks {
+            cues: Box::new([]),
             contexts: Box::new([f::boxed(b"ci")]),
             latency_min: skein_lib::Duration::ZERO,
             latency_max: skein_lib::Duration::ZERO,

@@ -127,7 +127,7 @@ impl Service {
                 let end = match ended.state {
                     Check::Passed => delivery::JobEnd::Success,
                     Check::Failed => delivery::JobEnd::Failure,
-                    Check::Pending => return None,
+                    Check::Pending | Check::Skipped => return None,
                 };
                 delivery::Delivery::Job { end, repository, commit: routes::object(ended.commit) }
             }

@@ -13,7 +13,7 @@ use crate::{
 fn check(state: a::Check) -> api::Check {
     match state {
         a::Check::Pending => api::Check::Pending,
-        a::Check::Passed => api::Check::Passed,
+        a::Check::Passed | a::Check::Skipped => api::Check::Passed,
         a::Check::Failed => api::Check::Failed,
     }
 }

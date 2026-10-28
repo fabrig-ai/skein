@@ -14,6 +14,7 @@ fn configured(config: crate::Config) -> (f::Harness, u64) {
         r::domain_config(),
         None,
         a::Checks {
+            cues: Box::new([]),
             contexts: Box::from([f::boxed(b"ci")]),
             latency_min: Duration::ZERO,
             latency_max: Duration::ZERO,

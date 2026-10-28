@@ -475,6 +475,7 @@ fn fixture_domain(seed: u64, logs: bool) -> (fake::Domain, fake::Config) {
                     crate::joint::checks(0)
                 } else {
                     a::Checks {
+                        cues: Box::new([]),
                         contexts: Box::from([]),
                         latency_min: Duration::ZERO,
                         latency_max: Duration::ZERO,

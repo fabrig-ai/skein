@@ -437,7 +437,7 @@ fn allowed(repository: &Repository, item: &Item, pull: &Pull, user: u64) -> bool
     for context in &protection.contexts {
         let passed = match repository.statuses.get(&pull.commit) {
             Some(statuses) => match statuses.get(&**context) {
-                Some(status) => status.state == Check::Passed,
+                Some(status) => status.state == Check::Passed || status.state == Check::Skipped,
                 None => false,
             },
             None => false,

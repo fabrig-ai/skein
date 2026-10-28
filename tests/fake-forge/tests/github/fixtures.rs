@@ -187,6 +187,7 @@ pub fn domain() -> (domain::Domain, domain::Config) {
                 tree: Box::new([]),
                 labels: Box::new([]),
                 checks: a::Checks {
+                    cues: Box::new([]),
                     contexts: Box::new([Box::from(b"ci".as_slice())]),
                     latency_min: Duration::from_secs(3600),
                     latency_max: Duration::from_secs(3600),

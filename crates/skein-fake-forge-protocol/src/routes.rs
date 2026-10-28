@@ -157,7 +157,8 @@ fn reviewers(config: &Config, logins: &[Box<[u8]>]) -> Option<Box<[u64]>> {
 pub fn check(state: d::StatusState) -> a::Check {
     match state {
         d::StatusState::Pending => a::Check::Pending,
-        d::StatusState::Success | d::StatusState::Skipped => a::Check::Passed,
+        d::StatusState::Success => a::Check::Passed,
+        d::StatusState::Skipped => a::Check::Skipped,
         d::StatusState::Error | d::StatusState::Failure | d::StatusState::Warning => a::Check::Failed,
     }
 }

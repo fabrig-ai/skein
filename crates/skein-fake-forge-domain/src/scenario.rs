@@ -33,15 +33,15 @@ pub fn repository(domain: &mut Domain, config: &Config, setup: Setup) -> u64 {
     fit_names(&checks.contexts, limits.contexts, limits).expect("contexts within the limits");
     assert!(checks.latency_min <= checks.latency_max, "CI's latency is a range");
     if let Some(cue) = &checks.cue {
-        match cue {
-            Cue::File { path, green } => {
-                fits(path, limits.name_bytes).expect("a path within the limits");
-                fits(green, limits.content_bytes).expect("content within the limits");
-            }
-            Cue::Message { fail } => {
-                fits(fail, limits.content_bytes).expect("a cue within the limits");
-            }
+        validate_cue(cue, limits);
+    }
+    assert!(checks.cues.len() <= checks.contexts.len(), "at most one cue per context");
+    for (index, entry) in checks.cues.iter().enumerate() {
+        assert!(checks.contexts.contains(&entry.context), "a cue names a configured context");
+        for previous in checks.cues.iter().take(index) {
+            assert_ne!(previous.context, entry.context, "one cue per context");
         }
+        validate_cue(&entry.cue, limits);
     }
     if let Some(protection) = &protection {
         fit_numbers(&protection.bypassing_users, limits.bypassing_users).expect("bypassing users within the limits");
@@ -258,4 +258,22 @@ pub fn check(domain: &mut Domain, env: &Env<Config>, repository: &[u8], number: 
     let repository = domain.repositories.get_mut(id).expect("a scenario repository");
     let item = repository.items.get_mut(&number).expect("a scenario item");
     item.pull.as_mut().expect("a scenario pull").checked = crate::domain::clock(env).saturating_add(span);
+}
+
+fn validate_cue(cue: &Cue, limits: &crate::Limits) {
+    match cue {
+        Cue::PullFile { path, no_pull, step, log } => {
+            assert_ne!(*no_pull, crate::api::Check::Pending, "a push cue has a verdict");
+            assert!(crate::ci::template_bound(path) <= limits.name_bytes, "expanded path within the limits");
+            fits(step, limits.name_bytes).expect("a step name within the limits");
+            assert!(crate::ci::template_bound(log) <= limits.content_bytes, "expanded log within the limits");
+        }
+        Cue::File { path, green } => {
+            fits(path, limits.name_bytes).expect("a path within the limits");
+            fits(green, limits.content_bytes).expect("content within the limits");
+        }
+        Cue::Message { fail } => {
+            fits(fail, limits.content_bytes).expect("a cue within the limits");
+        }
+    }
 }

@@ -693,6 +693,7 @@ impl Joint {
 #[must_use]
 pub fn checks(passes: u32) -> raw::Checks {
     raw::Checks {
+        cues: Box::new([]),
         contexts: Box::new([Box::from(b"build".as_slice())]),
         latency_min: Duration::ZERO,
         latency_max: Duration::ZERO,

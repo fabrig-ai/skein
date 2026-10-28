@@ -14,6 +14,7 @@ fn protected(queue: bool, approvals: u32, contexts: Box<[Box<[u8]>]>) -> f::Harn
 }
 fn checks(contexts: Box<[Box<[u8]>]>, fail: bool) -> a::Checks {
     a::Checks {
+        cues: Box::new([]),
         contexts,
         latency_min: skein_lib::Duration::from_secs(45),
         latency_max: skein_lib::Duration::from_secs(45),
