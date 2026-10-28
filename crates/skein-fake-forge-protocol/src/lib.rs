@@ -16,7 +16,7 @@ mod service;
 pub mod setup;
 pub mod tally;
 pub use server::{
-    Event, MAX_DOWN, MAX_UP, Server, close, closed, down, resume, resume_with_domain, start, up, up_with_domain,
+    Event, Server, close, closed, down, resume, resume_with_domain, start, up, up_with_domain,
 };
 pub use service::{Error, Service, valid};
 pub use tally::{Route, Tally, route};

@@ -133,7 +133,7 @@ fn overflow_keeps_a_later_accepted_installation() {
 #[test]
 fn held_installation_changes_reach_the_owner_before_the_next_page_is_asked() {
     use skein_forge_machine_world::machine::Response;
-    // Twenty retained rows exceed the sixteen-event entry-point allowance; one more makes an Unkept fact.
+    // Twenty retained rows exercise a loaded listing; one more makes an Unkept fact.
     const RETAINED: u32 = 20;
     const ROWS: u32 = RETAINED + 1;
     const OUTPUTS: u32 = RETAINED + 1;

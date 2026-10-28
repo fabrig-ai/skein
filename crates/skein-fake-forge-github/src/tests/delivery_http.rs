@@ -20,8 +20,8 @@ impl Connection {
             server: server::Server::new(Token::new(1), &limits).unwrap(),
             service: Service::new(f::config(), &limits, 1).unwrap(),
             env: Env { now: skein_lib::Time::ZERO, wall: wall(1200), limits },
-            above: Queue::with_capacity(server::MAX_UP),
-            below: Queue::with_capacity(server::MAX_DOWN),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             read: Read::Nothing,
         };
         server::start(
