@@ -733,7 +733,7 @@ fn replay_at_its_cap_owns_only_shared_text_and_fixed_records() {
     assert_eq!(meter.held(), 0, "compact replay allocations release together");
 }
 
-fn selective_peak(size: usize, call_arguments: bool) -> u64 {
+fn selective_peak(size: usize, call_arguments: bool) -> (u64, u64) {
     // A quarter MiB across the four independently ignored echo paths keeps
     // the ignored fields far larger than their retained limits.
     let text = "x".repeat(if call_arguments { size } else { size / 4 });
@@ -797,9 +797,10 @@ fn selective_peak(size: usize, call_arguments: bool) -> u64 {
     if call_arguments {
         assert!(world.seen.iter().any(|event| matches!(event, client::Event::Block { block: skein_llm::Block::Oversize { bytes, .. }, .. } if *bytes == u64::try_from(size).expect("fixture size fits u64"))));
     }
+    let held = u64::try_from(i64::try_from(meter.held()).expect("held fits") - outside).expect("client owns heap");
     world.request(client::Request::Close);
     world.settle();
-    peak
+    (peak, held)
 }
 
 /// Temporary output queues are handed out after each client call, so their
@@ -870,15 +871,21 @@ fn selective_step(
 #[test]
 fn selective_echo_high_water_is_independent_of_the_echo_size() {
     let short = selective_peak(64, false);
+    let middle = selective_peak(4096, false);
     let long = selective_peak(1 << 18, false);
-    assert_eq!(short, long, "discarded echoes never become an event buffer");
+    // The SSE reader's data Intake grows from 32 to 128 bytes on these inputs.
+    // A quarter above the measured 96-byte difference, rounded to two digits.
+    const COLD_GROWTH: u64 = 120;
+    assert!(middle.0 <= short.0 + COLD_GROWTH);
+    assert!(long.0 <= short.0 + COLD_GROWTH);
+    assert_eq!(short.1, long.1, "discarded echoes retain no event buffer");
 }
 
 #[test]
 fn selective_oversize_call_high_water_is_independent_of_the_argument_size() {
     let short = selective_peak(64, true);
     let long = selective_peak(1 << 18, true);
-    assert_eq!(short, long, "discarded arguments retain only their length");
+    assert_eq!(short.0, long.0, "discarded arguments retain only their length");
 }
 
 #[test]
