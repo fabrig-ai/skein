@@ -6,7 +6,6 @@ use alloc::boxed::Box;
 use skein_json::{Document, Kind, collector, tokenizer};
 use skein_lib::{Queue, Wall, bytes};
 
-pub(crate) const MAX_OUT: u32 = 3;
 #[derive(Debug)]
 pub(crate) enum Decoder {
     Responses(Provider, openai::StreamDecoder),
@@ -42,12 +41,12 @@ impl Decoder {
     pub(crate) fn ready(&mut self, limits: &openai::Limits, out: &mut Queue<Output>) {
         match self {
             Decoder::Responses(provider, decoder) => {
-                let mut raw = Queue::with_capacity(openai::MAX_OUT);
+                let mut raw = Queue::uncapped();
                 decoder.ready(&mut raw);
                 codex_outputs(*provider, &mut raw, limits, out);
             }
             Decoder::Anthropic(decoder) => {
-                let mut raw = Queue::with_capacity(anthropic::MAX_OUT);
+                let mut raw = Queue::uncapped();
                 decoder.ready(&mut raw);
                 anthropic_outputs(&mut raw, limits, out);
             }
@@ -80,7 +79,7 @@ impl Decoder {
                     }
                 }
                 let event = openai::decode_event(&json, limits)?;
-                let mut raw = Queue::with_capacity(openai::MAX_OUT);
+                let mut raw = Queue::uncapped();
                 match event {
                     openai::Event::Failed { error } => {
                         provider_error(error, status, rate, wall, *provider, out);
@@ -109,7 +108,7 @@ impl Decoder {
                     return Err(openai::DecodeError::Malformed);
                 }
                 let event = anthropic::decode_event(&json, limits)?;
-                let mut raw = Queue::with_capacity(anthropic::MAX_OUT);
+                let mut raw = Queue::uncapped();
                 match event {
                     anthropic::Event::Failed { error } => {
                         provider_error(error, status, rate, wall, Provider::Anthropic, out);
@@ -133,12 +132,12 @@ impl Decoder {
     pub(crate) fn end(&mut self, limits: &openai::Limits, out: &mut Queue<Output>) {
         match self {
             Decoder::Responses(provider, decoder) => {
-                let mut raw = Queue::with_capacity(openai::MAX_OUT);
+                let mut raw = Queue::uncapped();
                 decoder.end(&mut raw);
                 codex_outputs(*provider, &mut raw, limits, out);
             }
             Decoder::Anthropic(decoder) => {
-                let mut raw = Queue::with_capacity(anthropic::MAX_OUT);
+                let mut raw = Queue::uncapped();
                 decoder.end(&mut raw);
                 anthropic_outputs(&mut raw, limits, out);
             }
@@ -180,7 +179,7 @@ fn codex_outputs(
     limits: &openai::Limits,
     out: &mut Queue<Output>,
 ) {
-    for _slot in 0..openai::MAX_OUT {
+    for _slot in 0..raw.len() {
         let Some(event) = raw.pop() else {
             break;
         };
@@ -206,7 +205,7 @@ fn codex_outputs(
     }
 }
 fn anthropic_outputs(raw: &mut Queue<anthropic::Output>, limits: &openai::Limits, out: &mut Queue<Output>) {
-    for _slot in 0..anthropic::MAX_OUT {
+    for _slot in 0..raw.len() {
         let Some(event) = raw.pop() else {
             break;
         };

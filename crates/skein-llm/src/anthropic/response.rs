@@ -81,7 +81,6 @@ pub enum Output {
     Failed { failure: Failure, detail: Box<[u8]> },
     Progress,
 }
-pub const MAX_OUT: u32 = 3;
 
 #[derive(Debug)]
 enum Active {
@@ -130,7 +129,6 @@ impl StreamDecoder {
             detail_bytes: limits.detail_bytes,
         }
     }
-    /// The owner reserves `MAX_OUT` queue slots before delivering an event.
     /// Events following a terminal outcome are ignored.
     pub fn event(&mut self, event: Event, limits: &Limits, wall: Wall, out: &mut Queue<Output>) {
         self.received(event, None, limits, wall, out);

@@ -27,7 +27,6 @@ impl DocumentLimits {
 /// Heap bound for neutral whole-value admission and writing.
 pub(crate) fn worst_case(limits: &DocumentLimits) -> Option<u64> {
     use skein_json::{collector, document};
-    use skein_lib::{Queue, stream};
     let collector = collector::worst_case(
         &collector::Limits {
             tokenizer: limits.tokenizer_limits(),
@@ -40,7 +39,5 @@ pub(crate) fn worst_case(limits: &DocumentLimits) -> Option<u64> {
     )?;
     collector
         .checked_add(document::worst_case(&document::Limits { tokens: limits.tokens, text: limits.bytes })?)?
-        .checked_add(writer::worst_case(&limits.writer_limits())?)?
-        .checked_add(Queue::<collector::Event>::worst_case(1)?)?
-        .checked_add(Queue::<stream::Down>::worst_case(1)?)
+        .checked_add(writer::worst_case(&limits.writer_limits())?)
 }

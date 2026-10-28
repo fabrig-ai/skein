@@ -130,7 +130,6 @@ pub enum Output {
     Failed { failure: Failure, detail: Box<[u8]> },
     Progress,
 }
-pub const MAX_OUT: u32 = 3;
 #[derive(Debug)]
 pub struct StreamDecoder {
     provider: Provider,
@@ -197,7 +196,7 @@ impl StreamDecoder {
             terminal: None,
         }
     }
-    /// One event, with the caller reserving `MAX_OUT` output slots. Completed
+    /// One event. Completed
     /// items may arrive in any order; only the next ordered item is emitted.
     /// Deltas are forwarded immediately with their original item/content index.
     /// Drain `has_ready()` before delivering another event. Events following
