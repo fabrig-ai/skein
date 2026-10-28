@@ -343,8 +343,8 @@ fn parse(body: &[u8], specs: &[Field], limits: &Limits) -> Option<Fields> {
         has_variables: false,
         fields: Fields { values: List::with_capacity(u32::try_from(specs.len()).ok()?), logins: None },
     };
-    let mut above = Queue::with_capacity(1);
-    let mut below = Queue::with_capacity(1);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let mut intake =
         Intake::with_capacity(u32::try_from(body.len()).ok()?.max(tokenizer::largest_demand(&limits.json)));
     intake.append(body).ok()?;

@@ -118,8 +118,8 @@ fn tokens(body: &[u8], limits: &Limits) -> Option<List<Token>> {
     }
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits.json };
     let mut tokenizer = tokenizer::Tokenizer::new(&limits.json);
-    let mut above = Queue::with_capacity(1);
-    let mut below = Queue::with_capacity(1);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let mut tokens = List::with_capacity(16);
     let mut intake =
         Intake::with_capacity(u32::try_from(body.len()).ok()?.max(tokenizer::largest_demand(&limits.json)));

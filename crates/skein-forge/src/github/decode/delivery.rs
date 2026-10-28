@@ -280,8 +280,8 @@ pub fn decode(event: &[u8], body: &[u8], limits: &Limits) -> Result<Delivery, Ma
     }
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits.json };
     let mut tokenizer = tokenizer::Tokenizer::new(&limits.json);
-    let mut above = Queue::with_capacity(1);
-    let mut below = Queue::with_capacity(1);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     tokenizer::down(&mut tokenizer, &env, first(&decoder), &mut above, &mut below);
     let mut at = 0_usize;
     for _tick in 0..body.len().saturating_mul(8).saturating_add(64) {
