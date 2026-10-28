@@ -54,26 +54,6 @@ pub type Lower = skein_io::Request;
 /// An io event the owner routes by the component token echoed as owner.
 pub type LowerEvent = skein_io::Event;
 
-/// The most outputs one entrance emits; the owner reserves this room first.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MaxOut {
-    pub above: u32,
-    pub io: u32,
-    pub files: u32,
-}
-
-/// Room reserved before one owner request.
-pub const MAX_OUT_DOWN: MaxOut = MaxOut { above: 3, io: 3, files: 1 };
-
-/// Room reserved before firing one due account or progressing one exchange.
-pub const MAX_OUT_FIRE: MaxOut = MaxOut { above: 3, io: 3, files: 1 };
-
-/// Room reserved before one routed io event.
-pub const MAX_OUT_UP: MaxOut = MaxOut { above: 1, io: 1, files: 0 };
-
-/// Room reserved before one routed file terminal.
-pub const MAX_OUT_FILED: MaxOut = MaxOut { above: 3, io: 3, files: 1 };
-
 /// A private keeper request or cancellation for the owner's `FileIo` (oauth.md, section 6.4).
 /// Requests use `file_layer::down_until`; cancellations use `file_layer::cancel`.
 /// The owner handles controls while `FileIo` is busy. A cancelled request still
@@ -227,7 +207,7 @@ impl Component {
         }
     }
 
-    /// Handles one owner request with `MAX_OUT_DOWN` room reserved in all queues.
+    /// Handles one owner request, emitting into uncapped handoff queues.
     pub fn down(
         &mut self,
         env: &Env<Limits>,
@@ -499,7 +479,7 @@ impl Component {
         }
     }
 
-    /// Routes one socket event by its component owner token, with `MAX_OUT_UP` room.
+    /// Routes one socket event by its component owner token.
     pub fn up(
         &mut self,
         env: &Env<Limits>,

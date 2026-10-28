@@ -1,5 +1,5 @@
 //! One issuer exchange and its HTTP/TLS socket (oauth.md, sections 2, 3 and 6.4).
-//! Keeps bounded child queues and one response document; knows no grant policy
+//! Keeps child handoffs and one bounded response document; knows no grant policy
 //! or durable store. The component routes io events and advances one child at a
 //! time, then consumes the client's terminal before closing the connection.
 

@@ -57,7 +57,7 @@ fn head(state: &[u8], fields: &[u8]) -> Box<[u8]> {
     joined(&[b"GET /callback?state=", state, fields, b" HTTP/1.1\r\nHost: 127.0.0.1:41000\r\n\r\n"])
 }
 fn settle_listener(owner: &mut Owner, listener: Token) {
-    let mut held = Queue::with_capacity(32);
+    let mut held = Queue::uncapped();
     for _ in 0_u32..16 {
         owner.fire();
         let mut closed = false;

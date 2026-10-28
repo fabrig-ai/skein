@@ -32,7 +32,7 @@ fn roomy() -> (Component, Env<Limits>) {
 #[test]
 fn an_added_name_is_refused_while_a_live_account_holds_it() {
     let (mut component, env) = roomy();
-    let mut up = Queue::with_capacity(MAX_OUT_DOWN.above);
+    let mut up = Queue::uncapped();
     component.add(&env, ADDED, Account::HandedIn, &mut up);
     component.add(&env, ADDED, Account::HandedIn, &mut up);
     assert_refused(up.pop(), ADDED, Asked::Add, Refusal::Taken);
@@ -41,7 +41,7 @@ fn an_added_name_is_refused_while_a_live_account_holds_it() {
 #[test]
 fn an_add_past_the_accounts_limit_is_refused_as_full() {
     let (mut component, env) = roomy();
-    let mut up = Queue::with_capacity(MAX_OUT_DOWN.above);
+    let mut up = Queue::uncapped();
     for account in [ADDED, ADDED.saturating_add(1)] {
         component.add(&env, account, Account::HandedIn, &mut up);
     }
@@ -101,7 +101,7 @@ fn an_added_configuration_new_refuses_is_refused_as_unusable() {
         ("path", bad_path(), Unusable::Path { account: ADDED }),
     ] {
         let (mut component, env) = roomy();
-        let mut up = Queue::with_capacity(MAX_OUT_DOWN.above);
+        let mut up = Queue::uncapped();
         component.add(&env, ADDED, configuration, &mut up);
         assert_eq!(refusal_of(up.pop()), Some((ADDED, Asked::Add, Refusal::Unusable(why))), "{name}");
     }
@@ -110,14 +110,14 @@ fn an_added_configuration_new_refuses_is_refused_as_unusable() {
 #[test]
 fn an_added_private_account_starts_its_load_at_the_next_fire() {
     let (mut component, env) = roomy();
-    let mut up = Queue::with_capacity(MAX_OUT_DOWN.above);
+    let mut up = Queue::uncapped();
     let mut configuration = refresh_account(ADDED, ADDRESS);
     if let Account::SignIn { keeper, .. } = &mut configuration {
         *keeper = private_keeper(bytes::copy_of(b"secret"));
     }
     component.add(&env, ADDED, configuration, &mut up);
-    let mut files = Queue::with_capacity(MAX_OUT_FIRE.files);
-    component.fire(&env, &mut up, &mut Queue::with_capacity(MAX_OUT_FIRE.io), &mut files);
+    let mut files = Queue::uncapped();
+    component.fire(&env, &mut up, &mut Queue::uncapped(), &mut files);
     match files.pop() {
         Some(FileLower::Request { request: file::Request::OpenPrivate { .. }, .. }) => {}
         Some(FileLower::Request { .. } | FileLower::Cancel { .. } | FileLower::Remove { .. }) | None => {
@@ -553,14 +553,14 @@ fn an_account_no_longer_wanted_drops_its_unsent_refresh_deadline() {
 #[test]
 fn a_free_name_is_added_with_no_answer() {
     let (mut component, env) = roomy();
-    let mut up = Queue::with_capacity(MAX_OUT_DOWN.above);
+    let mut up = Queue::uncapped();
     component.add(&env, ADDED, Account::HandedIn, &mut up);
     assert!(up.is_empty());
 }
 #[test]
 fn an_add_at_the_accounts_limit_is_admitted() {
     let (mut component, env) = roomy();
-    let mut up = Queue::with_capacity(MAX_OUT_DOWN.above);
+    let mut up = Queue::uncapped();
     for account in [ADDED, ADDED.saturating_add(1)] {
         component.add(&env, account, Account::HandedIn, &mut up);
     }

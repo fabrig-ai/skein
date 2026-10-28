@@ -115,31 +115,25 @@ impl Owner {
         Owner {
             component: Component::new(configured, &limits, crypto(7)).expect("private account"),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            above: Queue::with_capacity(32),
-            io: Queue::with_capacity(32),
-            files: Queue::with_capacity(32),
+            above: Queue::uncapped(),
+            io: Queue::uncapped(),
+            files: Queue::uncapped(),
         }
     }
     pub(super) fn ask(&mut self, request: Request) {
         self.component.down(&self.env, request, &mut self.above, &mut self.io, &mut self.files);
     }
     pub(super) fn fire(&mut self) {
-        let before_above = self.above.len();
-        let before_io = self.io.len();
-        let before_files = self.files.len();
         self.component.fire(&self.env, &mut self.above, &mut self.io, &mut self.files);
-        assert!(self.above.len().saturating_sub(before_above) <= MAX_OUT_FIRE.above);
-        assert!(self.io.len().saturating_sub(before_io) <= MAX_OUT_FIRE.io);
-        assert!(self.files.len().saturating_sub(before_files) <= MAX_OUT_FIRE.files);
+
+
+
     }
     pub(super) fn terminal(&mut self, event: file::Event) {
-        let before_above = self.above.len();
-        let before_io = self.io.len();
-        let before_files = self.files.len();
         self.component.filed(&self.env, event, &mut self.above, &mut self.io, &mut self.files);
-        assert!(self.above.len().saturating_sub(before_above) <= MAX_OUT_FILED.above);
-        assert!(self.io.len().saturating_sub(before_io) <= MAX_OUT_FILED.io);
-        assert!(self.files.len().saturating_sub(before_files) <= MAX_OUT_FILED.files);
+
+
+
     }
     pub(super) fn next(&mut self) -> file::Request {
         for _ in 0_u32..32 {
@@ -654,7 +648,7 @@ impl Owner {
     pub(super) fn finish_tokens(&mut self, identity: Token, body: &[u8]) -> Queue<Event> {
         let response = Self::response(body);
         let mut remaining = response.as_ref();
-        let mut events = Queue::with_capacity(32);
+        let mut events = Queue::uncapped();
         for _ in 0..DRIVE_STEPS {
             self.fire();
             while let Some(event) = self.above.pop() {
@@ -804,7 +798,7 @@ impl Owner {
         head: &mut &[u8],
         answer: &mut List<u8>,
     ) -> bool {
-        let mut deferred = Queue::with_capacity(32);
+        let mut deferred = Queue::uncapped();
         let mut closed = false;
         while let Some(request) = self.io.pop() {
             match request {

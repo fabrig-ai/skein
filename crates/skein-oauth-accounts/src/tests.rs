@@ -82,7 +82,7 @@ fn setup() -> (Component, Env<Limits>, Queue<Event>) {
         Err(_) => unreachable!("account slot"),
     }
     let component = Component::new(accounts, &limits, crypto(1)).expect("component");
-    (component, Env { now: Time::ZERO, wall: Wall::EPOCH, limits }, Queue::with_capacity(MAX_OUT_DOWN.above))
+    (component, Env { now: Time::ZERO, wall: Wall::EPOCH, limits }, Queue::uncapped())
 }
 fn tests_record(generation: u64) -> SavedToken {
     SavedToken {
@@ -104,8 +104,8 @@ fn hand_in(component: &mut Component, env: &Env<Limits>, out: &mut Queue<Event>,
         env,
         Request::HandIn { account: 0, record: tests_record(generation) },
         out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
 }
 fn assert_event(event: Option<Event>, expected: Event) {
@@ -138,31 +138,31 @@ fn a_handed_in_record_is_lent_while_it_is_valid() {
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_granted(out.pop(), 1, 30);
     component.down(
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_refused(out.pop(), 0, Asked::Grant, Refusal::Held);
     component.down(
         &env,
         Request::Release { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     component.down(
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_granted(out.pop(), 1, 30);
 }
@@ -175,30 +175,30 @@ fn an_access_only_record_is_announced_expiring_once_and_fails_at_expiry() {
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     drop(out.pop());
     assert_eq!(component.next_deadline(), Some(Time::from_nanos(20_000_000_000)));
     env.now = Time::from_nanos(20_000_000_000);
     // Wall jumps never extend a running grant's deadline.
     env.wall = Wall::from_nanos(100_000_000_000);
-    component.fire(&env, &mut out, &mut Queue::with_capacity(MAX_OUT_DOWN.io), &mut Queue::with_capacity(1));
+    component.fire(&env, &mut out, &mut Queue::uncapped(), &mut Queue::uncapped());
     assert_event(out.pop(), Event::Expiring { account: 0, generation: 1 });
-    component.fire(&env, &mut out, &mut Queue::with_capacity(MAX_OUT_DOWN.io), &mut Queue::with_capacity(1));
+    component.fire(&env, &mut out, &mut Queue::uncapped(), &mut Queue::uncapped());
     assert!(out.is_empty());
     assert_eq!(component.next_deadline(), Some(Time::from_nanos(30_000_000_000)));
     env.now = Time::from_nanos(30_000_000_000);
-    component.fire(&env, &mut out, &mut Queue::with_capacity(MAX_OUT_DOWN.io), &mut Queue::with_capacity(1));
+    component.fire(&env, &mut out, &mut Queue::uncapped(), &mut Queue::uncapped());
     assert_expired(out.pop());
-    component.fire(&env, &mut out, &mut Queue::with_capacity(MAX_OUT_DOWN.io), &mut Queue::with_capacity(1));
+    component.fire(&env, &mut out, &mut Queue::uncapped(), &mut Queue::uncapped());
     assert!(out.is_empty());
     component.down(
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_expired(out.pop());
 }
@@ -211,24 +211,24 @@ fn a_rejected_record_fails_until_a_newer_one_is_handed_in() {
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     drop(out.pop());
     component.down(
         &env,
         Request::Rejected { account: 0, generation: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert!(out.is_empty());
     component.down(
         &env,
         Request::Rejected { account: 0, generation: 1 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_expired(out.pop());
     hand_in(&mut component, &env, &mut out, 1);
@@ -236,8 +236,8 @@ fn a_rejected_record_fails_until_a_newer_one_is_handed_in() {
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_expired(out.pop());
     env.now = Time::from_nanos(1_000_000_000);
@@ -247,8 +247,8 @@ fn a_rejected_record_fails_until_a_newer_one_is_handed_in() {
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_granted(out.pop(), 2, 29);
 }
@@ -261,8 +261,8 @@ fn a_newer_record_announces_the_new_generation_while_held() {
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     drop(out.pop());
     hand_in(&mut component, &env, &mut out, 0);
@@ -280,8 +280,8 @@ fn a_record_with_a_refresh_token_or_past_its_bounds_is_refused() {
         &env,
         Request::HandIn { account: 0, record },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_refused(out.pop(), 0, Asked::HandIn, Refusal::NotAccessOnly);
     let mut record = tests_record(1);
@@ -290,8 +290,8 @@ fn a_record_with_a_refresh_token_or_past_its_bounds_is_refused() {
         &env,
         Request::HandIn { account: 0, record },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_refused(out.pop(), 0, Asked::HandIn, Refusal::Record(skein_oauth::DecodeError::TooLarge));
 }
@@ -301,47 +301,47 @@ fn close_and_abort_settle_once_clear_deadlines_and_refuse_new_work_as_closed() {
     for close in [Request::Close, Request::Abort] {
         let (mut component, env, mut out) = setup();
         hand_in(&mut component, &env, &mut out, 1);
-        component.down(&env, close, &mut out, &mut Queue::with_capacity(MAX_OUT_DOWN.io), &mut Queue::with_capacity(1));
+        component.down(&env, close, &mut out, &mut Queue::uncapped(), &mut Queue::uncapped());
         assert_event(out.pop(), Event::Closed);
         assert_eq!(component.next_deadline(), None);
         component.down(
             &env,
             Request::Close,
             &mut out,
-            &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-            &mut Queue::with_capacity(1),
+            &mut Queue::uncapped(),
+            &mut Queue::uncapped(),
         );
         component.down(
             &env,
             Request::Abort,
             &mut out,
-            &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-            &mut Queue::with_capacity(1),
+            &mut Queue::uncapped(),
+            &mut Queue::uncapped(),
         );
-        component.fire(&env, &mut out, &mut Queue::with_capacity(MAX_OUT_DOWN.io), &mut Queue::with_capacity(1));
+        component.fire(&env, &mut out, &mut Queue::uncapped(), &mut Queue::uncapped());
         assert!(out.is_empty());
         component.down(
             &env,
             Request::Grant { account: 9 },
             &mut out,
-            &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-            &mut Queue::with_capacity(1),
+            &mut Queue::uncapped(),
+            &mut Queue::uncapped(),
         );
         assert_refused(out.pop(), 9, Asked::Grant, Refusal::Closed);
         component.down(
             &env,
             Request::SignIn { account: 9, subject: None },
             &mut out,
-            &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-            &mut Queue::with_capacity(1),
+            &mut Queue::uncapped(),
+            &mut Queue::uncapped(),
         );
         assert_refused(out.pop(), 9, Asked::SignIn, Refusal::Closed);
         component.down(
             &env,
             Request::Redirected { account: 9, uri: bytes::copy_of(b"late") },
             &mut out,
-            &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-            &mut Queue::with_capacity(1),
+            &mut Queue::uncapped(),
+            &mut Queue::uncapped(),
         );
         assert_refused(out.pop(), 9, Asked::Redirected, Refusal::Closed);
 
@@ -357,16 +357,16 @@ fn a_missing_account_and_missing_record_have_typed_terminals() {
         &env,
         Request::Grant { account: 3 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_refused(out.pop(), 3, Asked::Grant, Refusal::Account);
     component.down(
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_expired(out.pop());
 }
@@ -379,19 +379,19 @@ fn a_released_record_still_announces_its_lead_without_an_expiry_failure() {
         &env,
         Request::Grant { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     drop(out.pop());
     component.down(
         &env,
         Request::Release { account: 0 },
         &mut out,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     env.now = Time::from_nanos(20_000_000_000);
-    component.fire(&env, &mut out, &mut Queue::with_capacity(MAX_OUT_DOWN.io), &mut Queue::with_capacity(1));
+    component.fire(&env, &mut out, &mut Queue::uncapped(), &mut Queue::uncapped());
     assert_event(out.pop(), Event::Expiring { account: 0, generation: 1 });
     assert_eq!(component.next_deadline(), None);
 }
@@ -428,9 +428,9 @@ fn a_refresh_refused_as_sign_in_again_drops_an_owner_kept_record() {
     assert!(configured.push(refresh_account(0, ([127, 0, 0, 1], 31000).into())).is_ok());
     let mut component = Component::new(configured, &profile, crypto(1)).expect("owner-kept account");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: profile };
-    let mut above = Queue::with_capacity(MAX_OUT_DOWN.above);
-    let mut io = Queue::with_capacity(MAX_OUT_DOWN.io);
-    let mut files = Queue::with_capacity(1);
+    let mut above = Queue::uncapped();
+    let mut io = Queue::uncapped();
+    let mut files = Queue::uncapped();
     component.down(&env, Request::Grant { account: 0 }, &mut above, &mut io, &mut files);
     component::refuse_refresh(&mut component, &env, &mut above, &mut io);
     assert_event(
@@ -457,14 +457,14 @@ fn an_exchange_bound_refuses_a_second_account_before_admitting_its_grant() {
     );
     let mut component = Component::new(configured, &limits, crypto(1)).expect("configured component");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(MAX_OUT_DOWN.above);
-    let mut io = Queue::with_capacity(MAX_OUT_DOWN.io);
-    component.down(&env, Request::Grant { account: 0 }, &mut above, &mut io, &mut Queue::with_capacity(1));
+    let mut above = Queue::uncapped();
+    let mut io = Queue::uncapped();
+    component.down(&env, Request::Grant { account: 0 }, &mut above, &mut io, &mut Queue::uncapped());
     assert!(above.is_empty() && io.is_empty(), "grant waits for refresh child work");
-    component.down(&env, Request::Grant { account: 1 }, &mut above, &mut io, &mut Queue::with_capacity(1));
+    component.down(&env, Request::Grant { account: 1 }, &mut above, &mut io, &mut Queue::uncapped());
     assert_refused(above.pop(), 1, Asked::Grant, Refusal::Full { bound: 1 });
-    component.down(&env, Request::Abort, &mut above, &mut io, &mut Queue::with_capacity(1));
-    component.fire(&env, &mut above, &mut io, &mut Queue::with_capacity(1));
+    component.down(&env, Request::Abort, &mut above, &mut io, &mut Queue::uncapped());
+    component.fire(&env, &mut above, &mut io, &mut Queue::uncapped());
     assert_event(
         above.pop(),
         Event::Failed { account: 0, ends: Ends::Grant, failure: Failure::Exchange(skein_oauth::Failure::Cancelled) },
@@ -476,7 +476,7 @@ fn an_exchange_bound_refuses_a_second_account_before_admitting_its_grant() {
         Request::Kept { account: 0, generation: 1, keeping: Keeping::Kept },
         &mut above,
         &mut io,
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
     );
     assert!(above.is_empty() && io.is_empty(), "stale keeper terminal after abort is inert");
     assert!(!component.has_work() && component.next_deadline().is_none(), "abort settled every child");
@@ -538,8 +538,8 @@ fn a_name_no_live_account_holds_is_refused() {
             &env,
             request,
             &mut above,
-            &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-            &mut Queue::with_capacity(MAX_OUT_DOWN.files),
+            &mut Queue::uncapped(),
+            &mut Queue::uncapped(),
         );
         assert_refused(above.pop(), MISSING, asked, Refusal::Account);
     }
@@ -558,13 +558,13 @@ fn an_owner_record_without_an_issued_id_is_held_as_none() {
     assert!(configured.push(account).is_ok());
     let mut component = Component::new(configured, &profile, crypto(1)).expect("issued registration");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: profile };
-    let mut above = Queue::with_capacity(MAX_OUT_DOWN.above);
+    let mut above = Queue::uncapped();
     component.down(
         &env,
         Request::Grant { account: 0 },
         &mut above,
-        &mut Queue::with_capacity(MAX_OUT_DOWN.io),
-        &mut Queue::with_capacity(MAX_OUT_DOWN.files),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     assert_expired(above.pop());
 }
@@ -681,7 +681,7 @@ fn scope_grant(refresh: bool) -> (Option<Failure>, bool) {
         let identity = owner.sent();
         owner.finish_tokens(identity, &scope_body(b"read"))
     } else {
-        core::mem::replace(&mut owner.above, Queue::with_capacity(32))
+        core::mem::replace(&mut owner.above, Queue::uncapped())
     };
     let failure =
         if let Some(Event::Failed { ends: Ends::Grant, failure, .. }) = events.pop() { Some(failure) } else { None };

@@ -90,13 +90,13 @@ fn signed_in_names_the_records_subject() {
 #[test]
 fn handed_in_accounts_refuse_sign_in_and_redirect_without_child_work() {
     let (mut component, env, mut above) = setup();
-    let mut below = Queue::with_capacity(MAX_OUT_DOWN.io);
+    let mut below = Queue::uncapped();
     component.down(
         &env,
         Request::SignIn { account: 0, subject: None },
         &mut above,
         &mut below,
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
     );
     assert_refused(above.pop(), 0, Asked::SignIn, Refusal::Source);
     component.down(
@@ -104,7 +104,7 @@ fn handed_in_accounts_refuse_sign_in_and_redirect_without_child_work() {
         Request::Redirected { account: 0, uri: bytes::copy_of(b"http://localhost:31234/callback?state=a&code=b") },
         &mut above,
         &mut below,
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
     );
     assert_refused(above.pop(), 0, Asked::Redirected, Refusal::Source);
     assert!(below.is_empty());
@@ -140,14 +140,14 @@ fn public_sign_in_admission_respects_listener_and_account_bounds() {
     assert!(configured.push(refresh_account(1, address)).is_ok());
     let mut component = Component::new(configured, &profile, crypto(17)).expect("component");
     let mut env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: profile };
-    let mut above = Queue::with_capacity(MAX_OUT_DOWN.above);
-    let mut below = Queue::with_capacity(MAX_OUT_DOWN.io);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     component.down(
         &env,
         Request::SignIn { account: 0, subject: None },
         &mut above,
         &mut below,
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
     );
     assert_refused(above.pop(), 0, Asked::SignIn, Refusal::Full { bound: 0 });
     assert!(below.is_empty());
@@ -161,7 +161,7 @@ fn public_sign_in_admission_respects_listener_and_account_bounds() {
         Request::SignIn { account: 0, subject: None },
         &mut above,
         &mut below,
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
     );
     assert!(above.is_empty());
     assert!(below.pop().is_some());
@@ -170,7 +170,7 @@ fn public_sign_in_admission_respects_listener_and_account_bounds() {
         Request::SignIn { account: 0, subject: None },
         &mut above,
         &mut below,
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
     );
     assert_refused(above.pop(), 0, Asked::SignIn, Refusal::Busy);
     component.down(
@@ -178,7 +178,7 @@ fn public_sign_in_admission_respects_listener_and_account_bounds() {
         Request::SignIn { account: 1, subject: None },
         &mut above,
         &mut below,
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
     );
     assert_refused(above.pop(), 1, Asked::SignIn, Refusal::Full { bound: 1 });
     assert!(below.is_empty());
