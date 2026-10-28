@@ -57,8 +57,8 @@ struct Ran {
 /// The steps of one exchange, each checked.
 fn exchange(limits: Limits, call: &Call, upload: usize, response: &[u8], read: Read, interrupt: Interrupt) -> Ran {
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(client::UP_MAX_OUT.above.max(client::DOWN_MAX_OUT.above));
-    let mut below = Queue::with_capacity(client::UP_MAX_OUT.below.max(client::DOWN_MAX_OUT.below));
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let cap = u32::try_from(response.len()).expect("fits a u32").max(client::largest_read(&limits));
     let mut intake = Intake::with_capacity(cap);
     intake.append(response).expect("the stream holds it");

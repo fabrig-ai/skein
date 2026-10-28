@@ -44,7 +44,6 @@
 //! [`Limits::headers`] fields each; a chunk's size line and the trailer
 //! section, at most [`Limits::head`] each. The body is not bounded: it is
 //! a stream, and the side above stops reading it when it has had enough.
-//! Each entry point emits at most [`UP_MAX_OUT`] or [`DOWN_MAX_OUT`];
 //! [`worst_case`] is what a client holds; [`largest_read`] and
 //! [`largest_room`] are what whoever stacks it checks against the caps of
 //! the stream below at startup.
@@ -57,7 +56,7 @@ use skein_lib::stream::{Delimiter, Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, List, Queue};
 
 use crate::body::{self, Face, Incoming, Pumped, Rest};
-use crate::{Header, MaxOut};
+use crate::Header;
 
 mod head;
 mod request;
@@ -149,15 +148,6 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         .checked_add(u64::from(limits.request))?
         .checked_add(u64::from(limits.read))
 }
-
-/// [`up`]'s: above, a response and the upload stopped, a body's end and
-/// `Done`, or a stream told it failed and `Failed`; below, the request head
-/// sent and the next demand.
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 2, below: 2 };
-
-/// [`down`]'s: above, a body's end and `Done`, or `Closed`; below, a
-/// demand, a send, or a withdrawal.
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 2, below: 1 };
 
 /// From the side above.
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -362,7 +352,7 @@ impl Client {
     }
 }
 
-/// An event from the stream below. Emits at most [`UP_MAX_OUT`].
+/// An event from the stream below.
 pub fn up(client: &mut Client, env: &Env<Limits>, ev: Up, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let state = mem::replace(&mut client.state, State::Closed);
@@ -376,7 +366,7 @@ pub fn up(client: &mut Client, env: &Env<Limits>, ev: Up, above: &mut Queue<Even
     };
 }
 
-/// A request from the side above. Emits at most [`DOWN_MAX_OUT`].
+/// A request from the side above.
 pub fn down(client: &mut Client, env: &Env<Limits>, rq: Request, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let intake = &mut client.intake;
