@@ -55,10 +55,6 @@ fn clients_are_present_unique_and_bounded_and_the_key_is_checked() {
     let mut bad = settings();
     bad.key = secret(b"not a key");
     assert_eq!(Issuer::new(bad, limits()).expect_err("bad key"), Error::Key);
-    let mut huge = limits();
-    huge.claim_bytes = u32::MAX;
-    assert_eq!(worst_case(&huge), None, "unrepresentable maximum document");
-    assert_eq!(Issuer::new(settings(), huge).expect_err("arithmetic"), Error::Limits);
 }
 #[test]
 fn endpoint_rules_accept_https_and_each_loopback_spelling() {
@@ -73,4 +69,30 @@ fn endpoint_rules_accept_https_and_each_loopback_spelling() {
         settings.issuer = boxed(url);
         assert!(Issuer::new(settings, limits()).is_ok(), "{url:?}");
     }
+}
+
+#[test]
+fn valid_accepts_test_limits() {
+    assert!(valid(&limits()));
+}
+
+#[test]
+fn valid_refuses_an_answer_past_u32() {
+    let huge = Limits { claim_bytes: u32::MAX, ..limits() };
+    assert!(!valid(&huge));
+    assert_eq!(Issuer::new(settings(), huge).expect_err("answer length"), Error::Limits);
+}
+
+#[test]
+fn valid_refuses_discovery_past_u32() {
+    let huge = Limits { uri_bytes: 150_000_000, ..limits() };
+    assert!(!valid(&huge));
+    assert_eq!(Issuer::new(settings(), huge).expect_err("discovery length"), Error::Limits);
+}
+
+#[test]
+fn valid_refuses_form_slots_past_u32() {
+    let huge = Limits { request_bytes: u32::MAX, ..limits() };
+    assert!(!valid(&huge));
+    assert_eq!(Issuer::new(settings(), huge).expect_err("form slots"), Error::Limits);
 }
