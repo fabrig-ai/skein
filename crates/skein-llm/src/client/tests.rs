@@ -666,5 +666,4 @@ fn valid_refuses_tagged_text_capacity_past_u32() {
 fn valid_ignores_heap_opened_items() {
     let bounds = Limits { output_items: u32::MAX, input: u32::MAX, retained: 1, ..limits() };
     assert!(valid(&bounds));
-    assert_eq!(worst_case(&bounds), None);
 }

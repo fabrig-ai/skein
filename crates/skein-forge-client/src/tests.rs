@@ -898,5 +898,4 @@ fn valid_refuses_keep_capacity_past_u32() {
 fn valid_ignores_heap_cached_operations() {
     let limits = Limits { resources: 1_000_000_000, op_bytes: u32::MAX, ..LIMITS };
     assert!(crate::valid(&limits));
-    assert_eq!(worst_case(&limits), None);
 }

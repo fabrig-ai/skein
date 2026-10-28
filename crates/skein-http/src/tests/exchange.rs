@@ -345,22 +345,22 @@ fn no_close_after_closed() {
 #[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
 fn valid_refuses_a_head_shorter_than_a_blank_line() {
     let limits = Limits { head: 1, ..LIMITS };
-    assert!(!crate::client::valid(&limits));
-    let _machine = crate::client::Client::new(&limits);
+    assert!(!client::valid(&limits));
+    let _machine = client::Client::new(&limits);
 }
 
 #[test]
 #[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
 fn valid_refuses_a_zero_read() {
     let limits = Limits { read: 0, ..LIMITS };
-    assert!(!crate::client::valid(&limits));
-    let _machine = crate::client::Client::new(&limits);
+    assert!(!client::valid(&limits));
+    let _machine = client::Client::new(&limits);
 }
 
 #[test]
 #[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
 fn valid_refuses_a_zero_send() {
     let limits = Limits { send: 0, ..LIMITS };
-    assert!(!crate::client::valid(&limits));
-    let _machine = crate::client::Client::new(&limits);
+    assert!(!client::valid(&limits));
+    let _machine = client::Client::new(&limits);
 }

@@ -1051,5 +1051,4 @@ fn valid_ignores_heap_pool_sum() {
     let mut endpoints = List::with_capacity(1);
     endpoints.push(endpoint()).unwrap();
     assert!(valid(&bounds, &endpoints));
-    assert_eq!(worst_case(&bounds, &endpoints), None);
 }

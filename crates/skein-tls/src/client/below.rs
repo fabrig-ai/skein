@@ -143,7 +143,7 @@ pub(super) fn wanted(open: &Open, buffers: &Buffers) -> Result<Option<Demand>, E
         match open.above.demand {
             Some(Wanted { room: 0, .. }) | None => Room::None,
             Some(Wanted { room, .. }) => {
-                Room::Above { ciphertext: room_for(room).expect("checked by worst_case"), plaintext: room }
+                Room::Above { ciphertext: room_for(room).expect("checked by valid"), plaintext: room }
             }
         }
     } else {

@@ -238,23 +238,27 @@ pub(super) fn check(l: &Limits, settings: &Settings) -> Result<(), Unusable> {
         if reachable > l.inner {
             return Err(Unusable::Reachable { forge: number, reachable, inner: l.inner });
         }
-        if !skein_http::client::valid(&h) || l.body_bytes_in == u32::MAX {
-            return Err(Unusable::Zero);
-        }
-        super::memory::largest_page(l, &forge.kind).ok_or(Unusable::Zero)?;
-        match &forge.kind {
-            Kind::Forgejo(_) => {}
-            Kind::GitHub(given) => {
-                // Discovery reserves one pinned page per configured page.
-                given.limits.pages.checked_mul(dialect::pin::PAGE_CAP).ok_or(Unusable::Zero)?;
-                // PEM's base64 spelling is an edge with a u32 length.
-                skein_lib::base64::encoded_len(skein_lib::base64::Alphabet::Standard, given.limits.key_bytes)
-                    .ok_or(Unusable::Zero)?;
-            }
-        }
+        capacity_bound(l, &forge.kind, tls).ok_or(Unusable::Zero)?;
     }
     Ok(())
 }
+fn capacity_bound(l: &Limits, kind: &Kind, tls: bool) -> Option<()> {
+    if !skein_http::client::valid(&http_transport(l, tls)) || l.body_bytes_in == u32::MAX {
+        return None;
+    }
+    super::memory::largest_page(l, kind)?;
+    match kind {
+        Kind::Forgejo(_) => {}
+        Kind::GitHub(given) => {
+            // Discovery reserves one pinned page per configured page.
+            given.limits.pages.checked_mul(dialect::pin::PAGE_CAP)?;
+            // PEM's base64 spelling is an edge with a u32 length.
+            skein_lib::base64::encoded_len(skein_lib::base64::Alphabet::Standard, given.limits.key_bytes)?;
+        }
+    }
+    Some(())
+}
+
 fn stacks(l: &Limits) -> Result<(), Unusable> {
     for tls in [true, false] {
         let h = http_transport(l, tls);

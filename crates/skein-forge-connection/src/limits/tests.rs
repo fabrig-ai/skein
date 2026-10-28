@@ -475,8 +475,8 @@ fn valid_accepts_test_limits() {
 }
 
 fn refuses_limits(limits: super::Limits, shared: Shared, settings: crate::Settings) {
-    assert!(check(&limits, &shared, &settings).is_err());
-    assert!(crate::Component::new(settings, &limits, &shared).is_err());
+    let error = check(&limits, &shared, &settings).expect_err("unrepresentable limits");
+    assert_eq!(crate::Component::new(settings, &limits, &shared).err(), Some(error));
 }
 
 #[test]
@@ -536,5 +536,4 @@ fn valid_ignores_heap_call_tables() {
     let limits = super::Limits { connections: u32::MAX, ..fixtures::limits() };
     let shared = Shared { calls: u32::MAX, rows: u32::MAX, answer_bytes: u32::MAX, ..fixtures::shared() };
     assert_eq!(check(&limits, &shared, &fixtures::settings()), Ok(()));
-    assert_eq!(super::worst_case(&limits, &shared, super::Forges { forgejo: 1, github: 0 }, 0), None);
 }
