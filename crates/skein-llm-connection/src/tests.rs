@@ -954,3 +954,102 @@ fn measured_admission_keeps_each_providers_lengths_and_refusals() {
         }
     }
 }
+
+#[test]
+fn valid_accepts_test_limits() {
+    let mut endpoints = List::with_capacity(1);
+    endpoints.push(endpoint()).unwrap();
+    assert!(valid(&limits(), &endpoints));
+}
+
+fn refuses_limits(bounds: Limits, given: Endpoint, error: EndpointError) {
+    let mut endpoints = List::with_capacity(1);
+    endpoints.push(given).unwrap();
+    assert!(!valid(&bounds, &endpoints));
+    assert_eq!(Component::new(endpoints, &bounds).err(), Some(error));
+}
+
+#[test]
+fn valid_refuses_zero_endpoints() {
+    refuses_limits(Limits { endpoints: 0, ..limits() }, endpoint(), EndpointError::TooMany);
+}
+
+#[test]
+fn valid_refuses_zero_connections() {
+    refuses_limits(Limits { connections: 0, ..limits() }, endpoint(), EndpointError::Limits);
+}
+
+#[test]
+fn valid_refuses_zero_calls() {
+    refuses_limits(Limits { calls: 0, ..limits() }, endpoint(), EndpointError::Limits);
+}
+
+#[test]
+fn valid_refuses_zero_per_endpoint() {
+    refuses_limits(Limits { per_endpoint: 0, ..limits() }, endpoint(), EndpointError::Limits);
+}
+
+#[test]
+fn valid_refuses_per_endpoint_past_connections() {
+    refuses_limits(Limits { per_endpoint: 2, ..limits() }, endpoint(), EndpointError::Limits);
+}
+
+#[test]
+fn valid_refuses_calls_past_connections() {
+    refuses_limits(
+        Limits { calls: 2, ..limits() },
+        endpoint(),
+        EndpointError::ConnectionsCalls { connections: 1, calls: 2 },
+    );
+}
+
+#[test]
+fn valid_refuses_more_endpoints_than_the_cap() {
+    let mut endpoints = List::with_capacity(2);
+    endpoints.push(endpoint()).unwrap();
+    endpoints.push(endpoint()).unwrap();
+    assert!(!valid(&limits(), &endpoints));
+    assert_eq!(Component::new(endpoints, &limits()).err(), Some(EndpointError::TooMany));
+}
+
+#[test]
+fn valid_refuses_a_request_head_past_u32() {
+    let mut given = endpoint();
+    given.credential.value = u32::MAX;
+    let error = skein_llm::client::request_head(&given.llm, &given.credential, &given.limits).unwrap_err();
+    refuses_limits(limits(), given, EndpointError::Client(error));
+}
+
+#[test]
+fn valid_refuses_a_call_larger_than_the_pool() {
+    let given = endpoint();
+    let mut client = given.limits;
+    client.http.request = skein_llm::client::request_head(&given.llm, &given.credential, &client).unwrap();
+    let call = skein_llm::client::largest_reservation(&client).unwrap();
+    refuses_limits(Limits { memory: 0, ..limits() }, given, EndpointError::MemoryLargestCall { memory: 0, call });
+}
+
+#[test]
+fn valid_refuses_unrepresentable_client_edges() {
+    let mut given = endpoint();
+    given.limits.tokens = u32::MAX;
+    refuses_limits(limits(), given, EndpointError::Limits);
+}
+
+#[test]
+fn valid_refuses_unrepresentable_tls_intake() {
+    refuses_limits(
+        Limits { tls: skein_tls::client::Limits { read: u32::MAX, ..limits().tls }, ..limits() },
+        endpoint(),
+        EndpointError::Limits,
+    );
+}
+
+#[test]
+fn valid_ignores_heap_pool_sum() {
+    let bounds = Limits { memory: u64::MAX, ..limits() };
+    let mut endpoints = List::with_capacity(1);
+    endpoints.push(endpoint()).unwrap();
+    assert!(valid(&bounds, &endpoints));
+    assert_eq!(worst_case(&bounds, &endpoints), None);
+}

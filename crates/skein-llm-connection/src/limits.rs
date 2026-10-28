@@ -19,9 +19,11 @@ pub struct Limits {
     pub tls: skein_tls::client::Limits,
 }
 
-/// Conservative bytes for the complete pool and component tables.
+/// Whether these limits are representable: every edge bound they size
+/// is finite and every capacity they derive fits (programming-model.md, 6.3).
+/// Each endpoint's largest call reservation fits the shared memory pool.
 #[must_use]
-pub fn worst_case(limits: &Limits, endpoints: &List<crate::Endpoint>) -> Option<u64> {
+pub fn valid(limits: &Limits, endpoints: &List<crate::Endpoint>) -> bool {
     if limits.endpoints == 0
         || limits.connections == 0
         || limits.calls == 0
@@ -30,6 +32,37 @@ pub fn worst_case(limits: &Limits, endpoints: &List<crate::Endpoint>) -> Option<
         || limits.per_endpoint > limits.connections
         || endpoints.len() > limits.endpoints
     {
+        return false;
+    }
+    for endpoint in endpoints {
+        let mut client = endpoint.limits;
+        client.http.request = match skein_llm::client::request_head(&endpoint.llm, &endpoint.credential, &client) {
+            Ok(head) => head,
+            Err(_) => return false,
+        };
+        if !skein_llm::client::valid(&client) {
+            return false;
+        }
+        match skein_llm::client::largest_reservation(&client) {
+            Some(reservation) if reservation <= limits.memory => {}
+            Some(_) | None => return false,
+        }
+        match &endpoint.transport {
+            crate::Transport::Tls { .. } => {
+                if !skein_tls::client::valid(&limits.tls) {
+                    return false;
+                }
+            }
+            crate::Transport::Plaintext => {}
+        }
+    }
+    true
+}
+
+/// Conservative bytes for the complete pool and component tables.
+#[must_use]
+pub fn worst_case(limits: &Limits, endpoints: &List<crate::Endpoint>) -> Option<u64> {
+    if !valid(limits, endpoints) {
         return None;
     }
     let routes = Queue::<skein_llm::client::Event>::worst_case(64)?

@@ -17,7 +17,7 @@ use skein_tls::client as tls;
 use crate::boundary::{Event, Refusal, Request};
 use crate::call::{Connection, Phase};
 use crate::endpoint::{Endpoint, EndpointError, Transport};
-use crate::limits::{Limits, worst_case};
+use crate::limits::{Limits, valid};
 
 /// The owner's call pool, ending with Closed after physical socket settlement.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -163,7 +163,7 @@ impl Component {
                 }
             }
         }
-        if worst_case(limits, &endpoints).is_none() {
+        if !valid(limits, &endpoints) {
             return Err(EndpointError::Limits);
         }
         Ok(Component {
@@ -664,7 +664,7 @@ impl Component {
     /// Checked heap bound using the normalized limits of configured endpoints.
     #[must_use]
     pub fn worst_case(&self) -> Option<u64> {
-        worst_case(&self.limits, &self.endpoints)
+        crate::worst_case(&self.limits, &self.endpoints)
     }
 
     /// Releases settled connection slots at the owning loop's reclaim point.
