@@ -88,3 +88,28 @@ fn injected_random_latencies_stay_inside_the_declared_inclusive_span() {
     }
     assert_eq!(Span::millis(4, 4).draw(&mut rng), Duration::from_millis(4));
 }
+
+#[test]
+fn an_uncapped_stage_hands_on_every_event() {
+    let mut stage = Stage::<(), u32, (u32, u32)>::uncapped(());
+    for event in 0..100 {
+        stage.push(event);
+    }
+    for event in 0..100 {
+        assert!(stage.has_room());
+        assert_eq!(stage.next_event(), Some(event));
+        for request in 0..3 {
+            stage.out.push((event, request));
+            assert!(stage.has_room());
+        }
+    }
+    assert_eq!(stage.next_event(), None);
+    assert!(!stage.has_events());
+    assert_eq!(stage.out.len(), 300);
+    for event in 0..100 {
+        for request in 0..3 {
+            assert_eq!(stage.out.pop(), Some((event, request)));
+        }
+    }
+    assert!(stage.out.is_empty());
+}

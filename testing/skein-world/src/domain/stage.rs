@@ -10,7 +10,7 @@ use skein_lib::{Env, Queue, Time, Wall};
 /// environment, the events on their way to it, and the queue its steps and
 /// alarms emit into. A step or an alarm runs only while the queue has room for
 /// the most one may emit, so a slow consumer holds events back instead of
-/// overflowing the queue.
+/// overflowing the queue. An uncapped stage holds no events or alarms back.
 ///
 /// The world calls the domain itself, with `env` and `out`: for each event
 /// [`Stage::next_event`] hands it, then for each alarm due while
@@ -22,9 +22,10 @@ pub struct Stage<L, E, R> {
     pub env: Env<L>,
     /// FIFO events awaiting output room; the world bounds incoming work.
     pub inbox: VecDeque<E>,
-    /// Owned requests emitted by steps, bounded by the constructor capacity.
+    /// Owned requests emitted by steps, capped when the stage has a capacity.
     pub out: Queue<R>,
     /// The most one step or alarm may emit; keep no greater than `out.capacity()`.
+    /// Zero for an uncapped stage.
     pub max_out: u32,
 }
 
@@ -36,6 +37,14 @@ impl<L, E, R> Stage<L, E, R> {
         assert!(capacity >= max_out, "the queue has room for what one step may emit");
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
         Stage { env, inbox: VecDeque::new(), out: Queue::with_capacity(capacity), max_out }
+    }
+
+    /// A stage for a domain whose steps and alarms emit into an uncapped
+    /// queue: nothing is reserved, so every event is handed on and every
+    /// alarm runs (draft dynamic-memory 4).
+    #[must_use]
+    pub fn uncapped(limits: L) -> Stage<L, E, R> {
+        Stage { out: Queue::uncapped(), ..Stage::new(limits, 0, 0) }
     }
 
     /// Starts an iteration at `now`: every step in it sees the same time.

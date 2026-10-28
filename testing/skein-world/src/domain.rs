@@ -8,7 +8,8 @@
 //! `World` at the crate root, whose API is unchanged.
 //!
 //! `Schedule` delivers once in time/serial order; `Stage` reserves `max_out`
-//! room before handing over an event; `Ledger` checks one terminal per open key.
+//! room before handing over an event, or hands every event on when uncapped;
+//! `Ledger` checks one terminal per open key.
 //! `Referee` observes safety and arms liveness, emitting immediate or timed
 //! stimuli; `assert_replays` compares both boundary trace and scenario outcome.
 //! `heap` reuses skein's counting allocator and handed-output accounting.
