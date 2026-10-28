@@ -56,9 +56,6 @@ impl Host for Echo {
         }
         Some(Exit::Code(u8::from(self.svc.failure().is_some())))
     }
-    fn worst_case(&self) -> u64 {
-        service::worst_case(&self.limits).expect("startup priced the limits")
-    }
     fn operations(&self) -> u32 {
         service::operations(&self.limits).expect("startup priced the ring")
     }
