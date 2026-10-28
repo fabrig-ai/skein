@@ -75,6 +75,7 @@ pub struct HostWorld {
     aborts: u32,
     seed: u64,
     needs: Vec<Need>,
+    needs_by_run: Vec<(Token, Need)>,
     reads: Vec<Item>,
     pause_writes: bool,
     pending_writes: Vec<(Token, Item, Secret)>,
@@ -229,6 +230,7 @@ impl HostWorld {
             aborts: 0,
             seed,
             needs: Vec::new(),
+            needs_by_run: Vec::new(),
             reads: Vec::new(),
             pause_writes: false,
             pending_writes: Vec::new(),
@@ -275,6 +277,11 @@ impl HostWorld {
     #[must_use]
     pub fn needs(&self) -> &[Need] {
         &self.needs
+    }
+    /// Needs in delivery order with their originating run tokens.
+    #[must_use]
+    pub fn needs_by_run(&self) -> &[(Token, Need)] {
+        &self.needs_by_run
     }
     /// Ephemeral owner input, consumed by its single Pasted read (5.8).
     pub fn paste(&mut self, pem: Secret) {
@@ -476,6 +483,7 @@ impl HostWorld {
             let at = self.env.now.saturating_since(Time::ZERO);
             match event {
                 Event::Need { run, need } => {
+                    self.needs_by_run.push((run, need.clone()));
                     self.needs.push(need.clone());
                     let answer = match need {
                         Need::Read(item) => {
