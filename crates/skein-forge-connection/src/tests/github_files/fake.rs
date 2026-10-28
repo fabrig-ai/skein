@@ -122,7 +122,7 @@ impl Fake {
         fake
     }
     fn drive(&mut self, event: domain::Event) -> Result<a::Answer, a::Error> {
-        let mut out = Queue::with_capacity(domain::MAX_OUT);
+        let mut out = Queue::uncapped();
         domain::step_admitted(&mut self.domain, &self.env, event, &mut out);
         if out.is_empty() {
             domain::fire(&mut self.domain, &self.env, &mut out);

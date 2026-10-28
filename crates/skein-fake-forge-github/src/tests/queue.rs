@@ -368,7 +368,7 @@ fn running_queue(green: bool) -> (f::Harness, u64, u64, Secret) {
 }
 
 fn advance_queue(h: &mut f::Harness) {
-    let mut out = skein_lib::Queue::with_capacity(fake::MAX_OUT);
+    let mut out = skein_lib::Queue::uncapped();
     for _ in 0..128_u32 {
         let Some(at) = h.domain.next_deadline() else {
             break;

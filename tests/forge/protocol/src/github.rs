@@ -224,7 +224,7 @@ impl Github {
     fn release_hooks(&mut self) {
         // The bounded domain may have several zero-latency hooks before its next call.
         while self.domain.next_deadline().is_some_and(|at| at <= self.fake_env.now) {
-            let mut out = Queue::with_capacity(fake::MAX_OUT);
+            let mut out = Queue::uncapped();
             fake::fire(&mut self.domain, &self.fake_env, &mut out);
             while let Some(hook) = out.pop() {
                 assert!(matches!(hook, fake::Request::Hook { .. }), "direct calls settle synchronously");
@@ -414,7 +414,7 @@ impl Github {
     }
     fn domain_call(&mut self, event: fake::Event) -> Result<raw::Answer, raw::Error> {
         self.release_hooks();
-        let mut out = Queue::with_capacity(fake::MAX_OUT);
+        let mut out = Queue::uncapped();
         fake::step_admitted(&mut self.domain, &self.fake_env, event, &mut out);
         for _ in 0..64 {
             if !out.is_empty() {
