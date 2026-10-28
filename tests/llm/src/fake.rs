@@ -78,9 +78,7 @@ pub fn extra_worst_case(
     }
     let queues = Queue::<provider::Event>::worst_case(provider::MAX_UP)?
         .checked_add(u64::from(provider::MAX_UP).checked_mul(provider::head_worst_case(&peer)?)?)?
-        .checked_add(Queue::<Down>::worst_case(provider::MAX_DOWN)?)?
-        .checked_add(Queue::<fake::Request>::worst_case(fake::MAX_OUT)?)?
-        .checked_add(u64::from(fake::MAX_OUT).checked_mul(u64::from(config().answer_bytes))?)?;
+        .checked_add(Queue::<Down>::worst_case(provider::MAX_DOWN)?)?;
     let traces = observation_worst_case(observations)?;
     // The fixed intakes also bound a delivered box while it enters either
     // receiver. Queue-owned wire sends can coexist with those deliveries.
@@ -442,7 +440,7 @@ impl Exchange {
             client_below: Queue::uncapped(),
             peer_above: Queue::with_capacity(provider::MAX_UP),
             peer_below: Queue::with_capacity(provider::MAX_DOWN),
-            replies: Queue::with_capacity(fake::MAX_OUT),
+            replies: Queue::uncapped(),
             to_client: Intake::with_capacity(32768),
             to_peer: Intake::with_capacity(32768),
             client_demand: None,

@@ -1,7 +1,7 @@
 use super::respond;
 use crate::api::{Answer, Error, Failure, Finish, Line, Part, Piece, Query, Report, Script, Scripts, Turn};
 use crate::tests::{CONFIG, played, query, says, script, user};
-use crate::{Domain, Event, MAX_OUT, Request, fire, step};
+use crate::{Domain, Event, Request, fire, step};
 use alloc::boxed::Box;
 use skein_lib::bytes::copy_of;
 use skein_lib::{Duration, Env, Queue, ReplyTo, Rng, Time, Token, Wall};
@@ -67,7 +67,7 @@ fn a_failure_leaves_the_turn_for_the_call_made_again() {
 
 fn call_at(domain: &mut Domain, query: &Query, now: Time) -> Result<Answer, Failure> {
     let env = Env { now, wall: Wall::EPOCH, limits: CONFIG };
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     let call = Token::new(7);
     let reply_to = ReplyTo::new(call);
     step(domain, &env, Event::Call { reply_to, call, query: query.clone() }, &mut out);

@@ -5,7 +5,7 @@ use std::mem::size_of;
 use skein_fake_llm_domain::api::{
     Error, Finish, InvalidInput, Line, Menu, Message, Part, Query, Role, Script, ToolSpec, Turn,
 };
-use skein_fake_llm_domain::{Config, Domain, Event, MAX_OUT, Request, fire, step, worst_case};
+use skein_fake_llm_domain::{Config, Domain, Event, Request, fire, step, worst_case};
 use skein_heap::{Counting, Meter};
 use skein_lib::{Duration, Env, Queue, ReplyTo, Time, Token, Wall};
 
@@ -65,7 +65,7 @@ fn caps() -> skein_fake_llm_domain::Config {
 fn exact_joint_menu_script_cap_and_all_delayed_slots_include_empty_part_wrappers() {
     let config = caps();
     let bound = worst_case(&config).expect("checked bound");
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     let meter = Meter::new();
     meter.start();
     let mut domain = Domain::configured(&config, 7, scripts(), menu()).expect("exact joint script/menu cap");
@@ -117,6 +117,7 @@ fn exact_joint_menu_script_cap_and_all_delayed_slots_include_empty_part_wrappers
     assert_eq!(terminals, config.calls);
     domain.reclaim();
     assert_eq!(domain.calls(), 0);
+    drop(core::mem::replace(&mut out, Queue::uncapped()));
     drop(domain);
     assert_eq!(meter.held(), 0, "all owned wrappers reclaimed after actual terminals");
 
@@ -148,7 +149,7 @@ fn exact_query_cap_is_accepted_and_one_byte_less_returns_one_actual_refusal() {
         let config = caps();
         let config = Config { query_bytes: config.query_bytes - u32::from(!fits), ..config };
         let bound = worst_case(&config).expect("checked query-bound control");
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = Queue::uncapped();
         let meter = Meter::new();
         meter.start();
         let mut domain = Domain::try_scripted(&config, 7, scripts()).expect("unchanged admitted script");
@@ -188,6 +189,7 @@ fn exact_query_cap_is_accepted_and_one_byte_less_returns_one_actual_refusal() {
         assert_eq!(domain.next_deadline(), None);
         domain.reclaim();
         assert_eq!(domain.calls(), 0);
+        drop(core::mem::replace(&mut out, Queue::uncapped()));
         drop(domain);
         assert_eq!(meter.held(), 0, "query control leaves no retained or transferred ownership");
     }
@@ -233,7 +235,7 @@ fn random_and_scripted_full_and_truncated_tool_scratch_stays_within_the_bound() 
             ..caps()
         };
         let bound = worst_case(&config).expect("checked tool scratch bound");
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = Queue::uncapped();
         let meter = Meter::new();
         meter.start();
         let scripts = if scripted { tool_scripts() } else { Box::new([]) };
@@ -305,6 +307,7 @@ fn random_and_scripted_full_and_truncated_tool_scratch_stays_within_the_bound() 
         let measured = meter.end();
         meter.check(measured, bound, &"tool slots reclaimed after actual outputs");
         assert_eq!(domain.calls(), 0);
+        drop(core::mem::replace(&mut out, Queue::uncapped()));
         drop(domain);
         assert_eq!(meter.held(), 0, "caller scripts, menus, scratch and transferred tools are all released");
     }
@@ -379,7 +382,7 @@ fn the_cache_table_reaches_its_bound_under_the_counted_domain_footprint() {
     use skein_fake_llm_domain::api::Caching;
     let config = Config { cache_entries: 3, query_bytes: caps().query_bytes + 4, ..caps() };
     let bound = worst_case(&config).unwrap();
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     let meter = Meter::new();
     meter.start();
     let mut domain = Domain::new(&config, 5);
@@ -416,6 +419,7 @@ fn the_cache_table_reaches_its_bound_under_the_counted_domain_footprint() {
         meter.check(measured, bound, &"real delayed answer and retained full cache");
     }
     meter.start();
+    drop(core::mem::replace(&mut out, Queue::uncapped()));
     drop(domain);
     let measured = meter.end();
     assert_eq!(measured.held(), 0, "the cache retains no ownership after its domain is dropped");
