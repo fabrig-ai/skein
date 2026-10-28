@@ -26,11 +26,3 @@ pub use key::{KeyReader, KeyWriter};
 pub use limits::{Limits, worst_case};
 pub use store::{Store, down, fire, is_ready, up};
 
-/// The most a step emits into each queue.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct MaxOut {
-    pub above: u32,
-    pub below: u32,
-}
-
-pub const MAX_OUT: MaxOut = MaxOut { above: 64, below: 2 };

@@ -104,7 +104,7 @@ impl Snapshot {
 }
 
 /// One store under one directory. It sends file requests below and events
-/// above; the caller reserves `MAX_OUT` room before each step.
+/// above; the caller's queues may be uncapped.
 #[derive(Debug)]
 pub struct Store {
     phase: Phase,
