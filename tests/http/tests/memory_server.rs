@@ -4,8 +4,8 @@
 //! own never more than its `worst_case`.
 //!
 //! The connection owns the stream below and its buffer before the meter.
-//! Its uncapped output queues leave with each step's emitted values. An input moved into a step was counted by
-//! whoever made it (testing.md, 5). Each delivery is made between steps, by
+//! Its uncapped output queues leave with each step's emitted values. An input
+//! moved into a step was counted by whoever made it (testing.md, 5). Each delivery is made between steps, by
 //! the stream below, to the machine's demand: the machine's worst case
 //! covers it. A response, a piece of the response body, and an event or a
 //! comment to write are the side above's, which made them: the step that

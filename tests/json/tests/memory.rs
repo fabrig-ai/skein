@@ -5,7 +5,8 @@
 //!
 //! The connection owns the stream below and its buffer before the meter.
 //! Its uncapped output queues are handed out after each step, so their
-//! growth is counted with the receiver. Each delivery is made between steps, by the
+//! growth is counted with the receiver. Each delivery is made between steps,
+//! by the
 //! stream below, and is the tokenizer's to count from when it is handed over
 //! (lib.md, 7). What a step emits, a token's box among it, is handed out:
 //! dropped before the check, as its receiver's.

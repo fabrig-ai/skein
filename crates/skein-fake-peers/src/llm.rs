@@ -95,8 +95,15 @@ impl Peer {
         }
         let mut credentials = Vec::with_capacity(usize::try_from(provider::MAX_CREDENTIALS).expect("u32 fits"));
         credentials.push(credential);
+        let mut face = Face::new(address, limits)?;
+        let mut requests = core::mem::replace(&mut face.requests, Queue::uncapped());
+        for _request in 0..requests.len() {
+            let request = requests.pop().expect("initial face request present");
+            face.requests.push(request);
+        }
+        face.events = Queue::uncapped();
         Ok(Self {
-            face: Face::new(address, limits)?,
+            face,
             transport,
             service: provider::Service::new(config, &protocol_limits).map_err(|_| Error::Limits)?,
             credentials,
@@ -235,7 +242,7 @@ impl Peer {
                     server: provider::Server::new(owner, &self.protocol_limits).expect("validated peer limits"),
                     above: Queue::uncapped(),
                     below: Queue::uncapped(),
-                    plain: Queue::with_capacity(limits.queue),
+                    plain: Queue::uncapped(),
                     closing: false,
                 };
                 provider::start(
@@ -294,14 +301,11 @@ impl Peer {
         }
     }
 
-    #[expect(clippy::too_many_lines, reason = "bounded peer passes with explicit queue reservations")]
+    #[expect(clippy::too_many_lines, reason = "peer passes route protocol, transport and domain records")]
     fn progress(&mut self, now: Time, wall: Wall) {
         let env = Env { now, wall, limits: self.protocol_limits };
         let domain_env = Env { now, wall, limits: self.domain_limits };
         for index in 0..self.connections.len() {
-            if self.face.requests.room() < 32 {
-                break;
-            }
             let connection = &mut self.connections[index];
             if self.face.stopping {
                 provider::close(
@@ -313,37 +317,33 @@ impl Peer {
                 );
                 connection.closing = true;
             }
-            {
-                if let Some(up) = connection.plain.pop() {
-                    if self.ignore_half_close && up == Up::End {
-                        continue;
-                    }
-                    provider::up(
-                        &mut connection.server,
-                        &mut self.service,
-                        &self.credentials,
-                        &env,
-                        up,
-                        &mut connection.above,
-                        &mut connection.below,
-                    );
-                } else if connection.server.has_work() {
-                    provider::resume(
-                        &mut connection.server,
-                        &mut self.service,
-                        &self.credentials,
-                        &env,
-                        &mut connection.above,
-                        &mut connection.below,
-                    );
+            if let Some(up) = connection.plain.pop() {
+                if self.ignore_half_close && up == Up::End {
+                    continue;
                 }
+                provider::up(
+                    &mut connection.server,
+                    &mut self.service,
+                    &self.credentials,
+                    &env,
+                    up,
+                    &mut connection.above,
+                    &mut connection.below,
+                );
+            } else if connection.server.has_work() {
+                provider::resume(
+                    &mut connection.server,
+                    &mut self.service,
+                    &self.credentials,
+                    &env,
+                    &mut connection.above,
+                    &mut connection.below,
+                );
             }
-            if connection.plain.room() >= 3 {
-                if let Some(down) = connection.below.pop() {
-                    connection.wire.down(down, &mut connection.plain, &mut self.face.requests);
-                }
-                connection.wire.pump(&mut connection.plain, &mut self.face.requests);
+            if let Some(down) = connection.below.pop() {
+                connection.wire.down(down, &mut connection.plain, &mut self.face.requests);
             }
+            connection.wire.pump(&mut connection.plain, &mut self.face.requests);
             if let Some(event) = connection.above.pop() {
                 match event {
                     provider::Event::Head { headers, presented } => {
@@ -387,7 +387,7 @@ impl Peer {
             }
         }
         for connection in &mut self.connections {
-            if connection.closing && connection.below.is_empty() && self.face.requests.room() > 0 {
+            if connection.closing && connection.below.is_empty() {
                 connection.wire.close(&mut self.face.requests);
             }
         }
@@ -436,10 +436,7 @@ impl Peer {
 impl Host for Peer {
     fn iterate(&mut self, now: Time, wall: Wall) {
         self.face.up(now, wall);
-        for _ in 0..self.face.limits.queue {
-            if self.face.requests.room() < 32 {
-                break;
-            }
+        for _ in 0..self.face.events.len() {
             let Some(event) = self.face.events.pop() else { break };
             self.event(event, now, wall);
         }

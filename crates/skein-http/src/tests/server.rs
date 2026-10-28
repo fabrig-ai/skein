@@ -38,12 +38,7 @@ struct Machine {
 
 impl Machine {
     fn new(limits: Limits) -> Machine {
-        Machine {
-            server: Server::new(&limits),
-            env: env(limits),
-            above: Queue::uncapped(),
-            below: Queue::uncapped(),
-        }
+        Machine { server: Server::new(&limits), env: env(limits), above: Queue::uncapped(), below: Queue::uncapped() }
     }
 
     /// Sends `rq` down; what came of it, above and below.

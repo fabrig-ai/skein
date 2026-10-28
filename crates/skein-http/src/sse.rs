@@ -51,7 +51,6 @@ use alloc::boxed::Box;
 use skein_lib::stream::{Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, List, Queue, bytes};
 
-
 mod lines;
 pub mod writer;
 
