@@ -218,8 +218,15 @@ impl Client {
     /// connections following `plans`, each of which must fit the limits.
     #[must_use]
     pub fn new(limits: &Limits, plans: &[Plan]) -> Client {
-        assert!(limits.queue >= io::MAX_OUT_UP.submissions.max(io::MAX_OUT_DOWN.submissions)
-            .max(io::MAX_OUT_RESUME.submissions).max(io::MAX_OUT_FIRE.submissions), "kernel submission room");
+        assert!(
+            limits.queue
+                >= io::MAX_OUT_UP
+                    .submissions
+                    .max(io::MAX_OUT_DOWN.submissions)
+                    .max(io::MAX_OUT_RESUME.submissions)
+                    .max(io::MAX_OUT_FIRE.submissions),
+            "kernel submission room"
+        );
         assert!(limits.line <= limits.io.largest_read(), "io's intake holds an answer");
         let count = u32::try_from(plans.len()).expect("fewer than 2^32 plans");
         let mut conns = List::with_capacity(count);
@@ -509,4 +516,3 @@ fn io_down(client: &mut Client) {
 fn io_room(client: &Client, max: io::MaxOut) -> bool {
     client.submissions.room() >= max.submissions
 }
-

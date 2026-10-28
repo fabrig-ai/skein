@@ -215,8 +215,9 @@ fn decoded_claims(jwt: &[u8]) -> Box<[u8]> {
 }
 
 // Each measured call includes retained heap and all its output and temporary
-// allocations. Inputs and queue storage belong to the caller; returned bytes
-// are subtracted from retained heap after the peak has been checked.
+// allocations, including a temporary output queue allocated and dropped in
+// the call. Inputs belong to the caller; returned bytes are subtracted from
+// retained heap after the peak has been checked.
 fn measured<T>(live: &mut i64, bound: u64, output_bytes: impl FnOnce(&T) -> usize, call: impl FnOnce() -> T) -> T {
     let span = Span::start();
     let output = call();

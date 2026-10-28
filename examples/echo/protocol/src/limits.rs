@@ -75,4 +75,3 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
     let lines = u64::from(conns).checked_add(1)?.checked_mul(u64::from(limits.line))?;
     tables.checked_add(lines)
 }
-

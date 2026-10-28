@@ -243,15 +243,14 @@ fn a_seed_replays_to_the_same_digests_after_every_iteration() {
     assert!(digests.len() > 1, "sessions coming and going change the echo's state");
 }
 
-
 #[path = "../../../examples/echo/service/src/io_stage.rs"]
 mod io_stage;
 
 #[test]
 fn the_service_drains_each_stage_in_order_with_the_kernel_queue_near_full() {
     use skein_io::{self as io, Event, Request, kernel};
-    use skein_lib::{Env, Queue, Time, Token, Wall};
     use skein_lib::stream::{Down, Read, Up};
+    use skein_lib::{Env, Queue, Time, Token, Wall};
 
     // A held write leaves room for ready work, but completions and timers
     // still wait for their two kernel submissions.
@@ -266,21 +265,36 @@ fn the_service_drains_each_stage_in_order_with_the_kernel_queue_near_full() {
     let mut told = Queue::uncapped();
     let timed = machine.adopt_append(kernel::Fd::new(40), DEADLINE).expect("append slot");
     let ready = machine.adopt_write_pipe(kernel::Fd::new(41), None).expect("pipe slot");
-    io::down(&mut machine, &env, Request::Stream { stream: timed,
-        down: Down::Demand { read: Read::Nothing, room: 1 } }, &mut submissions);
+    io::down(
+        &mut machine,
+        &env,
+        Request::Stream { stream: timed, down: Down::Demand { read: Read::Nothing, room: 1 } },
+        &mut submissions,
+    );
     machine.reclaim();
     io_stage::up(&mut machine, &env, &mut completions, &mut told, &mut submissions, Time::ZERO);
     drop(told.pop());
-    io::down(&mut machine, &env, Request::Stream { stream: timed,
-        down: Down::Send(Box::from(b"x".as_slice())) }, &mut submissions);
+    io::down(
+        &mut machine,
+        &env,
+        Request::Stream { stream: timed, down: Down::Send(Box::from(b"x".as_slice())) },
+        &mut submissions,
+    );
     let write = submissions.pop().expect("append write");
     io::down(&mut machine, &env, Request::Usage { owner: OWNER }, &mut submissions);
     let usage = submissions.pop().expect("usage query");
-    completions.push(kernel::Complete { op: usage.op, kind: usage.kind,
-        result: Ok(kernel::Done::Usage(kernel::Usage::ZERO)) });
+    completions.push(kernel::Complete {
+        op: usage.op,
+        kind: usage.kind,
+        result: Ok(kernel::Done::Usage(kernel::Usage::ZERO)),
+    });
     submissions.push(write);
-    io::down(&mut machine, &env, Request::Stream { stream: ready,
-        down: Down::Demand { read: Read::Nothing, room: 1 } }, &mut submissions);
+    io::down(
+        &mut machine,
+        &env,
+        Request::Stream { stream: ready, down: Down::Demand { read: Read::Nothing, room: 1 } },
+        &mut submissions,
+    );
     machine.reclaim();
     let now = Time::ZERO.saturating_add(DEADLINE);
     io_stage::up(&mut machine, &env, &mut completions, &mut told, &mut submissions, now);
@@ -290,10 +304,14 @@ fn the_service_drains_each_stage_in_order_with_the_kernel_queue_near_full() {
     io_stage::up(&mut machine, &late, &mut completions, &mut told, &mut submissions, now);
     let events: Vec<_> = told.iter().collect();
     assert!(blocked, "completions and timers wait at the kernel edge");
-    assert_eq!(events, [&Event::Stream { owner: ready, up: Up::Room },
-        &Event::Usage { owner: OWNER, usage: io::Measured::Read(kernel::Usage::ZERO) },
-        &Event::Stream { owner: timed, up: Up::Failed(skein_lib::stream::Fault::Other) }]);
+    assert_eq!(
+        events,
+        [
+            &Event::Stream { owner: ready, up: Up::Room },
+            &Event::Usage { owner: OWNER, usage: io::Measured::Read(kernel::Usage::ZERO) },
+            &Event::Stream { owner: timed, up: Up::Failed(skein_lib::stream::Fault::Other) }
+        ]
+    );
     assert!(!machine.is_ready() && completions.is_empty() && !machine.is_due(now));
-    assert_eq!(submissions.pop().expect("deadline cancels the write").kind,
-        kernel::Op::Cancel { target: write.op });
+    assert_eq!(submissions.pop().expect("deadline cancels the write").kind, kernel::Op::Cancel { target: write.op });
 }

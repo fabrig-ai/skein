@@ -125,15 +125,9 @@ impl Owner {
     }
     pub(super) fn fire(&mut self) {
         self.component.fire(&self.env, &mut self.above, &mut self.io, &mut self.files);
-
-
-
     }
     pub(super) fn terminal(&mut self, event: file::Event) {
         self.component.filed(&self.env, event, &mut self.above, &mut self.io, &mut self.files);
-
-
-
     }
     pub(super) fn next(&mut self) -> file::Request {
         for _ in 0_u32..32 {

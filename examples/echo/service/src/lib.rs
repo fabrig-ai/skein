@@ -85,8 +85,7 @@ impl Limits {
         let io_up = io::MAX_OUT_UP.submissions;
         let io_resume = io::MAX_OUT_RESUME.submissions;
         let io_fire = io::MAX_OUT_FIRE.submissions;
-        let io_maximum = larger(larger(io_down, io_up), larger(io_resume, io_fire));
-        io_maximum
+        larger(larger(io_down, io_up), larger(io_resume, io_fire))
     };
 
     /// Whether the service can run under these limits: each layer's usable,

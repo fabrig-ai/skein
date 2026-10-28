@@ -1,8 +1,8 @@
 //! Queued commands consume stream credit once, in order.
 
 use super::{Browser, Phase, Queued, fire, up};
-use crate::boundary::{Below, Down};
 use crate::Limits;
+use crate::boundary::{Below, Down};
 use skein_lib::stream;
 use skein_lib::{Env, Queue, Time, Token, Wall, bytes};
 
@@ -25,8 +25,20 @@ fn each_command_waits_for_fresh_stream_credit() {
     assert_eq!(without_credit, 0);
     assert_eq!(awaiting_credit, 2, "one send and its fresh credit demand");
     assert_eq!(below.pop(), Some(Down::Commands(stream::Down::Send(bytes::copy_of(b"first")))));
-    assert_eq!(below.pop(), Some(Down::Commands(stream::Down::Demand { read: stream::Read::Nothing, room: env.limits.command.saturating_add(1) })));
+    assert_eq!(
+        below.pop(),
+        Some(Down::Commands(stream::Down::Demand {
+            read: stream::Read::Nothing,
+            room: env.limits.command.saturating_add(1)
+        }))
+    );
     assert_eq!(below.pop(), Some(Down::Commands(stream::Down::Send(bytes::copy_of(b"second")))));
-    assert_eq!(below.pop(), Some(Down::Commands(stream::Down::Demand { read: stream::Read::Nothing, room: env.limits.command.saturating_add(1) })));
+    assert_eq!(
+        below.pop(),
+        Some(Down::Commands(stream::Down::Demand {
+            read: stream::Read::Nothing,
+            room: env.limits.command.saturating_add(1)
+        }))
+    );
     assert!(below.is_empty() && browser.outgoing.is_empty());
 }

@@ -26,8 +26,7 @@ impl Rig {
     fn step(&mut self, event: Event) -> Option<Request> {
         let mut out = Queue::uncapped();
         step(&mut self.domain, &self.env, event, &mut out);
-        let request = out.pop();
-        request
+        out.pop()
     }
 
     /// A call's `ReplyTo`, and the token it names the call by.

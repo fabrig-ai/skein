@@ -1443,7 +1443,16 @@ pub fn delayed_oauth_output() -> Vec<&'static str> {
                     );
                 }
                 io::Request::Abort { .. } => trace.push("Tick aborted socket"),
-                other => panic!("the expired refresh only connects then aborts: {other:?}"),
+                other @ (io::Request::Listen { .. }
+                | io::Request::Bind { .. }
+                | io::Request::Reject { .. }
+                | io::Request::Stream { .. }
+                | io::Request::Output { .. }
+                | io::Request::Spawn { .. }
+                | io::Request::Signal { .. }
+                | io::Request::Usage { .. }
+                | io::Request::Window { .. }
+                | io::Request::Close { .. }) => panic!("the expired refresh only connects then aborts: {other:?}"),
             }
         }
     }

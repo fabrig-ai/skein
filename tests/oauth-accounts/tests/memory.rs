@@ -3,9 +3,7 @@ use skein_io::file;
 use skein_lib::Token;
 use skein_lib::{Duration, Env, List, Queue, Time, Wall, bytes};
 use skein_oauth::{ClientLimits, SavedToken};
-use skein_oauth_accounts::{
-    Account, Component, Endpoint, FileLower, Keeper, Limits, Request, Transport, worst_case,
-};
+use skein_oauth_accounts::{Account, Component, Endpoint, FileLower, Keeper, Limits, Request, Transport, worst_case};
 
 #[global_allocator]
 static HEAP: Counting = Counting;
@@ -177,7 +175,6 @@ fn drive_partial_heads(component: &mut Component, env: &Env<Limits>, response: V
     let mut visits = 0;
     for _ in 0..LISTENER_TURNS {
         if component.has_work() {
-
             component.fire(env, &mut above, &mut below, &mut Queue::with_capacity(1));
         }
         while let Some(event) = above.pop() {
@@ -281,7 +278,7 @@ impl ListenerSockets {
         below: &mut Queue<skein_io::Request>,
     ) {
         use skein_io::Event as IoEvent;
-            for (owner, _, wire) in &mut self.web {
+        for (owner, _, wire) in &mut self.web {
             if let Some(up) = wire.answer() {
                 component.up(env, IoEvent::Stream { owner: *owner, up }, above, below, &mut Queue::with_capacity(1));
             }
