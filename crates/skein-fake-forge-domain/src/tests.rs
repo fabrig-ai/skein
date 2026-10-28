@@ -896,6 +896,24 @@ fn the_worst_case_is_bounded_or_refused() {
     assert_eq!(worst_case(&Limits { items: u32::MAX, comments: u32::MAX, ..LIMITS }), None);
 }
 
+#[test]
+fn constructor_refuses_unrepresentable_derived_capacities() {
+    assert!(crate::valid(&LIMITS));
+    for limits in [
+        Limits { calls: u32::MAX, ..LIMITS },
+        Limits { items: u32::MAX, comments: 2, ..LIMITS },
+        Limits { files: u32::MAX, ..LIMITS },
+        Limits { files: 2, name_bytes: u32::MAX, ..LIMITS },
+        Limits { statuses: u32::MAX, workflow_runs: 1, ..LIMITS },
+    ] {
+        assert!(!crate::valid(&limits));
+        std::panic::catch_unwind(|| {
+            drop(Domain::new(&Config { limits, ..CALM }, 1));
+        })
+        .expect_err("unrepresentable limits");
+    }
+}
+
 // Git.
 
 #[test]

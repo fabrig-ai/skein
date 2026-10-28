@@ -91,6 +91,22 @@ pub(crate) fn comments(limits: &Limits) -> Option<u32> {
     limits.items.checked_mul(limits.comments)
 }
 
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// Timer, comment, directory and run capacities fit their u32 counters.
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    timers(limits).is_some()
+        && comments(limits).is_some()
+        && directory_capacity(limits).is_some()
+        && limits.files.checked_add(1).is_some()
+        && limits.statuses.checked_add(limits.workflow_runs).is_some()
+}
+
+fn directory_capacity(limits: &Limits) -> Option<u32> {
+    limits.files.checked_mul(limits.name_bytes)?.checked_add(1)
+}
+
 /// The most memory the forge holds under `limits`, in bytes (6.3), or `None`
 /// if it does not fit a `u64`.
 ///
@@ -100,6 +116,9 @@ pub(crate) fn comments(limits: &Limits) -> Option<u32> {
 /// in the step it arrives in.
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
+    if !valid(limits) {
+        return None;
+    }
     let repositories = Slab::<Repository>::worst_case(limits.repositories)?
         .checked_add(Map::<Box<[u8]>, Id<Repository>>::worst_case(limits.repositories)?)?
         .checked_add(times(limits.repositories, repository(limits)?)?)?;

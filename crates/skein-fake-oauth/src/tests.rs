@@ -632,3 +632,19 @@ fn has_verification(claims: &[u8], expected: &Token) -> bool {
     }
     false
 }
+
+#[test]
+fn issuer_refuses_unrepresentable_limits() {
+    let good = limits();
+    assert!(valid(&good));
+    for bad in [
+        Limits { codes: 0, ..good },
+        Limits { rotations: 0, ..good },
+        Limits { carried: u32::MAX, ..good },
+        Limits { document: DocumentLimits { document_bytes: u32::MAX, ..good.document }, ..good },
+        Limits { document: DocumentLimits { token_bytes: u32::MAX, ..good.document }, ..good },
+    ] {
+        assert!(!valid(&bad));
+        assert_eq!(Issuer::new(config(), bad).err(), Some(Error::Limits));
+    }
+}
