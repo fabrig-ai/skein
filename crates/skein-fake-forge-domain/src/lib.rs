@@ -74,7 +74,7 @@ mod tests;
 
 pub use boundary::{Event, Request};
 pub use creation::{create_file, create_repository};
-pub use domain::{Config, Domain, MAX_OUT, Metadata, Room, Skew, Tally, fire, step, step_admitted, time};
+pub use domain::{Config, Domain, Metadata, Room, Skew, Tally, fire, step, step_admitted, time};
 pub use faults::{Rate, RateDenied, RateKey, rate};
 pub use git::{Object, Signature, Tree};
 pub use limits::{Limits, valid, worst_case};

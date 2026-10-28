@@ -383,7 +383,6 @@ impl World {
     pub fn git_push(&mut self) -> (u64, usize, Time) {
         let (token, commit) = {
             let mut forge = self.forge.borrow_mut();
-            assert!(forge.pending.room() >= domain::MAX_OUT, "reserve external domain output");
             let config = forge.config;
             let commit = domain::commit(
                 &mut forge.domain,
@@ -467,21 +466,17 @@ impl Refusal {
         }
     }
 }
-pub fn refusals() -> [Refusal; 10] {
+pub fn refusals() -> [Refusal; 9] {
     // Face's queue minimum is 64; one less cannot reserve a server pass.
     const SHORT_QUEUE: u32 = 63;
     // The protocol fixture admits four connections; five is one past it.
     const TOO_MANY_CONNECTIONS: u32 = 5;
     // One listener plus two server and two client slots require five sockets.
     const SHORT_SOCKETS: u32 = 4;
-    // The shared fixture needs four calls plus eight hooks pending records.
-    const SHORT_PENDING: u32 = 11;
     // HTTP head bytes 4096 require at least that much plaintext space.
     const SHORT_PLAINTEXT: u32 = 4095;
     // Chances are per thousand.
     const INVALID_CHANCE: u32 = 1001;
-    let pending = shared();
-    pending.borrow_mut().pending = Queue::with_capacity(SHORT_PENDING);
     let domain = shared();
     domain.borrow_mut().config.late = INVALID_CHANCE;
     [
@@ -496,7 +491,6 @@ pub fn refusals() -> [Refusal; 10] {
             limits: Limits { io: skein_io::Limits { sockets: SHORT_SOCKETS, ..limits().io }, ..limits() },
             ..Refusal::new("outbound sockets")
         },
-        Refusal { shared: pending, ..Refusal::new("pending") },
         Refusal { limits: Limits { plaintext: SHORT_PLAINTEXT, ..limits() }, ..Refusal::new("wire") },
         Refusal { config: Config { base: Box::new([]), ..config() }, ..Refusal::new("config") },
         Refusal { shared: domain, ..Refusal::new("domain") },

@@ -539,7 +539,7 @@ fn domain_reply(
     event: fake::Event,
 ) -> Result<a::Answer, a::Error> {
     let env = Env { now: Time::from_nanos(wall.as_nanos()), wall, limits: *config };
-    let mut out = Queue::with_capacity(fake::MAX_OUT);
+    let mut out = Queue::uncapped();
     fake::step_admitted(domain, &env, event, &mut out);
     // The queue's and CI's timers due by now fire before the call's own.
     for _ in 0..FIRES {

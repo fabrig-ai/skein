@@ -9,8 +9,7 @@ const EXTERNAL: u64 = 7 << 60;
 impl Forge {
     #[must_use]
     pub fn new(domain: domain::Domain, config: domain::Config) -> Self {
-        let capacity = config.limits.calls.checked_add(config.limits.hooks).expect("bounded pending capacity");
-        Self { domain, config, now: Time::ZERO, pending: Queue::with_capacity(capacity), hooks: None, serial: 0 }
+        Self { domain, config, now: Time::ZERO, pending: Queue::uncapped(), hooks: None, serial: 0 }
     }
     /// Allocates a shared reply identity for a peer or another domain caller.
     /// Peers translate their connection-local reply rights through this range.
@@ -43,7 +42,6 @@ fn capacities(limits: &Limits, protocol: &protocol::Limits, forge: &Forge) -> Op
         || protocol.calls(limits.connections) >= (7 << 28)
         || limits.plaintext < skein_http::server::largest_read(&protocol.http())
         || limits.io.output < skein_http::server::largest_room(&protocol.http())
-        || forge.pending.capacity() < domain.calls.checked_add(domain.hooks)?
         || domain.repositories == 0
         || domain.users == 0
         || domain.items == 0

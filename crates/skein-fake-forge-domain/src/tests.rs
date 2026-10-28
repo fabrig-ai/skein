@@ -20,9 +20,7 @@ use crate::api::{
     Answer, Change, Check, Checks, Comment, Created, Cue, Ended, Error, File, Git, Head, JobRef, Kind, Op, Order, Page,
     PageName, Permission, Protection, Pull, Pushed, Read, Setup, State, Summary, Verdict, Want, What, Write,
 };
-use crate::{
-    Branches, Config, Domain, Event, Limits, MAX_OUT, Observation, Operation, Request, Skew, fire, step, worst_case,
-};
+use crate::{Branches, Config, Domain, Event, Limits, Observation, Operation, Request, Skew, fire, step, worst_case};
 
 const LIMITS: Limits = Limits {
     repositories: 2,
@@ -300,7 +298,7 @@ impl Harness {
         Harness {
             domain,
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config },
-            out: Queue::with_capacity(MAX_OUT),
+            out: Queue::uncapped(),
             hooks: Queue::with_capacity(64),
             answered: Queue::with_capacity(LIMITS.calls),
             calls: 0,

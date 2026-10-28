@@ -143,7 +143,7 @@ impl Harness {
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
             above: Queue::with_capacity(64),
             below: Queue::with_capacity(64),
-            domain_out: Queue::with_capacity(fake::MAX_OUT),
+            domain_out: Queue::uncapped(),
             input: Intake::with_capacity(65536),
             demand: None,
             output: List::with_capacity(65536),

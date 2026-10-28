@@ -410,7 +410,7 @@ impl World {
         let mut f = self.forge.borrow_mut();
         let token = f.next_reply();
         let env = Env { now: self.sim.now(), wall: self.sim.wall(), limits: f.config };
-        let mut output = Queue::with_capacity(domain::MAX_OUT);
+        let mut output = Queue::uncapped();
         domain::step(
             &mut f.domain,
             &env,

@@ -187,7 +187,7 @@ impl Joint {
             },
             protocol_env: Env { now, wall: Wall::from_nanos(now.as_nanos()), limits: fake_limits },
             domain,
-            fake_out: Queue::with_capacity(fake::MAX_OUT),
+            fake_out: Queue::uncapped(),
             answers: BTreeMap::new(),
             observations: Vec::new(),
             installations: Vec::new(),

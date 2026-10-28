@@ -153,7 +153,7 @@ impl Github {
                     self.service.admit(admission, &mut world.domain, &world.fake_env, ReplyTo::new(Token::new(77)))
                 }
                 Outcome::Call(pending, event) => {
-                    let mut out = Queue::with_capacity(fake::MAX_OUT);
+                    let mut out = Queue::uncapped();
                     fake::step(&mut world.domain, &world.fake_env, event, &mut out);
                     // More fires than the fixture's queue and CI can have due at once.
                     for _ in 0..64 {

@@ -182,7 +182,7 @@ impl Exchange {
                     }
                 };
                 let domain_env = Env { now: env.now, wall: env.wall, limits: *hosted.config };
-                let mut answers = Queue::with_capacity(domain::MAX_OUT);
+                let mut answers = Queue::uncapped();
                 domain::step(hosted.domain, &domain_env, event, &mut answers);
                 domain::fire(hosted.domain, &domain_env, &mut answers);
                 while let Some(answer) = answers.pop() {

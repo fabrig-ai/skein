@@ -28,9 +28,6 @@ use crate::observe::{self, Observation, Observations, Operation};
 use crate::store::Repository;
 use crate::{ci, issues, pulls, reads, wiki};
 
-/// The most requests an entry point emits per call.
-pub const MAX_OUT: u32 = 1;
-
 /// Provider-neutral repository metadata, read without referee observations.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Metadata {
@@ -466,8 +463,7 @@ impl Domain {
     }
 }
 
-/// Handles one event, emitting at most [`MAX_OUT`] requests: a call refused
-/// at once for want of room.
+/// Handles one event; a call refused at admission is answered at once.
 pub fn step(domain: &mut Domain, env: &Env<Config>, event: Event, out: &mut Queue<Request>) {
     domain.clock = clock(env);
     match event {
@@ -488,8 +484,7 @@ pub fn step_admitted(domain: &mut Domain, env: &Env<Config>, event: Event, out: 
     }
 }
 
-/// Fires the earliest timer due at `env.now`, if there is one, emitting at
-/// most [`MAX_OUT`] requests: a call's answer, or a webhook.
+/// Fires the earliest timer due at `env.now`, emitting its call answer or webhook.
 pub fn fire(domain: &mut Domain, env: &Env<Config>, out: &mut Queue<Request>) {
     domain.clock = clock(env);
     let Some(alarm) = domain.timers.expire(env.now) else {

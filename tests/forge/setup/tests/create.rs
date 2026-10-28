@@ -62,7 +62,7 @@ fn creation_makes_the_org_repository_access_hook_and_bot_authored_file() {
     assert_eq!(object.author, object.committer);
     let bot = world.store().find(b"kit").expect("bot").id;
     let (domain, config) = world.domain_mut();
-    let mut out = skein_lib::Queue::with_capacity(domain::MAX_OUT);
+    let mut out = skein_lib::Queue::uncapped();
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: *config };
     domain::step(
         domain,
