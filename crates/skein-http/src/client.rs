@@ -110,6 +110,13 @@ pub fn largest_room(limits: &Limits) -> u32 {
     limits.request.max(limits.send)
 }
 
+/// Whether these limits are representable: every edge bound they size
+/// is finite and every capacity they derive fits (programming-model.md, 6.3).
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    limits.head >= 2 && limits.read > 0 && limits.send > 0
+}
+
 /// The most memory a client holds under `limits`, in bytes
 /// (programming-model.md, 6.3), or `None` if it does not fit a `u64` or
 /// the limits cannot be honoured: a head shorter than a blank line, a read
@@ -130,7 +137,7 @@ pub fn largest_room(limits: &Limits) -> u32 {
 /// out when it is emitted.
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
-    if limits.head < 2 || limits.read == 0 || limits.send == 0 {
+    if !valid(limits) {
         return None;
     }
     let intake = Intake::worst_case(limits.read)?;
@@ -332,7 +339,7 @@ impl Client {
     /// for a call. It demands nothing until it has one.
     #[must_use]
     pub fn new(limits: &Limits) -> Client {
-        assert!(worst_case(limits).is_some(), "the limits are honoured: a head of a blank line, a read of a byte");
+        assert!(valid(limits), "the limits are honoured: a head of a blank line, a read of a byte");
         Client { state: State::Idle(Line::Open), intake: Intake::with_capacity(limits.read) }
     }
 

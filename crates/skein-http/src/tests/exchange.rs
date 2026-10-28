@@ -20,14 +20,11 @@ fn post(len: u64) -> client::Call {
 }
 
 #[test]
-fn limits_that_cannot_be_honoured_have_no_worst_case() {
-    assert!(client::worst_case(&LIMITS).is_some());
-    assert!(client::worst_case(&Limits { head: 2, ..LIMITS }).is_some(), "a blank line at least");
-    assert_eq!(client::worst_case(&Limits { head: 1, ..LIMITS }), None);
-    assert_eq!(client::worst_case(&Limits { read: 0, ..LIMITS }), None, "a read of nothing");
-    assert_eq!(client::worst_case(&Limits { send: 0, ..LIMITS }), None, "room for nothing of a body");
+fn valid_accepts_test_and_largest_limits() {
+    assert!(client::valid(&LIMITS));
+    assert!(client::valid(&Limits { head: 2, ..LIMITS }), "a blank line at least");
     let largest = Limits { request: u32::MAX, head: u32::MAX, read: u32::MAX, ..LIMITS };
-    assert!(client::worst_case(&largest).is_some(), "the largest limits fit a u64");
+    assert!(client::valid(&largest), "the largest limits fit a u64");
 }
 
 #[test]
@@ -342,4 +339,28 @@ fn no_close_after_closed() {
     let mut machine = Machine::new(LIMITS);
     machine.down(Request::Close);
     machine.down(Request::Close);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_a_head_shorter_than_a_blank_line() {
+    let limits = Limits { head: 1, ..LIMITS };
+    assert!(!crate::client::valid(&limits));
+    let _machine = crate::client::Client::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_a_zero_read() {
+    let limits = Limits { read: 0, ..LIMITS };
+    assert!(!crate::client::valid(&limits));
+    let _machine = crate::client::Client::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a head of a blank line, a read of a byte")]
+fn valid_refuses_a_zero_send() {
+    let limits = Limits { send: 0, ..LIMITS };
+    assert!(!crate::client::valid(&limits));
+    let _machine = crate::client::Client::new(&limits);
 }

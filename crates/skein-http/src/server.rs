@@ -126,6 +126,17 @@ pub fn largest_room(limits: &Limits) -> u32 {
     }
 }
 
+/// Whether these limits are representable: every edge bound they size
+/// is finite and every capacity they derive fits (programming-model.md, 6.3).
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    limits.head >= 2
+        && limits.read > 0
+        && limits.send > 0
+        && limits.response >= response::longest_answer()
+        && response::chunk_room(limits.send).is_some()
+}
+
 /// The most memory a server holds under `limits`, in bytes
 /// (programming-model.md, 6.3), or `None` if it does not fit a `u64` or
 /// the limits cannot be honoured: a head shorter than a blank line, a read
@@ -157,10 +168,9 @@ pub fn largest_room(limits: &Limits) -> u32 {
 /// when it is emitted.
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
-    if limits.head < 2 || limits.read == 0 || limits.send == 0 || limits.response < response::longest_answer() {
+    if !valid(limits) {
         return None;
     }
-    response::chunk_room(limits.send)?;
     let intake = Intake::worst_case(limits.read)?;
     let fields = List::<Header>::worst_case(limits.headers)?;
     let line = u64::from(limits.head).checked_add(u64::from(limits.head.saturating_sub(head::LINE_BUT_TARGET)))?;
@@ -440,7 +450,7 @@ impl Server {
     #[must_use]
     pub fn new(limits: &Limits) -> Server {
         assert!(
-            worst_case(limits).is_some(),
+            valid(limits),
             "the limits are honoured: a head of a blank line, a read of a byte, room for the server's own answers"
         );
         Server { state: State::Idle(Line::Open), intake: Intake::with_capacity(limits.read) }
