@@ -786,7 +786,7 @@ fn selective_peak(size: usize, call_arguments: bool) -> u64 {
         outside += transport.end().net;
         match turn {
             skein_llm_world::Turn::Done => break,
-            skein_llm_world::Turn::Waiting => continue,
+            skein_llm_world::Turn::Waiting => {}
             turn @ (skein_llm_world::Turn::Up(_) | skein_llm_world::Turn::Down(_) | skein_llm_world::Turn::Resume) => {
                 selective_step(&meter, &mut world, turn, bound, &mut outside, &mut peak);
             }
@@ -803,7 +803,7 @@ fn selective_peak(size: usize, call_arguments: bool) -> u64 {
 }
 
 /// Temporary output queues are handed out after each client call, so their
-/// buffers and payloads are removed by Meter::check. Copies belong to the
+/// buffers and payloads are removed by `Meter::check`. Copies belong to the
 /// world, measured separately, including its growing transport and trace.
 fn selective_step(
     meter: &Meter,
