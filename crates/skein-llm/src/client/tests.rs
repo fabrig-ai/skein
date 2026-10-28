@@ -81,8 +81,8 @@ impl World {
         let mut world = World {
             client,
             env,
-            above: Queue::with_capacity(MAX_OUT.above),
-            below: Queue::with_capacity(MAX_OUT.below),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             events: Vec::new(),
             read: Read::Nothing,
             sent: Vec::new(),

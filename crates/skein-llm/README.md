@@ -31,7 +31,7 @@ To drive one call:
    and `largest_read`/`largest_room` against the lower stream's caps.
 2. Build a `Call` with its owner token, endpoint, credential and prompt.
    `Client::prepare(call, &limits)` validates it before touching the stream.
-3. Reserve `client::MAX_OUT` room in the upper and lower queues before each
+3. Use uncapped upper and lower queues for each
    entry point. Call `client::down(..., Request::Start, ...)`, and forward its
    `stream::Down` records to the lower stream.
 4. Feed lower `stream::Up` records into `client::up`. Drain `resume` while

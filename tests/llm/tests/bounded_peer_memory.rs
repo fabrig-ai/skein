@@ -18,6 +18,8 @@ static HEAP: Counting = Counting;
 const CUE: &[u8] = b"bounded-peer-memory";
 const ANSWER: &[u8] = b"actual bounded native answer";
 const LARGE: usize = 8192;
+// One observation batch holds a datum, completion, reuse and close notice.
+const OBSERVATION_EVENTS: u32 = 4;
 
 fn size<T>() -> u64 {
     u64::try_from(size_of::<T>()).expect("fixture wrapper fits")
@@ -31,7 +33,7 @@ fn observations(bounds: &client::Limits) -> ObservationLimits {
     ObservationLimits {
         heads: 1,
         head_bytes: 8192,
-        events: client::MAX_OUT.above,
+        events: OBSERVATION_EVENTS,
         event_bytes: 32768,
         queries: 1,
         query_bytes: 32768,
