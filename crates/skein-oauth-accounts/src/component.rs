@@ -13,7 +13,7 @@ use crate::accounts::Source;
 use crate::exchange::{Exchange, OwnerLock, Stage, Web};
 use crate::keeper::Store;
 use crate::route::{self, Socket};
-use crate::{Account, Asked, Ends, Event, Failure, Keeping, Limits, Refusal, Request, worst_case};
+use crate::{Account, Asked, Ends, Event, Failure, Keeping, Limits, Refusal, Request, valid};
 use skein_lib::{CryptoRng, Duration, Env, Id, List, Queue, Slab, Time};
 use skein_oauth::{self as oauth, SavedToken};
 
@@ -167,7 +167,7 @@ impl Component {
         if accounts.len() > limits.accounts {
             return Err(Unusable::Accounts { bound: limits.accounts });
         }
-        if !crate::limits::usable(limits) || worst_case(limits).is_none() {
+        if !valid(limits) {
             return Err(Unusable::Limits);
         }
         let mut names = List::with_capacity(limits.accounts);

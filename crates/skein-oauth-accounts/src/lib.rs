@@ -23,7 +23,7 @@ pub use boundary::{Asked, Ends, Event, Failure, Keeping, Locked, Place, Refusal,
 pub use component::{
     Component, FileLower, Lower, LowerEvent, MAX_OUT_DOWN, MAX_OUT_FILED, MAX_OUT_FIRE, MAX_OUT_UP, MaxOut, Unusable,
 };
-pub use limits::{Limits, worst_case};
+pub use limits::{Limits, valid, worst_case};
 
 /// The largest return location for one sign-in (oauth.md, section 6.5).
 pub const RETURN_BYTES: usize = 2048;
