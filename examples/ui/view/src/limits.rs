@@ -1,6 +1,4 @@
 //! Capacities derived from 64 notes and the record ceilings (ui.md, 15).
-use crate::records;
-
 #[must_use]
 pub fn limits() -> skein_ui::Limits {
     skein_ui::Limits {
@@ -17,14 +15,4 @@ pub fn limits() -> skein_ui::Limits {
         scene_marks: 6,
         scene_bytes: 256,
     }
-}
-
-#[must_use]
-pub fn worst_case() -> Option<u64> {
-    skein_ui::worst_case(&limits())?
-        .checked_add(records::Notes::worst_case_heap(&records::CEILINGS)?)?
-        .checked_add(crate::view::words_worst_case()?)?
-        .checked_add(records::Add::worst_case_heap(&records::CEILINGS)?.checked_mul(8)?)?
-        .checked_add(800)?
-        .checked_add(crate::state::events_worst_case()?)
 }
