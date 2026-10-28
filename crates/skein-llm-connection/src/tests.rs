@@ -163,8 +163,8 @@ fn start(component: &mut Component, up: &mut Queue<Event>, io: &mut Queue<Lower>
 #[test]
 fn failed_connect_has_one_unsent_terminal_and_settles() {
     let mut component = component();
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let owner = start(&mut component, &mut up, &mut io);
     let env = Env { now: Time::ZERO, wall: Wall::from_nanos(1_893_456_000_000_000_000), limits: limits() };
     assert!(component.reserved() > 0);
@@ -191,8 +191,8 @@ fn failed_connect_has_one_unsent_terminal_and_settles() {
 #[test]
 fn cancel_while_connecting_waits_for_socket_settlement() {
     let mut component = component();
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let owner = start(&mut component, &mut up, &mut io);
     let env = Env { now: Time::ZERO, wall: Wall::from_nanos(1_893_456_000_000_000_000), limits: limits() };
     component.down(&env, Request::Cancel { call: Token::new(7) }, &mut up, &mut io);
@@ -218,8 +218,8 @@ fn connect_and_whole_deadlines_fail_unsent_calls_once() {
         (Deadlines { whole: Some(Duration::from_secs(1)), ..Deadlines::none() }, skein_llm::Phase::Whole),
     ] {
         let mut component = component();
-        let mut up = Queue::with_capacity(MAX_OUT.above);
-        let mut io = Queue::with_capacity(MAX_OUT.below);
+        let mut up = Queue::uncapped();
+        let mut io = Queue::uncapped();
         let start = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
         component.down(
             &start,
@@ -261,8 +261,8 @@ fn connect_and_whole_deadlines_fail_unsent_calls_once() {
 #[test]
 fn a_handshake_failure_has_one_unsent_terminal() {
     let mut component = component();
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let owner = start(&mut component, &mut up, &mut io);
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
     component.up(&env, LowerEvent::Connecting { owner, socket: Token::new(19) }, &mut up, &mut io);
@@ -290,8 +290,8 @@ fn a_handshake_failure_has_one_unsent_terminal() {
 #[test]
 fn a_start_past_calls_is_refused_by_name() {
     let mut component = component();
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let _owner = start(&mut component, &mut up, &mut io);
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
     component.down(
@@ -367,8 +367,8 @@ fn plaintext_connect_starts_http_and_never_arms_a_handshake_deadline() {
     config.io.output = 4096;
     let mut component = Component::new(endpoints, &config).expect("plaintext only needs HTTP capacities");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     component.down(
         &env,
         Request::Start {
@@ -417,8 +417,8 @@ fn plaintext_connect_starts_http_and_never_arms_a_handshake_deadline() {
 fn close_on_an_empty_component_says_closed_without_touching_io() {
     let mut component = component();
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     component.down(&env, Request::Close, &mut up, &mut io);
     assert!(is_closed(up.pop()));
     assert!(up.is_empty() && io.is_empty());
@@ -431,8 +431,8 @@ fn close_on_an_empty_component_says_closed_without_touching_io() {
 fn a_start_after_closed_is_an_asserted_owner_bug() {
     let mut component = component();
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     component.down(&env, Request::Close, &mut up, &mut io);
     component.down(
         &env,
@@ -460,8 +460,8 @@ fn abort_starts_one_binding_per_entrance_and_waits_for_physical_settlement() {
     endpoints.push(endpoint()).expect("endpoint");
     let mut component = Component::new(endpoints, &config).expect("component");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let mut owners = List::with_capacity(2);
     for call in 7..=8 {
         component.down(
@@ -660,8 +660,8 @@ fn two_endpoints_drive_uploads_with_their_own_client_limits() {
     }
     let mut component = Component::new(endpoints, &config).expect("two endpoints");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     for index in 0..2 {
         component.down(
             &env,
@@ -792,8 +792,8 @@ fn construction_names_the_largest_call_that_does_not_fit_memory() {
 fn whole_deadline_wait() -> (Component, Env<Limits>, Queue<Event>, Queue<Lower>) {
     let mut component = component();
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     component.down(
         &env,
         Request::Start {
@@ -832,8 +832,8 @@ fn invalid_start(credential: Option<Credential>) {
     endpoints.push(endpoint()).expect("one endpoint fits");
     let mut component = Component::new(endpoints, &config).expect("valid endpoint");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config };
-    let mut above = Queue::with_capacity(MAX_OUT.above);
-    let mut below = Queue::with_capacity(MAX_OUT.below);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     component.down(
         &env,
         Request::Start {

@@ -5,7 +5,7 @@ use core::net::Ipv4Addr;
 use skein_heap::{Counting, Meter};
 use skein_io::kernel::Addr;
 use skein_lib::{Duration, Env, List, Queue, Time, Token};
-use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, MAX_OUT, Request};
+use skein_llm_connection::{Component, Deadlines, Endpoint, Event, Limits, Request};
 use skein_tls_world::pki;
 
 #[global_allocator]
@@ -76,8 +76,8 @@ fn full_pool_stays_under_its_peak_ceiling() {
     limits.memory = 2 * skein_llm::client::reservation(measured, &client).unwrap();
     let second = skein_llm_world::call(8);
     let third = skein_llm_world::call(9);
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let env = Env { now: Time::ZERO, wall: pki::VALID, limits };
     let mut component = Component::new(endpoints, &limits).expect("component");
     component.down(

@@ -72,18 +72,6 @@ pub struct Component {
     reserved: u64,
 }
 
-/// The most owner events and io requests from one component entrance.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MaxOut {
-    /// The most owner events from one entrance.
-    pub above: u32,
-    /// The most io requests from one entrance.
-    pub below: u32,
-}
-
-/// Reserve this much room before each component entrance; measures add no event.
-pub const MAX_OUT: MaxOut = MaxOut { above: 64, below: 64 };
-
 impl Component {
     /// Validates bounds and stream capacities before the loop starts.
     pub fn new(mut endpoints: List<Endpoint>, limits: &Limits) -> Result<Component, EndpointError> {
@@ -339,7 +327,7 @@ impl Component {
         }
     }
 
-    /// Takes an owner's call or demand. Reserve [`MAX_OUT`] first.
+    /// Takes an owner's call or demand.
     pub fn down(&mut self, env: &Env<Limits>, request: Request, up: &mut Queue<Event>, io: &mut Queue<IoRequest>) {
         self.down_event(env, request, up, io);
         self.refresh_memory();
@@ -974,8 +962,8 @@ mod memory_tests {
         endpoints.push(destination).unwrap();
         let mut pool = Component::new(endpoints, &config).unwrap();
         let env = Env { now: skein_lib::Time::ZERO, wall: skein_lib::Wall::EPOCH, limits: config };
-        let mut up = Queue::with_capacity(MAX_OUT.above);
-        let mut io = Queue::with_capacity(MAX_OUT.below);
+        let mut up = Queue::uncapped();
+        let mut io = Queue::uncapped();
         for token in [7, 8, 9] {
             let mut input = prompt();
             if token == 8 {

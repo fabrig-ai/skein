@@ -65,9 +65,6 @@ pub fn worst_case(limits: &Limits, endpoints: &List<crate::Endpoint>) -> Option<
     if !valid(limits, endpoints) {
         return None;
     }
-    let routes = Queue::<skein_llm::client::Event>::worst_case(64)?
-        .checked_add(Queue::<skein_lib::stream::Down>::worst_case(256)?.checked_mul(2)?)?
-        .checked_add(Queue::<skein_tls::client::Event>::worst_case(64)?)?;
     // One physical socket owns these buffers. The owner prices io's entity,
     // flight and deadline tables once; they are never a pool multiplier.
     let socket = Intake::worst_case(limits.io.intake)?
@@ -101,7 +98,7 @@ pub fn worst_case(limits: &Limits, endpoints: &List<crate::Endpoint>) -> Option<
             crate::Transport::Tls { .. } => skein_tls::client::worst_case(&limits.tls)?,
             crate::Transport::Plaintext => 0,
         };
-        let each = socket.checked_add(transport)?.checked_add(fixed)?.checked_add(routes)?;
+        let each = socket.checked_add(transport)?.checked_add(fixed)?;
         largest = largest.max(each);
         // One entrance measures or prepares one call, never one per connection.
         // Its prompt stays borrowed; only depth-bounded encoding state and
