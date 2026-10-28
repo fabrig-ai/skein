@@ -10,8 +10,7 @@ const EXTERNAL: u64 = 7 << 60;
 impl Forge {
     #[must_use]
     pub fn new(domain: domain::Domain, config: domain::Config) -> Self {
-        let capacity = config.limits.calls.checked_add(config.limits.hooks).expect("bounded pending capacity");
-        Self { domain, config, now: Time::ZERO, pending: Queue::with_capacity(capacity), hooks: None, serial: 0 }
+        Self { domain, config, now: Time::ZERO, pending: Queue::uncapped(), hooks: None, serial: 0 }
     }
     /// Allocates a shared reply identity for a peer or another domain caller.
     /// Peers translate their connection-local reply rights through this range.
@@ -40,7 +39,6 @@ pub(super) fn bound(
         || protocol.calls(limits.connections) >= (7 << 28)
         || limits.plaintext < protocol.http().head.max(protocol.http().read)
         || limits.io.output < protocol.http().response.max(protocol.http().send)
-        || forge.pending.capacity() < domain.calls.checked_add(domain.hooks)?
         || domain.repositories == 0
         || domain.users == 0
         || domain.items == 0
@@ -106,8 +104,6 @@ pub(super) fn bound(
         })?
         .checked_add(layer_bound)?
         .checked_add(domain_bound)?
-        .checked_add(Queue::<domain::Request>::worst_case(forge.pending.capacity())?)?
-        .checked_add(u64::from(forge.pending.capacity()).checked_mul(domain_bound)?)?
         .checked_add(u64::from(limits.connections).checked_mul(connection)?)?
         .checked_add(
             u64::from(call_capacity(protocol, forge, limits.connections)?)

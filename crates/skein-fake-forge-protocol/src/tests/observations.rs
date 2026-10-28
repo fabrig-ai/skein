@@ -1480,11 +1480,7 @@ impl World {
         config.latency_min = Duration::ZERO;
         config.latency_max = Duration::ZERO;
         let domain = Domain::new(&config, 1);
-        World {
-            domain,
-            env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config },
-            replies: Queue::with_capacity(fake::MAX_OUT),
-        }
+        World { domain, env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config }, replies: Queue::uncapped() }
     }
     fn repository(&mut self, name: &[u8], id: u32) -> u64 {
         let first = fake::repository(

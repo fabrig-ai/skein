@@ -10,7 +10,7 @@ use skein_fake_forge_domain::api::{
     Answer, Check, Checks, ContextCue, Cue, Error, File, Git, Op, Order, Permission, Protection, Read, Setup, Verdict,
     Write,
 };
-use skein_fake_forge_domain::{Config, Domain, Event, Limits, MAX_OUT, Request, Skew, fire, step, worst_case};
+use skein_fake_forge_domain::{Config, Domain, Event, Limits, Request, Skew, fire, step, worst_case};
 use skein_lib::{Duration, Env, List, Queue, ReplyTo, Time, Token, Wall, Writer};
 use skein_world::domain::heap::{self, Meter};
 
@@ -269,7 +269,7 @@ impl Measured {
         let bound = worst_case(&config.limits).expect("the test limits fit");
         let meter = Meter::new();
         let domain = Domain::new(&config, 7);
-        let out = Queue::with_capacity(MAX_OUT);
+        let out = Queue::uncapped();
         Measured {
             domain,
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config },

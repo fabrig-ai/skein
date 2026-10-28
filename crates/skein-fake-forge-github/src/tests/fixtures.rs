@@ -288,7 +288,7 @@ impl Harness {
         self.hooks = 0;
     }
     pub fn drive(&mut self, event: fake::Event) -> Result<a::Answer, a::Error> {
-        let mut out = Queue::with_capacity(fake::MAX_OUT);
+        let mut out = Queue::uncapped();
         fake::step_admitted(&mut self.domain, &self.env, event, &mut out);
         let mut reply = None;
         for _tick in 0..16_u32 {
