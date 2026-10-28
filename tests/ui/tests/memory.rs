@@ -60,9 +60,22 @@ fn the_view_holds_no_more_than_its_worst_case() {
     assert!(peak <= bound, "full pages, diff, Markdown and scene: {peak} <= {bound}");
 }
 #[test]
-fn a_full_page_reaches_half_its_worst_case() {
-    let (peak, bound) = peak();
-    assert!(peak >= bound / 2, "full pages reach the limits: {peak} >= {bound}/2");
+fn a_full_page_fills_its_node_text_and_style_limits() {
+    let mut builder = Builder::new(&LIMITS);
+    full_page(&LIMITS, &mut builder);
+    let tree = builder.finish();
+    assert_eq!(tree.nodes().len(), usize::try_from(LIMITS.nodes).expect("node count fits"));
+    let mut text_bytes = 0;
+    for node in tree.nodes() {
+        let text = node.name.as_ref().map_or(0, |name| name.len())
+            + node.text.as_slice().iter().map(|run| run.text.len()).sum::<usize>();
+        assert_eq!(text, usize::try_from(LIMITS.text_per_node).expect("text count fits"));
+        text_bytes += text;
+        if node.role == Role::Text {
+            assert_eq!(node.styles.len(), LIMITS.styles_per_node);
+        }
+    }
+    assert_eq!(text_bytes, usize::try_from(LIMITS.text_bytes).expect("text budget fits"));
 }
 
 #[test]
