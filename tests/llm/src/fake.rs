@@ -401,7 +401,7 @@ impl Exchange {
             client_below: Queue::uncapped(),
             peer_above: Queue::with_capacity(provider::MAX_UP),
             peer_below: Queue::with_capacity(provider::MAX_DOWN),
-            replies: Queue::with_capacity(fake::MAX_OUT),
+            replies: Queue::uncapped(),
             to_client: Intake::with_capacity(32768),
             to_peer: Intake::with_capacity(32768),
             client_demand: None,

@@ -103,7 +103,7 @@ impl Peer {
             protocol_limits,
             domain,
             domain_limits,
-            replies: Queue::with_capacity(limits.queue),
+            replies: Queue::uncapped(),
             releases: Queue::with_capacity(domain_limits.calls),
             connections: Vec::with_capacity(usize::try_from(limits.connections).expect("u32 fits")),
             next: 1,
@@ -344,9 +344,7 @@ impl Peer {
                 }
                 connection.wire.pump(&mut connection.plain, &mut self.face.requests);
             }
-            if self.replies.room() >= domain::MAX_OUT
-                && let Some(event) = connection.above.pop()
-            {
+            if let Some(event) = connection.above.pop() {
                 match event {
                     provider::Event::Head { headers, presented } => {
                         let connection = connection.owner;
@@ -393,11 +391,11 @@ impl Peer {
                 connection.wire.close(&mut self.face.requests);
             }
         }
-        while self.replies.room() >= domain::MAX_OUT {
+        for _release in 0..self.releases.len() {
             let Some(name) = self.releases.pop() else { break };
             domain::step(&mut self.domain, &domain_env, domain::Event::Release { name }, &mut self.replies);
         }
-        if self.domain.is_due(now) && self.replies.room() >= domain::MAX_OUT {
+        if self.domain.is_due(now) {
             domain::fire(&mut self.domain, &domain_env, &mut self.replies);
         }
         if let Some(reply) = self.replies.pop() {

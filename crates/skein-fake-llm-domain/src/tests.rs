@@ -57,7 +57,7 @@ pub(super) fn says(text: &[u8]) -> Turn {
 }
 
 use crate::api::Piece;
-use crate::{Domain, Event, MAX_OUT, Request, fire, step};
+use crate::{Domain, Event, Request, fire, step};
 use skein_lib::{Env, Queue, ReplyTo, Time, Token, Wall};
 
 const CALL: Token = Token::new(7);
@@ -106,7 +106,7 @@ impl Playback {
         let mut playback = Self {
             domain,
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config },
-            out: Queue::with_capacity(MAX_OUT),
+            out: Queue::uncapped(),
         };
         playback.call(CALL, query);
         playback

@@ -19,8 +19,8 @@
 //! It keeps bounded cached prefix digests, pending calls, reply rights, scripts, RNG state and due
 //! alarms, never agent state, credential secrets, tool authority, checkout
 //! effects or live network behavior. [`step`] accepts calls and [`fire`]
-//! settles due work under injected time; callers reserve [`MAX_OUT`] output
-//! slots and receive one reply per accepted call (docs/design/fake-llm.md,
+//! settles due work under injected time; callers use uncapped output
+//! queues and receive one reply per accepted call (docs/design/fake-llm.md,
 //! sections 2–5; programming-model.md,
 //! sections 4.4, 5.3 and 7; testing-strategy.md, section 4).
 
@@ -40,4 +40,4 @@ mod tests;
 
 pub use limits::worst_case;
 
-pub use domain::{Config, Domain, Event, MAX_OUT, Request, fire, step};
+pub use domain::{Config, Domain, Event, Request, fire, step};

@@ -164,7 +164,7 @@ impl Peer {
             input: Intake::with_capacity(32768),
             above: Queue::with_capacity(provider::MAX_UP),
             below: Queue::with_capacity(provider::MAX_DOWN),
-            replies: Queue::with_capacity(fake::MAX_OUT),
+            replies: Queue::uncapped(),
             demand: None,
             granted: 0,
             received: 0,

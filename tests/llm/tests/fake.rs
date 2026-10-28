@@ -324,7 +324,7 @@ fn actual_two_connection_routing_preserves_each_terminal_and_returns_a_closed_ro
     };
     let mut domain = Domain::try_scripted(&config, 7, routing_scripts()).expect("shared actual script domain");
     let mut domain_env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config };
-    let mut replies = Queue::with_capacity(skein_fake_llm_domain::MAX_OUT);
+    let mut replies = Queue::uncapped();
     step(&mut domain, &domain_env, first.pending.pop().expect("first actual right"), &mut replies);
     step(&mut domain, &domain_env, second.pending.pop().expect("second actual right"), &mut replies);
     assert!(replies.pop().is_none(), "both actual decisions await injected deadlines");
@@ -523,7 +523,7 @@ fn tool_choice_none_and_an_outside_call_cross_both_actual_wires() {
             )
             .expect("bounded actual domain");
             let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config };
-            let mut out = Queue::with_capacity(skein_fake_llm_domain::MAX_OUT);
+            let mut out = Queue::uncapped();
             let [query] = world.queries.as_slice() else { panic!("actual decoded query") };
             assert_eq!(query.choice, api::ToolChoice::None);
             assert_eq!(query.tools.len(), 1, "offered tools are never filtered");
@@ -1276,7 +1276,7 @@ fn actual_scopes_and_marked_tails_read_only_written_prefixes_and_unscoped_reads_
         let config = skein_fake_llm_domain::Config { unscoped_reads: chance, ..skein_llm_world::fake::config() };
         let mut domain = Domain::scripted(&config, 7, scripts());
         let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: config };
-        let mut out = Queue::<Request>::with_capacity(skein_fake_llm_domain::MAX_OUT);
+        let mut out = Queue::<Request>::uncapped();
         let mut previous = 0;
         world.start();
         for turn in 0..3 {

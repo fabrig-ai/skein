@@ -10,11 +10,6 @@ use skein_lib::{Deadlines, Duration, Env, Id, List, Queue, ReplyTo, Rng, Set, Sl
 use crate::api::{Answer, Error, Failure, Query, Rule, Rules, Script, Scripts, Usage};
 use crate::{cache, limits, pieces, respond};
 
-/// The most requests an entry point emits per call.
-///
-/// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
-pub const MAX_OUT: u32 = 1;
-
 /// How the fake behaves, handed to every step read-only.
 ///
 /// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
@@ -416,7 +411,7 @@ impl Domain {
     }
 }
 
-/// Handles one event, emitting at most [`MAX_OUT`] requests.
+/// Handles one event, emitting requests into an uncapped queue.
 ///
 /// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
 pub fn step(domain: &mut Domain, env: &Env<Config>, event: Event, out: &mut Queue<Request>) {
