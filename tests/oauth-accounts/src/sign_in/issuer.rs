@@ -141,7 +141,7 @@ pub fn key_set() -> Box<[u8]> {
         },
     )
     .expect("issuer");
-    let mut out = skein_lib::Queue::with_capacity(fake::MAX_OUT);
+    let mut out = skein_lib::Queue::uncapped();
     issuer.step(
         fake::Event::Get {
             id: 0,

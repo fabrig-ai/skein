@@ -20,8 +20,6 @@ pub use terms::{ISSUED, Terms};
 #[cfg(test)]
 mod tests;
 
-pub const MAX_OUT: u32 = 1;
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Limits {
     pub document: DocumentLimits,
@@ -318,7 +316,6 @@ impl Issuer {
     }
 
     pub fn step(&mut self, event: Event, out: &mut Queue<Request>) {
-        assert!(out.room() >= MAX_OUT, "world reserves one issuer output");
         match event {
             Event::Authorize { url, now } => self.authorize(&url, now, out),
             Event::Post { request, now, wall } => self.post(request, now, wall, out),
