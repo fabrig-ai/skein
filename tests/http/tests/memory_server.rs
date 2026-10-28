@@ -82,6 +82,8 @@ fn serve_observed(limits: Limits, request: &[u8], script: Script<'_>, interrupt:
     server::down(&mut server, &env, Request::Next, &mut above, &mut below);
     let step = meter.end();
     flags.take(&mut above, &mut below);
+    above = Queue::with_capacity(above.capacity());
+    below = Queue::with_capacity(below.capacity());
     most = most.max(meter.check(step, bound, &what));
 
     for steps in 1..100_000 {
@@ -104,6 +106,9 @@ fn serve_observed(limits: Limits, request: &[u8], script: Script<'_>, interrupt:
         }
         let step = meter.end();
         flags.take(&mut above, &mut below);
+        // Release the harness's empty queue buffers as handed storage before checking.
+        above = Queue::with_capacity(above.capacity());
+        below = Queue::with_capacity(below.capacity());
         most = most.max(meter.check(step, bound + input_size, &what).saturating_sub(input_size));
     }
     panic!("{what}: a request is served in a few steps a byte");
@@ -477,6 +482,9 @@ fn written_observed(limits: writer::Limits, items: &[Outgoing], close: Option<u3
                 Down::Finish => {}
             }
         }
+        // The writer's outputs and the harness queue buffers are handed out.
+        above = Queue::with_capacity(above.capacity());
+        below = Queue::with_capacity(below.capacity());
         let input_size = u64::try_from(input_size).expect("fits a u64");
         most = most.max(meter.check(step, bound + input_size, &what) - input_size);
         if closed {
