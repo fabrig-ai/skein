@@ -331,24 +331,46 @@ fn a_world_that_ends_by_itself_passes() {
     assert!(skein_world::Host::is_empty(&outcome.procs[0]));
 }
 
+struct LaterFromAct {
+    delay: Duration,
+    after: Option<skein_lib::Time>,
+}
+
+impl skein_world::Referee<Script> for LaterFromAct {
+    fn act(&mut self, now: skein_lib::Time, _procs: &mut [Script]) {
+        // The last word and PauseFor use the first iteration's snapshot.
+        self.after.get_or_insert_with(|| now.saturating_add(self.delay));
+    }
+    fn observe(&mut self, _now: skein_lib::Time, _procs: &[Script]) {}
+    fn next_deadline(&self) -> Option<skein_lib::Time> {
+        None
+    }
+    fn overdue(&self, _now: skein_lib::Time) -> Option<String> {
+        None
+    }
+    fn passed(&self) -> bool {
+        true
+    }
+    fn last_word(&self) -> skein_world::LastWord {
+        skein_world::LastWord::After(self.after.expect("the referee acted before its last word"))
+    }
+}
+
 #[test]
 fn a_scenario_that_names_a_later_last_word_may_wait_for_it() {
     let clock = Clock::new();
-    let deadline = clock.now().now.saturating_add(Duration::from_millis(5));
-    let mut world = real::World::new(skein_world_tests::Later(skein_world::LastWord::After(deadline)));
-    world.spawn(|| Script::new(&[Act::Pause(deadline)]));
+    let delay = Duration::from_millis(5);
+    let mut world = real::World::new(LaterFromAct { delay, after: None });
+    world.spawn(|| Script::new(&[Act::PauseFor(delay)]));
     let outcome = world.run(&clock, Duration::from_secs(2));
-    assert!(outcome.end >= deadline);
+    assert!(outcome.end >= outcome.start.saturating_add(delay));
 }
 
 #[test]
 #[should_panic(expected = "process 0 woke for policy deadline")]
 fn a_named_later_last_word_still_rejects_policy_deadlines_after_it() {
     let clock = Clock::new();
-    let start = clock.now().now;
-    let after = start.saturating_add(Duration::from_millis(5));
-    let deadline = start.saturating_add(Duration::from_millis(10));
-    let mut world = real::World::new(skein_world_tests::Later(skein_world::LastWord::After(after)));
-    world.spawn(|| Script::new(&[Act::Pause(deadline)]));
+    let mut world = real::World::new(LaterFromAct { delay: Duration::from_millis(5), after: None });
+    world.spawn(|| Script::new(&[Act::PauseFor(Duration::from_millis(10))]));
     let _outcome = world.run(&clock, Duration::from_secs(2));
 }
