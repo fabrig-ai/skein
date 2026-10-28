@@ -108,6 +108,8 @@ impl Case {
 #[derive(Debug)]
 struct Measured {
     most: u64,
+    ready: bool,
+    exchanged: bool,
     bound: u64,
     failed: Option<Error>,
     limits: Limits,
@@ -145,6 +147,7 @@ struct Harness {
     request: Vec<u8>,
     response: Vec<u8>,
     responded: bool,
+    ready: bool,
     wire: VecDeque<u8>,
     /// The client's sends, until the server reads them: reserved.
     outgoing: Vec<u8>,
@@ -183,6 +186,7 @@ fn measure(case: &Case, seed: u64) -> Measured {
         request: world::text(&mut rng, case.request),
         response: world::text(&mut rng, case.response),
         responded: false,
+        ready: false,
         wire: VecDeque::with_capacity(4 * 65_536),
         outgoing: Vec::with_capacity(1 << 20),
         demand: None,
@@ -249,7 +253,10 @@ impl Harness {
     fn take(&mut self) {
         while let Some(event) = self.events.pop() {
             match event {
-                Event::Ready(agreed) => drop(agreed),
+                Event::Ready(agreed) => {
+                    self.ready = true;
+                    drop(agreed);
+                }
                 Event::Stream(Up::Bytes(bytes)) => {
                     assert!(self.received.len() + bytes.len() <= self.received.capacity(), "reserved");
                     self.received.extend_from_slice(&bytes);
@@ -389,7 +396,14 @@ impl Harness {
         assert!(self.events.is_empty() && self.requests.is_empty());
         let owned = (self.client.take().expect("made"), self.events, self.requests);
         let most = self.metered.finish(owned, self.case.name.len(), &self.case);
-        Measured { most, bound: self.metered.bound(), failed: self.failed, limits: self.case.limits }
+        Measured {
+            most,
+            ready: self.ready,
+            exchanged: self.received == self.response && self.server.received == self.request,
+            bound: self.metered.bound(),
+            failed: self.failed,
+            limits: self.case.limits,
+        }
     }
 }
 
@@ -425,7 +439,9 @@ fn a_retry_and_the_longest_alpn_list() {
 }
 
 #[test]
-fn the_longest_chain_the_records_hold_is_held_twice() {
+fn a_large_chain_is_verified_within_its_memory_ceiling() {
+    // The client's peak with the multi-record certificate chain and both payloads.
+    const CEILING: u64 = 200_000;
     for versions in [Versions::Tls13, Versions::Tls12] {
         for records in [3 * client::MAX_RECORD, 4 * client::MAX_RECORD] {
             let mut big = Case::plain(Limits { records, ..LARGE }, 1_000, 1_000);
@@ -434,8 +450,9 @@ fn the_longest_chain_the_records_hold_is_held_twice() {
             big.name = "big.skein.test";
             let measured = measure(&big, 3);
             assert_eq!(measured.failed, None, "{big:?}");
-            // About 39 KB of certificates, twice, past the buffers.
-            assert!(past(&measured) > 2 * 38_000, "{big:?}: {measured:?}");
+            assert!(pki::BIG.len() + pki::INTERMEDIATE.len() > 38_000, "the presented chain spans records");
+            assert!(measured.ready && measured.exchanged, "the chain was verified and both payloads exchanged");
+            assert!(measured.most <= CEILING, "{big:?}: {measured:?}");
         }
     }
     let mut short = Case::plain(SMALL, 10, 10);
@@ -511,7 +528,7 @@ fn hostile(limits: Limits, message: &[u8]) -> Measured {
             break;
         }
     }
-    Measured { most, bound, failed, limits }
+    Measured { most, ready: false, exchanged: false, bound, failed, limits }
 }
 
 /// A handshake message of `kind` and `body`.
@@ -552,6 +569,8 @@ fn hostile_messages(size: usize) -> [(&'static str, Vec<u8>); 3] {
 
 #[test]
 fn hostile_messages_sent_first_are_priced() {
+    // The client's peak decoding the largest hostile certificate, name and extension lists.
+    const CEILING: u64 = 1_600_000;
     // The records of one record's message, and of the longest rustls reads.
     for (records, size) in [(client::MAX_RECORD, 16_384), (4 * client::MAX_RECORD, 65_539)] {
         let limits = Limits { records, ..SMALL };
@@ -559,10 +578,8 @@ fn hostile_messages_sent_first_are_priced() {
             let measured = hostile(limits, &message);
             // Decoded whole, then refused: a hello of TLS 1.2 is expected.
             assert_eq!(measured.failed, Some(Error::Protocol), "{what}");
-            if what != "extensions" {
-                let decoded = 18 * u64::try_from(message.len()).expect("fits");
-                assert!(past(&measured) > i64::try_from(decoded).expect("fits"), "{what}: {measured:?}");
-            }
+            assert!(message.len() <= size && size - message.len() < 4, "only an incomplete list element is omitted");
+            assert!(measured.most <= CEILING, "{what}: {measured:?}");
         }
     }
 }

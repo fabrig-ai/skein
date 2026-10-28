@@ -42,6 +42,8 @@ enum Phase {
 struct Measured {
     most: u64,
     sealed: usize,
+    plaintext: usize,
+    ciphertext: usize,
     failed: Option<Error>,
 }
 
@@ -58,6 +60,8 @@ enum Control {
 struct Harness {
     metered: Steps,
     sealed: usize,
+    plaintext: usize,
+    ciphertext: usize,
     client: Option<native::Client>,
     env: Env<Limits>,
     above: Queue<native::Event>,
@@ -97,6 +101,9 @@ impl Harness {
     }
 
     fn up(&mut self, event: native::LowerEvent) {
+        if let native::LowerEvent::Stream(Up::Bytes(bytes)) = &event {
+            self.ciphertext = self.ciphertext.max(bytes.len());
+        }
         self.metered.start();
         native::up(self.client.as_mut().expect("made"), &self.env, event, &mut self.above, &mut self.below);
         let step = self.metered.end();
@@ -116,6 +123,7 @@ impl Harness {
                 native::Event::Client(client::Event::Stream(Up::Bytes(bytes))) => {
                     assert!(self.upper_read && self.received.len() + bytes.len() <= self.received.capacity());
                     self.upper_read = false;
+                    self.plaintext = self.plaintext.max(bytes.len());
                     self.received.extend_from_slice(&bytes);
                     drop(bytes);
                 }
@@ -333,7 +341,13 @@ impl Harness {
         // These output buffers grow inside the client steps and release with it.
         let owned = (self.client.take().expect("made"), self.above, self.below);
         let most = self.metered.finish(owned, self.name_bytes, &self.phase);
-        Measured { most, sealed: self.sealed, failed: self.failed }
+        Measured {
+            most,
+            sealed: self.sealed,
+            plaintext: self.plaintext,
+            ciphertext: self.ciphertext,
+            failed: self.failed,
+        }
     }
 }
 
@@ -347,6 +361,8 @@ fn measure(limits: Limits, versions: Versions, chain: Chain, corrupt: bool) -> M
     let mut harness = Harness {
         metered: Steps::new(native::worst_case(&limits).expect("checked bound")),
         sealed: 0,
+        plaintext: 0,
+        ciphertext: 0,
         client: None,
         env: Env { now: Time::ZERO, wall: pki::VALID, limits },
         above: Queue::with_capacity(native::UP_MAX_OUT.above),
@@ -402,12 +418,18 @@ fn measure(limits: Limits, versions: Versions, chain: Chain, corrupt: bool) -> M
 
 #[test]
 fn payload_intake_and_ciphertext_fit_small_and_large_bounds() {
+    // The native client's peak with full plaintext deliveries and sealed output.
+    const CEILING: u64 = 210_000;
     for versions in [Versions::Tls12, Versions::Tls13] {
         for limits in [SMALL, LARGE] {
             let measured = measure(limits, versions, Chain::Leaf, false);
             assert_eq!(measured.failed, None, "{versions:?} {limits:?} {measured:?}");
-            let buffers = if limits == SMALL { 36_870 } else { 113_743 };
-            assert!(measured.most > buffers);
+            assert_eq!(measured.plaintext, usize::try_from(limits.read).expect("read size fits"));
+            assert!(
+                measured.ciphertext > 0
+                    && measured.ciphertext <= usize::try_from(client::LARGEST_READ).expect("read fits")
+            );
+            assert!(measured.most <= CEILING, "{measured:?}");
             if limits == LARGE {
                 assert!(measured.sealed >= 40_000, "maximal encrypted caller payload: {measured:?}");
                 assert_eq!(
