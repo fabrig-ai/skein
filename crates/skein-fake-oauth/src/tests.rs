@@ -57,7 +57,7 @@ fn issuer(terms: Terms) -> Issuer {
     Issuer::new(config, limits()).expect("issuer")
 }
 fn step(issuer: &mut Issuer, event: Event) -> Option<Request> {
-    let mut out = Queue::with_capacity(MAX_OUT);
+    let mut out = Queue::uncapped();
     issuer.step(event, &mut out);
     out.pop()
 }
