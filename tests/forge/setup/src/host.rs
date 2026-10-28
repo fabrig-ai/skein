@@ -329,16 +329,10 @@ impl HostWorld {
     pub fn close(&mut self) {
         self.action(Request::Close);
     }
-    fn reserve(&self) {
-        assert!(self.above.room() >= skein_forge_setup::host::MAX_OUT.above);
-        assert!(self.below.room() >= skein_forge_setup::host::MAX_OUT.below);
-    }
     fn action(&mut self, request: Request) {
-        self.reserve();
         self.host.down(&self.env, request, &mut self.above, &mut self.below);
     }
     fn up(&mut self, event: skein_io::Event) {
-        self.reserve();
         self.host.up(&self.env, event, &mut self.above, &mut self.below);
     }
     #[must_use]
@@ -383,7 +377,6 @@ impl HostWorld {
             };
             assert!(at >= self.env.now);
             self.set_time(at);
-            self.reserve();
             self.host.fire(&self.env, &mut self.above, &mut self.below);
         }
         panic!("host world's deadlines did not settle");
@@ -392,7 +385,6 @@ impl HostWorld {
     pub fn advance_to(&mut self, now: Time) {
         assert!(now >= self.env.now);
         self.set_time(now);
-        self.reserve();
         self.host.fire(&self.env, &mut self.above, &mut self.below);
         self.settle();
     }
@@ -473,7 +465,6 @@ impl HostWorld {
             }
         }
         if self.host.next_deadline().is_some_and(|at| at <= self.env.now) {
-            self.reserve();
             self.host.fire(&self.env, &mut self.above, &mut self.below);
         }
         self.service.reclaim();

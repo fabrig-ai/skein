@@ -23,7 +23,7 @@ const MINT: usize = 4;
 const PAGE: usize = 5;
 
 fn queue() -> Queue<Need> {
-    Queue::with_capacity(reachable::MAX_OUT)
+    Queue::uncapped()
 }
 fn one(out: &mut Queue<Need>) -> Need {
     assert_eq!(out.len(), 1);

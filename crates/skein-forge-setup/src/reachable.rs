@@ -15,9 +15,6 @@ use skein_forge::forgejo::{
 use skein_forge::github::{document as github_document, request as github_request};
 use skein_lib::{Decimal, List, Queue, Secret, bytes};
 
-/// Room the host reserves before stepping.
-pub const MAX_OUT: u32 = 1;
-
 /// One repository of a picker's page (forge-setup.md, 4.8, step 4).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Reached {

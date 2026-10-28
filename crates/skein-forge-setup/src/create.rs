@@ -15,7 +15,6 @@ use skein_forge::forgejo::{
 };
 use skein_lib::{Queue, Secret, Writer};
 
-pub const MAX_OUT: u32 = 1;
 #[derive(Debug)]
 enum State {
     Begin,

@@ -115,8 +115,8 @@ impl World {
         Self {
             host: Host::new(&limits, settings, crypto()).expect("host fixtures"),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            up: Queue::with_capacity(4),
-            io: Queue::with_capacity(4),
+            up: Queue::uncapped(),
+            io: Queue::uncapped(),
         }
     }
     fn down(&mut self, request: Request) {
@@ -399,7 +399,7 @@ fn an_empty_host_closes_once_and_ignores_later_requests() {
     assert_eq!(w.host.next_deadline(), None);
 }
 #[test]
-fn deadlines_past_the_output_room_resume_at_now_until_every_run_stops() {
+fn one_timer_turn_stops_every_run_whose_deadline_passed() {
     let mut l = limits();
     l.runs = 10;
     l.forges = 10;
@@ -411,17 +411,12 @@ fn deadlines_past_the_output_room_resume_at_now_until_every_run_stops() {
             Some(Event::Need { run: Token::new(u64::from(number)), need: Need::Read(Item::AdminToken) })
         );
     }
-    let now = Time::ZERO.saturating_add(Duration::from_secs(120));
-    let mut run = 1_u64;
-    for count in [4_u32, 4, 2] {
-        w.fire(120_000);
-        assert_eq!(w.up.len(), count);
-        for _ in 0..count {
-            assert_eq!(w.up.pop(), Some(stop(run, u16::try_from(run).unwrap(), Why::Down)));
-            run = run.checked_add(1).unwrap();
-        }
-        assert_eq!(w.host.next_deadline(), if run <= 10 { Some(now) } else { None });
+    w.fire(120_000);
+    for run in 1_u64..=10 {
+        assert_eq!(w.up.pop(), Some(stop(run, u16::try_from(run).unwrap(), Why::Down)));
     }
+    assert!(w.up.is_empty());
+    assert_eq!(w.host.next_deadline(), None);
     assert_eq!(w.io.len(), 0);
 }
 
@@ -860,7 +855,7 @@ fn a_halted_reachable_stops_at_each_phase_with_the_why_given() {
     use crate::host::run::Machine;
     for (machine, stage, subject) in super::reachable::phase_cases().into_iter().skip(1) {
         let mut machine = Machine::Reachable(machine);
-        let mut out = Queue::with_capacity(1);
+        let mut out = Queue::uncapped();
         machine.halt(Why::Down, &mut out);
         assert_eq!(out.pop(), Some(fixtures::named_failure(stage, subject, Why::Down)));
         assert!(out.is_empty());
@@ -872,7 +867,7 @@ fn a_halt_of_an_ended_reachable_pushes_nothing() {
     for event in [reconcile::Event::Reply(reconcile::Reply::Rows(Box::new([]))), reconcile::Event::Written] {
         let (machine, _, _) = super::reachable::phase_cases().into_iter().last().unwrap();
         let mut machine = Machine::Reachable(machine);
-        let mut out = Queue::with_capacity(1);
+        let mut out = Queue::uncapped();
         machine.step(event, &mut out);
         out.pop();
         machine.halt(Why::Down, &mut out);

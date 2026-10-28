@@ -130,11 +130,3 @@ pub enum Event {
     Stop { run: Token, failure: Failure },
     Closed,
 }
-/// Output reservations for each entry point.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct MaxOut {
-    pub above: u32,
-    pub below: u32,
-}
-/// Reserve these slots before an entry point runs.
-pub const MAX_OUT: MaxOut = MaxOut { above: 4, below: 4 };

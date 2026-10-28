@@ -274,7 +274,7 @@ impl World {
     }
     fn drive(&mut self, mut step: impl FnMut(Event, &mut Queue<Need>)) -> Ended {
         self.secrets.extend(self.service.setup().issued().iter().map(|token| token.secret.clone()));
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         let mut event = Event::Begin;
         for _ in 0..4096 {
             self.trace.push(format!("{event:?}"));

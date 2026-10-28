@@ -7,7 +7,7 @@ use crate::{
         reconcile::{self, Reconcile},
     },
     item::{self, Item},
-    reconcile::{Event, Failure, MAX_OUT, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use skein_forge::github::{
     document::{Account, App, Document, Hook, Installation, Row},
@@ -26,8 +26,7 @@ fn new() -> Reconcile {
     Reconcile::new(&fixtures::given(), NOW).expect("checked given")
 }
 fn go(machine: &mut Reconcile, event: Event) -> Need {
-    let mut out = Queue::with_capacity(MAX_OUT);
-    assert!(out.room() >= MAX_OUT);
+    let mut out = Queue::uncapped();
     reconcile::step(machine, event, &mut out);
     assert_eq!(out.len(), 1, "one need or terminal event");
     let need = out.pop().expect("one need");
@@ -68,11 +67,9 @@ fn silent(machine: &mut Reconcile) {
     for event in
         [Event::Begin, Event::Read(None), Event::Reply(Reply::Down), Event::Written, Event::Drawn(secret(b"late"))]
     {
-        let mut out = Queue::with_capacity(MAX_OUT);
-        assert!(out.room() >= MAX_OUT);
+        let mut out = Queue::uncapped();
         reconcile::step(machine, event, &mut out);
         assert!(out.is_empty());
-        assert!(out.room() >= MAX_OUT);
         reconcile::halt(machine, Why::Down, &mut out);
         assert!(out.is_empty());
     }
@@ -236,8 +233,7 @@ fn released_at(phase: usize) {
     let stop_debug = format!("{stopped:?} {stop:?}");
     released(&stop_debug);
     let mut halted = at(phase);
-    let mut out = Queue::with_capacity(MAX_OUT);
-    assert!(out.room() >= MAX_OUT);
+    let mut out = Queue::uncapped();
     reconcile::halt(&mut halted, Why::Down, &mut out);
     assert_eq!(out.len(), 1);
     let halt_debug = format!("{halted:?} {:?}", out.pop().expect("halt"));

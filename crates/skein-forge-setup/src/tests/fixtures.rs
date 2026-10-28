@@ -45,7 +45,7 @@ impl Run {
         Self { machine: crate::reconcile::Reconcile::new(&given).expect("fixture admitted"), given }
     }
     pub fn step(&mut self, event: crate::reconcile::Event) -> crate::reconcile::Need {
-        let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+        let mut out = skein_lib::Queue::uncapped();
         crate::reconcile::step(&mut self.machine, event, &mut out);
         assert_eq!(out.len(), 1);
         out.pop().expect("one need")
@@ -285,7 +285,7 @@ impl CheckRun {
         Self { machine: crate::check::Check::new(1) }
     }
     pub fn step(&mut self, event: crate::reconcile::Event) -> crate::reconcile::Need {
-        let mut out = skein_lib::Queue::with_capacity(crate::check::MAX_OUT);
+        let mut out = skein_lib::Queue::uncapped();
         crate::check::step(&mut self.machine, event, &mut out);
         assert_eq!(out.len(), 1);
         out.pop().expect("one need")
@@ -309,7 +309,7 @@ impl TakeOverRun {
         Self { machine: crate::take_over::TakeOver::new(&given(), secret(token)).expect("fixture admitted") }
     }
     pub fn step(&mut self, event: crate::reconcile::Event) -> crate::reconcile::Need {
-        let mut out = skein_lib::Queue::with_capacity(crate::take_over::MAX_OUT);
+        let mut out = skein_lib::Queue::uncapped();
         crate::take_over::step(&mut self.machine, event, &mut out);
         assert_eq!(out.len(), 1);
         out.pop().expect("one need")
@@ -407,7 +407,7 @@ pub fn adopt() -> AdoptRun {
 }
 impl AdoptRun {
     pub fn step(&mut self, event: crate::reconcile::Event) -> crate::reconcile::Need {
-        let mut out = skein_lib::Queue::with_capacity(crate::adopt::MAX_OUT);
+        let mut out = skein_lib::Queue::uncapped();
         crate::adopt::step(&mut self.machine, event, &mut out);
         assert_eq!(out.len(), 1);
         out.pop().expect("one need")

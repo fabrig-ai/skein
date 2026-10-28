@@ -8,7 +8,7 @@ use crate::{
         installations::{self, Progress, Sweep},
     },
     item::{self, Item},
-    reconcile::{self, Event, Failure, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use core::num::NonZeroU64;
 use skein_forge::github::{
@@ -51,7 +51,7 @@ fn rows(rows: &[Row]) -> Event {
     Event::Reply(Reply::GithubRows(rows.into()))
 }
 fn go(machine: &mut Sweep, event: Event) -> Progress {
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     installations::step(machine, event, &mut out);
     assert_eq!(out.len(), 1, "one pending need or internal completion");
     out.pop().expect("one progress")
@@ -82,7 +82,7 @@ fn silent(machine: &mut Sweep) {
         Event::Written,
         Event::Drawn(secret(KEY)),
     ] {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         installations::step(machine, event, &mut out);
         assert!(out.is_empty(), "terminal child stays silent");
     }
@@ -442,9 +442,8 @@ struct Parent {
     outcome: Option<Outcome>,
 }
 fn parent_step(parent: &mut Parent, event: Event, out: &mut Queue<Need>) {
-    let mut child = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut child = Queue::uncapped();
     installations::step(&mut parent.sweep, event, &mut child);
-    assert!(child.len() <= reconcile::MAX_OUT);
     match child.pop() {
         Some(Progress::Pending(need)) => out.push(need),
         Some(Progress::Complete) => out.push(Need::Done(parent.outcome.take().expect("parent continues once"))),
@@ -456,7 +455,7 @@ fn parent_step(parent: &mut Parent, event: Event, out: &mut Queue<Need>) {
 fn the_parent_continues_only_after_the_sweep_completes() {
     let expected = Outcome::Lacking { lacking: checks::lacks(&fixtures::app()) };
     let mut parent = Parent { sweep: new(&given(), &[1, 9]), outcome: Some(expected.clone()) };
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     for (event, expected) in [
         (Event::Begin, page(1)),
         (rows(&[row(3, Wall::EPOCH, false), row(1, NOW, false)]), page(2)),

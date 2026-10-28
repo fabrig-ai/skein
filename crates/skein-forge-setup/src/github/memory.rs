@@ -4,7 +4,6 @@ use super::{
     checks,
     convert::Convert,
     given::{self, Given},
-    hook,
     install::Install,
     manifest::Manifest,
     paste::Paste,
@@ -13,15 +12,14 @@ use super::{
 use crate::{
     host::run::Machine,
     reachable::{Reachable, Reached},
-    reconcile::{MAX_OUT, Need},
 };
 use skein_json::writer;
 use skein_lib::{
-    List, Queue,
+    List,
     base64::{self, Alphabet},
 };
 
-/// One pure plan and its outgoing need, shared with whole-host admission.
+/// One pure plan, shared with whole-host admission.
 pub(crate) fn per_run(given: &Given) -> Option<u64> {
     given::check(given).ok()?;
     let plan = manifest(given)?
@@ -31,7 +29,7 @@ pub(crate) fn per_run(given: &Given) -> Option<u64> {
         .max(accept(given)?)
         .max(reconcile::worst_case(given)?)
         .max(reachable(given)?);
-    plan.checked_add(u64::try_from(size_of::<Machine>()).ok()?)?.checked_add(Queue::<Need>::worst_case(MAX_OUT)?)
+    plan.checked_add(u64::try_from(size_of::<Machine>()).ok()?)
 }
 
 fn copied(given: &Given) -> Option<u64> {
@@ -119,6 +117,5 @@ fn paste(given: &Given) -> Option<u64> {
         .checked_add(u64::from(given.limits.name_bytes).checked_mul(4)?)?
         .checked_add(u64::try_from(b"https://.invalid/".len()).ok()?)?
         .checked_add(checks::worst_case()?)?
-        .checked_add(Queue::<hook::Progress>::worst_case(MAX_OUT)?)?
         .checked_add(40)
 }

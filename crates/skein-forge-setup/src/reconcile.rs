@@ -16,8 +16,6 @@ use skein_forge::forgejo::{
 };
 use skein_lib::{Queue, Secret, Writer, bytes};
 pub(crate) use tokens::{reply, unexpected};
-/// Room the host reserves before stepping.
-pub const MAX_OUT: u32 = 1;
 /// One effect for the host, or the run's terminal outcome.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Need {
@@ -464,7 +462,7 @@ pub(crate) fn halt(machine: &mut Reconcile, why: Why, out: &mut Queue<Need>) {
         | State::Access
         | State::Ended => Event::Begin,
     };
-    let mut needs = Queue::with_capacity(MAX_OUT);
+    let mut needs = Queue::uncapped();
     step(machine, event, &mut needs);
     if let Some(Need::Stop(mut failure)) = needs.pop() {
         failure.why = why;

@@ -116,7 +116,7 @@ fn hex(value: u8) -> u8 {
 fn stop(forge: u16) -> Need {
     app::stop(forge, Stage::App, b"manifest", Why::Unexpected)
 }
-/// Consumes one event, emitting at most one need in `reconcile::MAX_OUT` room.
+/// Consumes one event, emitting its next need.
 /// Terminal machines ignore every later event.
 pub fn step(machine: &mut Manifest, event: Event, out: &mut Queue<Need>) {
     let phase = core::mem::replace(&mut machine.phase, Phase::Ended);
