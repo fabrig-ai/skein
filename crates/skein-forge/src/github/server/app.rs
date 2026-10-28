@@ -69,8 +69,8 @@ pub fn hook_url(body: &[u8], limits: &Limits) -> Option<Box<[u8]>> {
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits.json };
     let mut tokenizer = tokenizer::Tokenizer::new(&limits.json);
     let mut decoder = decode::decoder(document::Kind::HookConfig, limits);
-    let mut above = Queue::with_capacity(1);
-    let mut below = Queue::with_capacity(1);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let capacity = u32::try_from(body.len()).ok()?.max(tokenizer::largest_demand(&limits.json));
     let mut intake = Intake::with_capacity(capacity);
     intake.append(body).ok()?;
