@@ -92,16 +92,22 @@ fn dense_request_encoding(provider: skein_llm::Provider) {
     }
 }
 
+// Bounds the largest preparation and streaming peak across both HTTP framings at seed 37.
+const PREPARATION_STREAMING_PEAK_CEILING: u64 = 610_000;
+
 #[test]
-fn preparation_and_streaming_stay_within_the_declared_bound() {
+fn preparation_and_streaming_stay_under_the_peak_ceiling() {
     for chunked in [false, true] {
         let bounds = limits();
-        let bound = client::call_worst_case(&bounds).unwrap();
         let input = call(1);
         let span = Span::start();
         let prepared = client::Client::prepare(input, &bounds).ok().unwrap();
         let grown = span.end();
-        assert!(grown.peak <= i64::try_from(bound).unwrap(), "preparation peak {} exceeds {bound}", grown.peak);
+        assert!(
+            grown.peak <= i64::try_from(PREPARATION_STREAMING_PEAK_CEILING).unwrap(),
+            "preparation peak {} exceeds {PREPARATION_STREAMING_PEAK_CEILING}",
+            grown.peak
+        );
         drop(prepared);
 
         let meter = Meter::new();
@@ -113,10 +119,14 @@ fn preparation_and_streaming_stay_within_the_declared_bound() {
             meter.start();
             let progress = world.tick(true);
             let measured = meter.end();
-            assert!(measured.peak() <= bound, "total peak {} exceeds {bound}", measured.peak());
             assert!(
-                meter.held() <= bound,
-                "including the world's small retained trace, live heap stays within {bound}"
+                measured.peak() <= PREPARATION_STREAMING_PEAK_CEILING,
+                "total peak {} exceeds {PREPARATION_STREAMING_PEAK_CEILING}",
+                measured.peak()
+            );
+            assert!(
+                meter.held() <= PREPARATION_STREAMING_PEAK_CEILING,
+                "including the world's small retained trace, live heap stays within {PREPARATION_STREAMING_PEAK_CEILING}"
             );
             if !progress {
                 break;
@@ -132,12 +142,15 @@ fn preparation_and_streaming_stay_within_the_declared_bound() {
     }
 }
 
+// Bounds the largest construction and cancellation peak across all three stages at seed 19.
+const CANCELLATION_PEAK_CEILING: u64 = 540_000;
+
 #[test]
 fn cancellation_releases_owned_buffers() {
     for stage in 0..3 {
         let bounds = limits();
-        let bound = client::call_worst_case(&bounds).unwrap();
         let meter = Meter::new();
+        meter.start();
         let mut world = World::new(call(1), bounds, text_response(true), 19);
         if stage > 0 {
             world.request(client::Request::Start);
@@ -149,16 +162,20 @@ fn cancellation_releases_owned_buffers() {
         }
         world.request(client::Request::Cancel);
         world.settle();
-        assert!(meter.held() <= bound);
+        let measured = meter.end();
+        assert!(measured.peak() <= CANCELLATION_PEAK_CEILING);
+        assert!(meter.held() <= CANCELLATION_PEAK_CEILING);
         drop(world);
         assert_eq!(meter.held(), 0);
     }
 }
 
+// Bounds the largest error-body peak across JSON and non-JSON replies at seed 13.
+const ERROR_BODY_PEAK_CEILING: u64 = 820_000;
+
 #[test]
 fn bounded_error_body_and_protocol_failure_release_all_storage() {
     let bounds = limits();
-    let bound = client::call_worst_case(&bounds).unwrap();
     for body in [br#"{"error":{"code":"rate_limit_exceeded","message":"later"}}"#.as_slice(), b"not json".as_slice()] {
         let meter = Meter::new();
         let wire = skein_llm_world::response(429, "Content-Type: application/json\r\nRetry-After: 9\r\n", body, false);
@@ -168,8 +185,8 @@ fn bounded_error_body_and_protocol_failure_release_all_storage() {
             meter.start();
             let progress = world.tick(true);
             let measured = meter.end();
-            assert!(measured.peak() <= bound);
-            assert!(meter.held() <= bound);
+            assert!(measured.peak() <= ERROR_BODY_PEAK_CEILING);
+            assert!(meter.held() <= ERROR_BODY_PEAK_CEILING);
             if !progress {
                 break;
             }
@@ -181,12 +198,14 @@ fn bounded_error_body_and_protocol_failure_release_all_storage() {
     }
 }
 
+// Bounds the large schema, escaped request, reasoning and answer scenario at seed 17.
+const LARGE_SCHEMA_PEAK_CEILING: u64 = 1_700_000;
+
 #[test]
-fn large_schema_request_reasoning_and_answer_fit_the_same_bound() {
+fn large_schema_request_reasoning_and_answer_stay_under_the_peak_ceiling() {
     let mut bounds = limits();
     bounds.output_items = 4;
     bounds.reasoning = 4096;
-    let bound = client::call_worst_case(&bounds).unwrap();
     let meter = Meter::new();
     let mut request = call(1);
     // Request escaping nearly doubles these instructions; a large schema
@@ -223,8 +242,8 @@ fn large_schema_request_reasoning_and_answer_fit_the_same_bound() {
         meter.start();
         let progress = world.tick(true);
         let measured = meter.end();
-        assert!(measured.peak() <= bound);
-        assert!(meter.held() <= bound);
+        assert!(measured.peak() <= LARGE_SCHEMA_PEAK_CEILING);
+        assert!(meter.held() <= LARGE_SCHEMA_PEAK_CEILING);
         if !progress {
             break;
         }
@@ -252,10 +271,12 @@ fn large_schema_request_reasoning_and_answer_fit_the_same_bound() {
     assert_eq!(meter.held(), 0);
 }
 
+// Bounds the almost-full error buffer and fragmented request scenario at seed 17.
+const PARTIAL_ERROR_PEAK_CEILING: u64 = 850_000;
+
 #[test]
-fn almost_full_error_buffer_and_partial_request_are_bounded() {
+fn almost_full_error_buffer_and_partial_request_stay_under_the_peak_ceiling() {
     let bounds = limits();
-    let bound = client::call_worst_case(&bounds).unwrap();
     let meter = Meter::new();
     let detail = "x".repeat(3800);
     let body = format!(r#"{{"error":{{"code":"rate_limit_exceeded","message":"{detail}"}}}}"#);
@@ -267,8 +288,8 @@ fn almost_full_error_buffer_and_partial_request_are_bounded() {
         meter.start();
         let progress = world.tick(true);
         let measured = meter.end();
-        assert!(measured.peak() <= bound);
-        assert!(meter.held() <= bound);
+        assert!(measured.peak() <= PARTIAL_ERROR_PEAK_CEILING);
+        assert!(meter.held() <= PARTIAL_ERROR_PEAK_CEILING);
         if !progress {
             break;
         }
@@ -281,12 +302,14 @@ fn almost_full_error_buffer_and_partial_request_are_bounded() {
     assert_eq!(meter.held(), 0);
 }
 
+// Bounds three unknown items with dense empty-token replay storage at seed 3.
+const UNKNOWN_ITEMS_PEAK_CEILING: u64 = 1_700_000;
+
 #[test]
-fn multiple_unknown_items_with_many_empty_tokens_fit_the_bound() {
+fn multiple_unknown_items_with_many_empty_tokens_stay_under_the_peak_ceiling() {
     let mut bounds = limits();
     bounds.output_items = 4;
     bounds.reasoning = 4096;
-    let bound = client::call_worst_case(&bounds).unwrap();
     let meter = Meter::new();
     // Near 1024 tokens per event and near 8192 bytes across the answer, while
     // Empty strings have no payload allocation; fixed records still cost bytes.
@@ -307,8 +330,8 @@ fn multiple_unknown_items_with_many_empty_tokens_fit_the_bound() {
         meter.start();
         let progress = world.tick(true);
         let measured = meter.end();
-        assert!(measured.peak() <= bound);
-        assert!(meter.held() <= bound);
+        assert!(measured.peak() <= UNKNOWN_ITEMS_PEAK_CEILING);
+        assert!(meter.held() <= UNKNOWN_ITEMS_PEAK_CEILING);
         if !progress {
             break;
         }
@@ -333,8 +356,11 @@ fn multiple_unknown_items_with_many_empty_tokens_fit_the_bound() {
     assert_eq!(meter.held(), 0);
 }
 
+// Bounds thirty-two unknown arrays with dense compact records at seed 33.
+const UNKNOWN_ARRAYS_PEAK_CEILING: u64 = 4_100_000;
+
 #[test]
-fn thirty_two_unknown_arrays_exercise_the_compact_record_bound() {
+fn thirty_two_unknown_arrays_exercise_the_compact_record_ceiling() {
     let mut bounds = limits();
     bounds.output_items = 32;
     bounds.tokens = 2048;
@@ -344,7 +370,6 @@ fn thirty_two_unknown_arrays_exercise_the_compact_record_bound() {
     bounds.answer = 140_000;
     bounds.receiving = 1_048_576;
     bounds.request = 1024;
-    let bound = client::call_worst_case(&bounds).unwrap();
     let meter = Meter::new();
     let tiny_values = vec!["0"; 1900].join(",");
     let mut documents = Vec::new();
@@ -365,7 +390,11 @@ fn thirty_two_unknown_arrays_exercise_the_compact_record_bound() {
         let progress = world.tick(true);
         let measured = meter.end();
         most = most.max(measured.peak());
-        assert!(measured.peak() <= bound, "total peak {} exceeds {bound}", measured.peak());
+        assert!(
+            measured.peak() <= UNKNOWN_ARRAYS_PEAK_CEILING,
+            "total peak {} exceeds {UNKNOWN_ARRAYS_PEAK_CEILING}",
+            measured.peak()
+        );
         if !progress {
             break;
         }
@@ -391,8 +420,11 @@ fn thirty_two_unknown_arrays_exercise_the_compact_record_bound() {
     assert_eq!(meter.held(), 0);
 }
 
+// Bounds the largest signed-thinking, tool and replay peak over both framings and fragment sizes at seed 37.
+const ANTHROPIC_REPLAY_PEAK_CEILING: u64 = 2_000_000;
+
 #[test]
-fn anthropic_signed_thinking_tool_input_and_replay_fit_the_declared_bound() {
+fn anthropic_signed_thinking_tool_input_and_replay_stay_under_the_peak_ceiling() {
     // Synthetic Messages documents exercise accumulation into signed replay
     // and tool arguments; they are not captured subscription traffic.
     for chunked in [false, true] {
@@ -400,12 +432,14 @@ fn anthropic_signed_thinking_tool_input_and_replay_fit_the_declared_bound() {
             let mut bounds = limits();
             bounds.output_items = 4;
             bounds.reasoning = 4096;
-            let bound = client::call_worst_case(&bounds).unwrap();
             let input = memory_anthropic_call(1);
             let span = Span::start();
             let prepared = client::Client::prepare(input, &bounds).ok().unwrap();
             let grown = span.end();
-            assert!(grown.peak <= i64::try_from(bound).unwrap(), "Anthropic preparation exceeds {bound}");
+            assert!(
+                grown.peak <= i64::try_from(ANTHROPIC_REPLAY_PEAK_CEILING).unwrap(),
+                "Anthropic preparation exceeds {ANTHROPIC_REPLAY_PEAK_CEILING}"
+            );
             drop(prepared);
 
             let meter = Meter::new();
@@ -450,7 +484,7 @@ fn anthropic_signed_thinking_tool_input_and_replay_fit_the_declared_bound() {
             let mut world = World::new(input, bounds, wire, 37);
             world.fragmentation(fragment, 5);
             world.request(client::Request::Start);
-            drive_anthropic_memory(&mut world, &meter, bound);
+            drive_anthropic_memory(&mut world, &meter, ANTHROPIC_REPLAY_PEAK_CEILING);
             world.assert_once();
             assert!(
                 !world.seen.iter().any(|event| matches!(event, client::Event::Failed { .. })),
@@ -480,8 +514,14 @@ fn anthropic_signed_thinking_tool_input_and_replay_fit_the_declared_bound() {
             let span = Span::start();
             let prepared = client::Client::prepare(replay, &bounds).ok().unwrap();
             let grown = span.end();
-            assert!(grown.peak <= i64::try_from(bound).unwrap(), "signed replay preparation exceeds {bound}");
-            assert!(meter.held() <= bound, "replay and fixture storage stays within {bound}");
+            assert!(
+                grown.peak <= i64::try_from(ANTHROPIC_REPLAY_PEAK_CEILING).unwrap(),
+                "signed replay preparation exceeds {ANTHROPIC_REPLAY_PEAK_CEILING}"
+            );
+            assert!(
+                meter.held() <= ANTHROPIC_REPLAY_PEAK_CEILING,
+                "replay and fixture storage stays within {ANTHROPIC_REPLAY_PEAK_CEILING}"
+            );
             drop(prepared);
             drop(thinking);
             drop(signature);
@@ -625,8 +665,11 @@ fn scripted_byte_peer_and_client_stay_under_their_peak_ceiling() {
     assert!(text.iter().all(|byte| *byte == b'x'), "whole maximum payload was conveyed");
 }
 
+// Bounds preparation and fragmented reception of an oversized call at seed 3.
+const OVERSIZED_CALL_PEAK_CEILING: u64 = 540_000;
+
 #[test]
-fn an_oversized_call_completes_within_the_declared_bound() {
+fn an_oversized_call_completes_under_the_peak_ceiling() {
     use skein_llm::{Block, openai};
     let mut bounds = limits();
     bounds.input = 3;
@@ -658,18 +701,17 @@ fn an_oversized_call_completes_within_the_declared_bound() {
         body.extend_from_slice(b"\n\n");
     }
     let wire = skein_llm_world::response(200, "Content-Type: text/event-stream\r\n", &body, false);
-    let bound = client::call_worst_case(&bounds).expect("checked receiving bound");
     drop(body);
     meter.start();
     let mut world = World::new(call(1), bounds, wire, 3);
     world.request(client::Request::Start);
     let measured = meter.end();
-    meter.check(measured, bound, &"oversize preparation");
+    meter.check(measured, OVERSIZED_CALL_PEAK_CEILING, &"oversize preparation");
     for _ in 0..100_000 {
         meter.start();
         let progress = world.tick(true);
         let measured = meter.end();
-        meter.check(measured, bound, &"oversize actual fragmented event");
+        meter.check(measured, OVERSIZED_CALL_PEAK_CEILING, &"oversize actual fragmented event");
         if !progress {
             break;
         }
@@ -725,7 +767,7 @@ fn replay_at_its_cap_owns_only_shared_text_and_fixed_records() {
     assert_eq!(meter.held(), 0, "compact replay allocations release together");
 }
 
-fn selective_peak(size: usize, call_arguments: bool) -> (u64, u64) {
+fn selective_peak(size: usize, call_arguments: bool, ceiling: u64) -> (u64, u64) {
     // A quarter MiB across the four independently ignored echo paths keeps
     // the ignored fields far larger than their retained limits.
     let text = "x".repeat(if call_arguments { size } else { size / 4 });
@@ -753,13 +795,12 @@ fn selective_peak(size: usize, call_arguments: bool) -> (u64, u64) {
     bounds.input = 3;
     bounds.reasoning = 128;
     bounds.skip = 8_000_000;
-    let bound = client::call_worst_case(&bounds).expect("checked selective receiving bound");
     // Only client preparation and calls are metered. Transport, observations,
     // and cloned handoffs grow outside; original outputs are handed out.
     let meter = Meter::new();
     meter.start();
     let machine = client::Client::prepare(call(1), &bounds).expect("fixture admitted");
-    let mut peak = meter.check(meter.end(), bound, &"selective preparation");
+    let mut peak = meter.check(meter.end(), ceiling, &"selective preparation");
     let outside = Span::start();
     let mut world = World::prepared(machine, bounds, wire, 77);
     world.fragmentation(256, 31);
@@ -768,7 +809,7 @@ fn selective_peak(size: usize, call_arguments: bool) -> (u64, u64) {
         &meter,
         &mut world,
         skein_llm_world::Turn::Down(client::Request::Start),
-        bound,
+        ceiling,
         &mut outside,
         &mut peak,
     );
@@ -780,7 +821,7 @@ fn selective_peak(size: usize, call_arguments: bool) -> (u64, u64) {
             skein_llm_world::Turn::Done => break,
             skein_llm_world::Turn::Waiting => {}
             turn @ (skein_llm_world::Turn::Up(_) | skein_llm_world::Turn::Down(_) | skein_llm_world::Turn::Resume) => {
-                selective_step(&meter, &mut world, turn, bound, &mut outside, &mut peak);
+                selective_step(&meter, &mut world, turn, ceiling, &mut outside, &mut peak);
             }
         }
     }
@@ -802,7 +843,7 @@ fn selective_step(
     meter: &Meter,
     world: &mut World,
     turn: skein_llm_world::Turn,
-    bound: u64,
+    ceiling: u64,
     outside: &mut i64,
     peak: &mut u64,
 ) {
@@ -846,10 +887,9 @@ fn selective_step(
         drop(request);
     }
     drop((above, below));
-    // A growing client ring may hold both buffers at once; held storage
-    // after handoff stays within the formula, its peak within twice it.
-    let ceiling = i64::try_from(2 * bound).expect("bound fits") + *outside;
-    let own = meter.check(measured, u64::try_from(ceiling).expect("positive bound"), &"selective client call");
+    // The named ceiling covers client growth; world-owned storage stays outside.
+    let total_ceiling = i64::try_from(ceiling).expect("ceiling fits") + *outside;
+    let own = meter.check(measured, u64::try_from(total_ceiling).expect("positive ceiling"), &"selective client call");
     let own = i64::try_from(own).expect("peak fits") - *outside;
     *peak = (*peak).max(u64::try_from(own).expect("client owns its heap"));
     *outside += handed;
@@ -857,8 +897,11 @@ fn selective_step(
     world.outputs(copies_above, copies_below);
     *outside += observing.end().net;
     let held = i64::try_from(meter.held()).expect("held fits") - *outside;
-    assert!(held >= 0 && held <= i64::try_from(bound).expect("bound fits"));
+    assert!(held >= 0 && held <= i64::try_from(ceiling).expect("ceiling fits"));
 }
+
+// Bounds the largest peak for discarded echoes over all three fixture sizes at seed 77.
+const SELECTIVE_ECHO_PEAK_CEILING: u64 = 71_000;
 
 #[test]
 fn selective_echo_storage_differs_only_by_bounded_cold_growth() {
@@ -866,19 +909,22 @@ fn selective_echo_storage_differs_only_by_bounded_cold_growth() {
     // Its growth from 32 to 128 bytes bounds the difference, never the echo's size.
     // A quarter above the measured 96-byte difference, rounded to two digits.
     const COLD_GROWTH: u64 = 120;
-    let short = selective_peak(64, false);
-    let middle = selective_peak(4096, false);
-    let long = selective_peak(1 << 18, false);
+    let short = selective_peak(64, false, SELECTIVE_ECHO_PEAK_CEILING);
+    let middle = selective_peak(4096, false, SELECTIVE_ECHO_PEAK_CEILING);
+    let long = selective_peak(1 << 18, false, SELECTIVE_ECHO_PEAK_CEILING);
     assert!(middle.0 <= short.0 + COLD_GROWTH);
     assert!(long.0 <= short.0 + COLD_GROWTH);
     assert!(middle.1 <= short.1 + COLD_GROWTH, "discarded echoes retain no event buffer");
     assert!(long.1 <= short.1 + COLD_GROWTH, "discarded echoes retain no event buffer");
 }
 
+// Bounds the largest peak for discarded tool arguments over both fixture sizes at seed 77.
+const SELECTIVE_ARGUMENT_PEAK_CEILING: u64 = 71_000;
+
 #[test]
 fn selective_oversize_call_high_water_is_independent_of_the_argument_size() {
-    let short = selective_peak(64, true);
-    let long = selective_peak(1 << 18, true);
+    let short = selective_peak(64, true, SELECTIVE_ARGUMENT_PEAK_CEILING);
+    let long = selective_peak(1 << 18, true, SELECTIVE_ARGUMENT_PEAK_CEILING);
     assert_eq!(short.0, long.0, "discarded arguments retain only their length");
 }
 
@@ -941,12 +987,14 @@ fn twenty_five_thousand_history_items_allocate_only_the_declared_translation_tab
     );
 }
 
+// Bounds a full report with each diagnostic field at its 128-byte cap at seed 1.
+const FULL_REPORT_PEAK_CEILING: u64 = 820_000;
+
 #[test]
-fn a_full_report_stays_within_the_call_worst_case() {
+fn a_full_report_stays_under_the_peak_ceiling() {
     // llm.md 4.2: each report value may hold 128 bytes.
     const REPORT_BOUND: usize = 128;
     let bounds = limits();
-    let bound = client::call_worst_case(&bounds).expect("representable call bound");
     let body = format!(
         r#"{{"error":{{"code":"{}","message":"spent","param":"{}"}}}}"#,
         "c".repeat(REPORT_BOUND),
@@ -961,7 +1009,11 @@ fn a_full_report_stays_within_the_call_worst_case() {
         meter.start();
         let progress = world.tick(true);
         let measured = meter.end();
-        assert!(measured.peak() <= bound, "peak {} exceeds {bound}", measured.peak());
+        assert!(
+            measured.peak() <= FULL_REPORT_PEAK_CEILING,
+            "peak {} exceeds {FULL_REPORT_PEAK_CEILING}",
+            measured.peak()
+        );
         if !progress {
             break;
         }

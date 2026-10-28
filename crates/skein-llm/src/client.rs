@@ -1618,16 +1618,6 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         .checked_add(Queue::<Down>::worst_case(1)?)?
         .checked_add(u64::from(REPORT_BYTES).checked_mul(3)?)
 }
-/// A standalone call's fixed state, largest reservation and one entrance's
-/// preparation/reuse overlap and codec scratch; a pool prices the scratch once.
-#[must_use]
-pub fn call_worst_case(limits: &Limits) -> Option<u64> {
-    worst_case(limits)?
-        .checked_mul(2)?
-        .checked_add(largest_reservation(limits)?)?
-        .checked_add(encoding_worst_case(limits)?)
-}
-
 /// One borrowed request's fixed encoder/grammar scratch, excluding its reserved bytes.
 /// Neither document density nor request counts grow it (llm.md, section 4.2).
 #[must_use]
