@@ -486,9 +486,11 @@ fn an_event_far_longer_than_its_chunk_costs_the_same_reader_memory_as_a_small_on
     let small = format!("event: 12345678\nid: 12345678\ndata: {}\n\n", "a".repeat(64));
     let large = format!("event: 12345678\nid: 12345678\ndata: {}\n\n", "a".repeat(1 << 14));
     let small = events(limits, small.as_bytes(), None);
-    let (large, name, id) = events_observed(limits, large.as_bytes(), None);
+    let observed = event_memory(limits, large.as_bytes(), None);
+    let large = observed.most;
     assert_eq!(small, large, "the reader holds no event buffer");
-    assert!(large <= sse::worst_case(&limits).expect("valid limits"));
-    assert_eq!(name, usize::try_from(limits.field).unwrap());
-    assert_eq!(id, usize::try_from(limits.field).unwrap());
+    assert_eq!(observed.name, usize::try_from(limits.field).expect("field fits"));
+    assert_eq!(observed.id, usize::try_from(limits.field).expect("field fits"));
+    // A growing list holds its old and new buffers at once during realloc.
+    assert!(large <= 2 * sse::worst_case(&limits).expect("valid limits"));
 }

@@ -72,6 +72,24 @@ fn full_pages_at_their_node_and_text_limits_stay_within_the_worst_case() {
     let (peak, bound) = peak();
     assert!(peak <= bound, "full pages, diff, Markdown and scene: {peak} <= {bound}");
 }
+#[test]
+fn a_full_page_fills_its_node_text_and_style_limits() {
+    let mut builder = Builder::new(&LIMITS);
+    full_page(&LIMITS, &mut builder);
+    let tree = builder.finish();
+    assert_eq!(tree.nodes().len(), usize::try_from(LIMITS.nodes).expect("node count fits"));
+    let mut text_bytes = 0;
+    for node in tree.nodes() {
+        let text = node.name.as_ref().map_or(0, |name| name.len())
+            + node.text.as_slice().iter().map(|run| run.text.len()).sum::<usize>();
+        assert_eq!(text, usize::try_from(LIMITS.text_per_node).expect("text count fits"));
+        text_bytes += text;
+        if node.role == Role::Text {
+            assert_eq!(node.styles.len(), LIMITS.styles_per_node);
+        }
+    }
+    assert_eq!(text_bytes, usize::try_from(LIMITS.text_bytes).expect("text budget fits"));
+}
 
 #[test]
 fn a_full_patch_queue_holds_at_most_four_words_a_patch() {
