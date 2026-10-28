@@ -788,3 +788,34 @@ fn transport_machine(secure: bool, script: Vec<Answer>) -> Machine {
     let settings = if secure { skein_forge_machine_world::tls::settings() } else { fixtures::settings() };
     Machine::with(7, fixtures::limits(), settings, script)
 }
+
+#[test]
+fn a_connection_takes_no_further_answer_until_its_heard_one_is_taken() {
+    use machine::Pause;
+    use skein_forge_connection::Request;
+    const SEED: u64 = 7;
+    const FIRST_REQUEST: &str = "GET /api/v1/user";
+    const NEXT_REQUEST: &str = "GET /api/v1/settings/api";
+    let first = fixtures::response(200, br#"{"id":2,"login":"writer"}"#);
+    let head = first.windows(4).position(|bytes| bytes == b"\r\n\r\n").expect("response head") + 4;
+    let second = fixtures::response(200, br#"{"max_response_items":2,"default_paging_num":30}"#);
+    let mut world = Machine::new(
+        SEED,
+        vec![
+            Answer { request: FIRST_REQUEST, response: Response::Bytes(first) },
+            Answer { request: NEXT_REQUEST, response: Response::Bytes(second) },
+        ],
+    );
+    world.pause_at(0, Pause::Reading(head));
+    world.run_for(SECOND);
+    world.action(Request::Offer);
+    world.action(Request::Offer);
+    assert_eq!(world.requests().len(), 1, "the next exchange cannot demand its body past the held first reply");
+    assert!(world.connected_forges().is_empty());
+    world.release_response();
+    world.run_for(SECOND);
+    assert_eq!(world.requests().len(), 2, "each buffered reply advances the start plan once");
+    assert_eq!(world.connected_forges(), &[fixtures::FORGE]);
+    assert!(world.script_done());
+    assert!(world.close());
+}
