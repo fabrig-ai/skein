@@ -6,11 +6,7 @@ use skein_io::{self as io, Addr, Io, Request};
 use skein_lib::stream::{self, Read};
 use skein_lib::{Duration, Env, Queue, Time, Token, Wall};
 use skein_shell::{Backend, Clock, Config, Host, Kernel, drive};
-use skein_ui_example_server::{
-    State,
-    bundle::{BUNDLE_BYTES, Bundle, FILE_BYTES},
-    routes,
-};
+use skein_ui_example_server::{State, bundle::Bundle, routes};
 use std::collections::{BTreeMap, VecDeque};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -41,21 +37,6 @@ fn io_limits() -> io::Limits {
 fn http_limits() -> server::Limits {
     server::Limits { head: 4096, headers: 32, body: 8192, read: 4096, response: 2048, send: 16384 }
 }
-fn worst_case() -> Option<u64> {
-    io::worst_case(&io_limits())?
-        .checked_add(server::worst_case(&http_limits())?.checked_mul(u64::try_from(CONNECTIONS).ok()?)?)?
-        .checked_add(u64::from(FILE_BYTES).checked_mul(u64::try_from(CONNECTIONS).ok()?)?)?
-        .checked_add(BUNDLE_BYTES.checked_mul(2)?)?
-        .checked_add(Queue::<Complete>::worst_case(QUEUE)?)?
-        .checked_add(Queue::<Submit>::worst_case(QUEUE)?)?
-        .checked_add(Queue::<Request>::worst_case(QUEUE)?)?
-        .checked_add(Queue::<io::Event>::worst_case(QUEUE)?)?
-        .checked_add(Queue::<server::Event>::worst_case(32)?)?
-        .checked_add(Queue::<stream::Down>::worst_case(32)?)?
-        .checked_add(4 << 20)?
-        .checked_add(sse::worst_case(&sse_limits())?.checked_mul(u64::try_from(STREAMS).ok()?)?)?
-        .checked_add(u64::from(EVENT_BYTES).checked_mul(64)?.checked_mul(u64::try_from(STREAMS).ok()?)?)
-}
 fn main() -> ExitCode {
     skein_fail_stop::install();
     match run() {
@@ -70,27 +51,15 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let address: SocketAddr = args
         .next()
-        .ok_or("usage: skein-ui-example ADDRESS --bundle DIR [--memory BYTES]")?
+        .ok_or("usage: skein-ui-example ADDRESS --bundle DIR")?
         .parse()
         .map_err(|why| format!("invalid address: {why}"))?;
     let mut directory = None;
-    let mut memory = 256_u64 << 20;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--bundle" => directory = Some(PathBuf::from(args.next().ok_or("--bundle needs a directory")?)),
-            "--memory" => {
-                memory = args
-                    .next()
-                    .ok_or("--memory needs bytes")?
-                    .parse()
-                    .map_err(|why| format!("invalid memory: {why}"))?;
-            }
             _ => return Err(format!("unexpected argument {arg}")),
         }
-    }
-    let worst = worst_case().ok_or("memory bound overflow")?;
-    if worst > memory {
-        return Err(format!("worst case {worst} exceeds memory {memory}"));
     }
     let directory = directory.ok_or("--bundle needs a directory")?;
     let bundle = Bundle::read(&directory)?;
@@ -478,9 +447,6 @@ impl Host for Web {
     }
     fn exit(&self) -> Option<Exit> {
         Some(Exit::Code(u8::from(self.failed)))
-    }
-    fn worst_case(&self) -> u64 {
-        worst_case().expect("startup priced memory")
     }
     fn operations(&self) -> u32 {
         io::operations(&io_limits()).expect("startup priced operations")
