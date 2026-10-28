@@ -460,11 +460,38 @@ fn unrelated_style_command_errors_are_protocol_refusals() {
     }
 }
 #[test]
-fn look_memory_bounds_detect_overflow() {
-    let limits = Limits { text: u32::MAX, properties: u32::MAX, ops: u32::MAX, ..Limits::default() };
-    assert_eq!(skein_browser::worst_case(&limits), None);
-    let limits = Limits { text: u32::MAX, entries: u32::MAX, ops: u32::MAX, ..Limits::default() };
-    assert_eq!(skein_browser::worst_case(&limits), None);
+fn browser_limits_require_finite_framing_and_advancing_deadlines() {
+    let defaults = Limits::default();
+    assert!(skein_browser::valid(&defaults));
+    for limits in [
+        Limits { commands: 0, ..defaults },
+        Limits { command: 0, ..defaults },
+        Limits { message: 0, ..defaults },
+        Limits { message: u32::MAX, ..defaults },
+        Limits { command: u32::MAX, ..defaults },
+        Limits { answer: skein_lib::Duration::from_nanos(0), ..defaults },
+        Limits { poll: skein_lib::Duration::from_nanos(0), ..defaults },
+    ] {
+        assert!(!skein_browser::valid(&limits), "unusable limits: {limits:?}");
+    }
+}
+
+#[test]
+#[should_panic(expected = "browser limits must be representable")]
+fn browser_refuses_a_read_without_room_for_its_nul() {
+    let limits = Limits { message: u32::MAX, ..Limits::default() };
+    assert_eq!(skein_browser::largest_read(&limits), None);
+    assert!(!skein_browser::valid(&limits));
+    let _browser = skein_browser::Browser::new(Token::new(1), &limits);
+}
+
+#[test]
+#[should_panic(expected = "browser limits must be representable")]
+fn browser_refuses_a_command_without_room_for_its_nul() {
+    let limits = Limits { command: u32::MAX, ..Limits::default() };
+    assert_eq!(skein_browser::largest_room(&limits), None);
+    assert!(!skein_browser::valid(&limits));
+    let _browser = skein_browser::Browser::new(Token::new(1), &limits);
 }
 
 #[test]

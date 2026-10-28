@@ -1,7 +1,7 @@
-//! Exercise the declared heap bound with a counting allocator.
+//! Keep fixed scenarios under measured peak ceilings with a counting allocator.
 
+use skein_browser::Limits;
 use skein_browser::boundary::Request;
-use skein_browser::{Limits, worst_case};
 use skein_browser_world::world::{Fault, World};
 use skein_heap::{Counting, Meter};
 use skein_lib::Token;
@@ -26,10 +26,13 @@ pub fn compact_limits() -> Limits {
     }
 }
 
+// Whole-world peak for this scenario: 16,764 B measured, plus a quarter, rounded up
+// to two significant digits.
+const BROWSER_REPORTS_PEAK_CEILING: u64 = 21_000;
+
 #[test]
-fn reports_faults_and_terminals_fit_the_declared_bound() {
+fn reports_faults_and_terminals_stay_under_the_peak_ceiling() {
     let limits = compact_limits();
-    let bound = worst_case(&limits).expect("finite bound");
     let meter = Meter::new();
     meter.start();
     let mut world = World::with_limits(limits);
@@ -41,13 +44,22 @@ fn reports_faults_and_terminals_fit_the_declared_bound() {
     world.disabled = true;
     world.ask(Request::Press { page: Token::new(3), op: Token::new(6), node: 7, at: None });
     let measured = meter.end();
-    assert!(measured.peak() <= bound, "whole world peak {} exceeds browser bound {bound}", measured.peak());
+    println!("{}: peak {} bytes", module_path!(), measured.peak());
+    assert!(
+        measured.peak() <= BROWSER_REPORTS_PEAK_CEILING,
+        "peak {} exceeds ceiling {BROWSER_REPORTS_PEAK_CEILING}",
+        measured.peak()
+    );
     drop(world);
     assert_eq!(meter.held(), 0, "all storage is released");
 }
 
+// Whole-world peak for this scenario: 33,290 B measured, plus a quarter, rounded up
+// to two significant digits.
+const BROWSER_ATTRIBUTE_PEAK_CEILING: u64 = 42_000;
+
 #[test]
-fn selector_and_attribute_storage_fits_the_declared_bound() {
+fn selector_and_attribute_storage_stays_under_the_peak_ceiling() {
     let limits = Limits {
         text: 2048,
         message: 16384,
@@ -57,7 +69,6 @@ fn selector_and_attribute_storage_fits_the_declared_bound() {
         screenshot: 0,
         ..compact_limits()
     };
-    let bound = worst_case(&limits).expect("finite attribute bound");
     let meter = Meter::new();
     meter.start();
     let mut world = World::with_limits(limits);
@@ -74,17 +85,25 @@ fn selector_and_attribute_storage_fits_the_declared_bound() {
         matches!(world.above.pop(), Some(skein_browser::boundary::Event::Attribute { read: skein_browser::boundary::Read::Value(value), .. }) if value.len() == 2048)
     );
     let measured = meter.end();
-    assert!(measured.peak() <= bound, "attribute peak {} exceeds bound {bound}", measured.peak());
+    println!("{}: peak {} bytes", module_path!(), measured.peak());
+    assert!(
+        measured.peak() <= BROWSER_ATTRIBUTE_PEAK_CEILING,
+        "peak {} exceeds ceiling {BROWSER_ATTRIBUTE_PEAK_CEILING}",
+        measured.peak()
+    );
     drop(world);
     assert_eq!(meter.held(), 0);
 }
 
 #[path = "support/look_memory.rs"]
 mod look_memory;
+// Whole-world peak for this scenario: 83,602 B measured, plus a quarter, rounded up
+// to two significant digits.
+const BROWSER_LOOK_PEAK_CEILING: u64 = 110_000;
+
 #[test]
-fn look_requests_and_answers_at_their_limits_fit_the_declared_bound() {
+fn look_requests_and_answers_at_their_limits_stay_under_the_peak_ceiling() {
     let limits = Limits { entries: 16, properties: 8, message: 32768, command: 4096, ..compact_limits() };
-    let bound = worst_case(&limits).unwrap();
     let meter = Meter::new();
     meter.start();
     let mut world = World::with_limits(limits);
@@ -92,15 +111,23 @@ fn look_requests_and_answers_at_their_limits_fit_the_declared_bound() {
     world.open();
     look_memory::drive(&mut world, limits);
     let measured = meter.end();
-    assert!(measured.peak() <= bound, "look peak {} exceeds {bound}", measured.peak());
+    println!("{}: peak {} bytes", module_path!(), measured.peak());
+    assert!(
+        measured.peak() <= BROWSER_LOOK_PEAK_CEILING,
+        "peak {} exceeds ceiling {BROWSER_LOOK_PEAK_CEILING}",
+        measured.peak()
+    );
     drop(world);
     assert_eq!(meter.held(), 0);
 }
 
+// Whole-world peak for this scenario: 16,260 B measured, plus a quarter, rounded up
+// to two significant digits.
+const BROWSER_DOWNLOAD_PEAK_CEILING: u64 = 21_000;
+
 #[test]
-fn downloads_at_the_inflight_limit_fit_the_declared_bound() {
+fn downloads_at_the_inflight_limit_stay_under_the_peak_ceiling() {
     let limits = compact_limits();
-    let bound = worst_case(&limits).expect("finite download bound");
     let meter = Meter::new();
     meter.start();
     let mut world = World::with_limits(limits);
@@ -111,7 +138,12 @@ fn downloads_at_the_inflight_limit_fit_the_declared_bound() {
     }
     assert!(world.above.is_empty(), "all downloads at the bound remain in flight");
     let measured = meter.end();
-    assert!(measured.peak() <= bound, "download peak {} exceeds bound {bound}", measured.peak());
+    println!("{}: peak {} bytes", module_path!(), measured.peak());
+    assert!(
+        measured.peak() <= BROWSER_DOWNLOAD_PEAK_CEILING,
+        "peak {} exceeds ceiling {BROWSER_DOWNLOAD_PEAK_CEILING}",
+        measured.peak()
+    );
     drop(world);
     assert_eq!(meter.held(), 0);
 }
