@@ -102,8 +102,8 @@ fn run(dialect: Provider, seed: u64) -> (Vec<String>, (u32, u32)) {
     let fake_env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: fake_limits };
     let mut up = Queue::uncapped();
     let mut io = Queue::uncapped();
-    let mut peer_up = Queue::with_capacity(provider::MAX_UP);
-    let mut peer_down = Queue::with_capacity(provider::MAX_DOWN);
+    let mut peer_up = Queue::uncapped();
+    let mut peer_down = Queue::uncapped();
     let mut replies = Queue::uncapped();
     let mut to_peer = Intake::with_capacity(32768);
     let mut peer_demand: Option<(Read, u32)> = None;

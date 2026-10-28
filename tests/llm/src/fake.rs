@@ -76,18 +76,11 @@ pub fn extra_worst_case(
     if bounds.http.request.max(bounds.http.send) > 32768 || bounds.http.head.max(bounds.http.read) > 32768 {
         return None;
     }
-    let queues = Queue::<provider::Event>::worst_case(provider::MAX_UP)?
-        .checked_add(u64::from(provider::MAX_UP).checked_mul(provider::head_worst_case(&peer)?)?)?
-        .checked_add(Queue::<Down>::worst_case(provider::MAX_DOWN)?)?;
     let traces = observation_worst_case(observations)?;
-    // The fixed intakes also bound a delivered box while it enters either
-    // receiver. Queue-owned wire sends can coexist with those deliveries.
-    let wire = Intake::worst_case(32768)?
-        .checked_mul(4)?
-        .checked_add(u64::from(provider::MAX_DOWN).checked_mul(u64::from(peer.http.response.max(peer.http.send)))?)?;
+    // The fixed intakes also bound a delivered box at either receiver.
+    let wire = Intake::worst_case(32768)?.checked_mul(4)?;
     provider::worst_case(&peer)?
         .checked_add(fake::worst_case(&config())?)?
-        .checked_add(queues)?
         .checked_add(wire)?
         .checked_add(traces)?
         .checked_add(bytes(&endpoint.target)?)?
@@ -438,8 +431,8 @@ impl Exchange {
             credentials,
             client_above: Queue::uncapped(),
             client_below: Queue::uncapped(),
-            peer_above: Queue::with_capacity(provider::MAX_UP),
-            peer_below: Queue::with_capacity(provider::MAX_DOWN),
+            peer_above: Queue::uncapped(),
+            peer_below: Queue::uncapped(),
             replies: Queue::uncapped(),
             to_client: Intake::with_capacity(32768),
             to_peer: Intake::with_capacity(32768),

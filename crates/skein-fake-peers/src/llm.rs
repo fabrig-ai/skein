@@ -238,8 +238,8 @@ impl Peer {
                     owner,
                     wire: Wire::new(socket, self.transport, limits),
                     server: provider::Server::new(owner, &self.protocol_limits).expect("validated peer limits"),
-                    above: Queue::with_capacity(limits.queue),
-                    below: Queue::with_capacity(limits.queue),
+                    above: Queue::uncapped(),
+                    below: Queue::uncapped(),
                     plain: Queue::with_capacity(limits.queue),
                     closing: false,
                 };
@@ -318,7 +318,7 @@ impl Peer {
                 );
                 connection.closing = true;
             }
-            if connection.above.room() >= provider::MAX_UP && connection.below.room() >= provider::MAX_DOWN {
+            {
                 if let Some(up) = connection.plain.pop() {
                     if self.ignore_half_close && up == Up::End {
                         continue;
@@ -424,10 +424,6 @@ impl Peer {
                     .iter_mut()
                     .find(|connection| connection.owner == owner)
                     .expect("active service route has a socket");
-                assert!(
-                    connection.above.room() >= provider::MAX_UP && connection.below.room() >= provider::MAX_DOWN,
-                    "owner reserved the down entrance"
-                );
                 provider::down(
                     &mut connection.server,
                     &mut self.service,
