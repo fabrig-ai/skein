@@ -47,3 +47,8 @@ fn refresh_keeping_rejection_release_and_teardown_cross_real_http_streams() {
 fn stream_fragments_and_owner_terminals_replay() {
     assert_eq!(world::protocol(97, Story::Rotate), world::protocol(97, Story::Rotate));
 }
+
+#[test]
+fn a_tick_waits_until_the_previous_oauth_output_is_dispatched() {
+    assert_eq!(world::delayed_oauth_output(), ["held OAuth output", "dispatched HTTP request", "Tick aborted socket"]);
+}

@@ -1411,3 +1411,46 @@ pub(crate) fn terms() -> oauth::Terms {
         sign_in_again: Box::new([]),
     }
 }
+
+/// Pause between creating OAuth output and the next component progress turn.
+#[must_use]
+pub fn delayed_oauth_output() -> Vec<&'static str> {
+    use skein_lib::Token;
+
+    // Each fire advances one child handoff; this covers the refresh and its
+    // timeout settlement without introducing another entrance.
+    const TURNS: u32 = 16;
+    const SOCKET: Token = Token::new(9);
+    let mut client = Client::new(Story::Rotate, Transport::Plaintext);
+    client.address = Some((Ipv4Addr::LOCALHOST, 31000).into());
+    let mut env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits: limits() };
+    client.start(&env);
+    let component = client.component.as_mut().expect("started component");
+    let mut trace = Vec::new();
+    if component.has_work() && client.requests.is_empty() {
+        trace.push("held OAuth output");
+    }
+    env.now = component.next_deadline().expect("refresh HTTP deadline").saturating_add(Duration::from_nanos(1));
+    env.wall = Wall::from_nanos(env.now.as_nanos());
+    for _ in 0..TURNS {
+        component.fire(&env, &mut client.above, &mut client.requests, &mut client.files);
+        for _ in 0..client.requests.len() {
+            let request = client.requests.pop().expect("turn's requests");
+            match request {
+                io::Request::Connect { owner, .. } => {
+                    trace.push("dispatched HTTP request");
+                    component.up(
+                        &env,
+                        io::Event::Connecting { owner, socket: SOCKET },
+                        &mut client.above,
+                        &mut client.requests,
+                        &mut client.files,
+                    );
+                }
+                io::Request::Abort { .. } => trace.push("Tick aborted socket"),
+                other => panic!("the expired refresh only connects then aborts: {other:?}"),
+            }
+        }
+    }
+    trace
+}
