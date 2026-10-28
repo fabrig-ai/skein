@@ -10,7 +10,7 @@
 //!
 //! A [`Protocol`] made from its [`Limits`], the address to listen at and a
 //! seed, and four entry points, called by the service's loop
-//! (programming-model.md, section 2), each emitting at most its `MAX_OUT`
+//! (programming-model.md, section 2), each emitting into uncapped handoff queues
 //! into the queues the loop reserved room in:
 //!
 //! - in the up pass, [`resume`] while [`Protocol::is_ready`], then [`up`]
@@ -34,4 +34,4 @@ mod limits;
 mod tests;
 
 pub use layer::{Protocol, down, fire, resume, up};
-pub use limits::{BUSY, Limits, MAX_OUT_DOWN, MAX_OUT_FIRE, MAX_OUT_RESUME, MAX_OUT_UP, MaxOut, TOO_LONG, worst_case};
+pub use limits::{BUSY, Limits, TOO_LONG, worst_case};

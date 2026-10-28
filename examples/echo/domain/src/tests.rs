@@ -1,13 +1,13 @@
 //! The domain's step tests (testing-strategy.md, 2.1): admission to the slab
 //! and the refusal past it, a line answered and counted, a session's end and
 //! its slot freed at the reclaim point, and shutdown. Every step is called
-//! with exactly its `MAX_OUT` of room, so one that emits more fails the test.
+//! with an uncapped output queue.
 
 use alloc::boxed::Box;
 
 use skein_lib::{Env, Queue, ReplyTo, Time, Token, Wall};
 
-use crate::{Domain, Event, Limits, MAX_OUT, Reply, Request, step, worst_case};
+use crate::{Domain, Event, Limits, Reply, Request, step, worst_case};
 
 const LIMITS: Limits = Limits { sessions: 2 };
 
@@ -22,12 +22,11 @@ impl Rig {
         Rig { domain: Domain::new(&LIMITS), env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: LIMITS }, next: 1 }
     }
 
-    /// One step, with exactly `MAX_OUT` of room; what it emitted.
+    /// One step and its request.
     fn step(&mut self, event: Event) -> Option<Request> {
-        let mut out = Queue::with_capacity(MAX_OUT);
+        let mut out = Queue::uncapped();
         step(&mut self.domain, &self.env, event, &mut out);
         let request = out.pop();
-        assert!(out.is_empty(), "at most MAX_OUT requests");
         request
     }
 

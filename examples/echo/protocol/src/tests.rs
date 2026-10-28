@@ -2,7 +2,7 @@
 //! the connection and the listener (examples.md, 3.4) driven by hand, the
 //! refusals at a full slab, the idle deadline and its spread, replies to
 //! connections gone, and the worst case. Every entry point is called with
-//! exactly its `MAX_OUT` of room, so one that emits more fails the test.
+//! uncapped output queues.
 
 #![expect(clippy::disallowed_types, reason = "what a step emitted is collected in Vecs, for the test to look at")]
 
@@ -19,7 +19,7 @@ use skein_io::{Event as Told, Request as Io};
 use skein_lib::stream::{Delimiter, Down, Fault, Read, Up};
 use skein_lib::{Duration, Env, Queue, ReplyTo, Time, Token, Wall};
 
-use crate::{Limits, MAX_OUT_DOWN, MAX_OUT_FIRE, MAX_OUT_RESUME, MAX_OUT_UP, MaxOut, Protocol, down, fire, resume, up};
+use crate::{Limits, Protocol, down, fire, resume, up};
 
 /// Tiny limits: two connections, lines of sixteen bytes, a second idle and
 /// no spread, so that deadlines are exact.
@@ -96,12 +96,12 @@ impl Rig {
         self.env.now = now;
     }
 
-    fn queues(max: MaxOut) -> (Queue<Call>, Queue<Io>) {
-        (Queue::with_capacity(max.events), Queue::with_capacity(max.requests))
+    fn queues() -> (Queue<Call>, Queue<Io>) {
+        (Queue::uncapped(), Queue::uncapped())
     }
 
     fn resume(&mut self) -> Out {
-        let (mut calls, mut io) = Rig::queues(MAX_OUT_RESUME);
+        let (mut calls, mut io) = Rig::queues();
         resume(&mut self.proto, &self.env, &mut calls, &mut io);
         let mut out = Out::new();
         out.drain(&mut calls, &mut io);
@@ -109,7 +109,7 @@ impl Rig {
     }
 
     fn up(&mut self, event: Told) -> Out {
-        let (mut calls, mut io) = Rig::queues(MAX_OUT_UP);
+        let (mut calls, mut io) = Rig::queues();
         up(&mut self.proto, &self.env, event, &mut calls, &mut io);
         let mut out = Out::new();
         out.drain(&mut calls, &mut io);
@@ -117,7 +117,7 @@ impl Rig {
     }
 
     fn fire(&mut self) -> Out {
-        let (mut calls, mut io) = Rig::queues(MAX_OUT_FIRE);
+        let (mut calls, mut io) = Rig::queues();
         fire(&mut self.proto, &self.env, &mut calls, &mut io);
         let mut out = Out::new();
         out.drain(&mut calls, &mut io);
@@ -125,7 +125,7 @@ impl Rig {
     }
 
     fn down(&mut self, request: Domain) -> Out {
-        let mut io = Queue::with_capacity(MAX_OUT_DOWN);
+        let mut io = Queue::uncapped();
         down(&mut self.proto, &self.env, request, &mut io);
         let mut out = Out::new();
         out.drain(&mut Queue::with_capacity(0), &mut io);

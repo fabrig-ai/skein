@@ -13,7 +13,7 @@
 //!   asks once that no one more be let in (`Stop`). The sessions it has run
 //!   to their end.
 //!
-//! [`step`] takes one event and emits at most [`MAX_OUT`] requests.
+//! [`step`] takes one event and emits into an uncapped request queue.
 
 #![cfg_attr(not(test), no_std)]
 #![forbid(unsafe_code)]
@@ -93,9 +93,6 @@ enum Admission {
     Stopped,
 }
 
-/// The most requests one call of [`step`] emits.
-pub const MAX_OUT: u32 = 1;
-
 /// The most heap the domain holds under `limits`, or `None` past a `u64`
 /// (programming-model.md, 6.3): its slab of sessions. The texts it answers
 /// with are moved through it, and counted by the protocol layer, whose line
@@ -146,7 +143,7 @@ impl Domain {
     }
 }
 
-/// Takes one event, emitting at most [`MAX_OUT`] requests. The domain reads
+/// Takes one event, emitting into the request queue. The domain reads
 /// nothing from its environment yet; the argument keeps the shape every step
 /// has (programming-model.md, section 3).
 pub fn step(domain: &mut Domain, _env: &Env<Limits>, event: Event, out: &mut Queue<Request>) {
