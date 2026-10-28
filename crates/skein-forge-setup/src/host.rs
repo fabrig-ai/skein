@@ -39,7 +39,6 @@ pub struct Host {
 impl Host {
     pub fn new(limits: &Limits, settings: Settings, crypto: CryptoRng) -> Result<Self, Unusable> {
         limits::check(limits, &settings)?;
-        worst_case(limits, &settings).ok_or(Unusable::Zero)?;
         Ok(Self {
             settings,
             crypto,
