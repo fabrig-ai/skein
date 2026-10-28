@@ -16,7 +16,7 @@
 //! `Finish` comes after `Ready`, with no read above but one that crossed
 //! `End`, and no output right pending. A withdrawn read may already be
 //! answered below: its bytes are dropped before deciphering or sealing.
-//! Each caller reserves the entry point's maximum output and drains it.
+//! Each caller uses uncapped output queues and drains each entry point's output.
 
 mod output;
 use output::{

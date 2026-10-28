@@ -156,7 +156,7 @@ pub fn tiny_delta_response() -> Vec<u8> {
     response(200, "Content-Type: text/event-stream\r\n", &events(&documents), false)
 }
 
-/// Queues are deliberately only as large as the public entry-point bound.
+/// The client world routes machine output through uncapped queues.
 #[expect(missing_debug_implementations, reason = "Client intentionally hides credential-bearing state")]
 pub struct World {
     pub machine: client::Client,

@@ -209,19 +209,20 @@ fn llm_admission_keeps_its_ciphertext_reserve_and_send_allowance() {
 }
 
 #[test]
-fn provider_constructors_refuse_unrepresentable_edges_and_piece_capacities() {
+fn provider_constructors_refuse_unrepresentable_edges() {
     let good = skein_llm_world::fake::limits(&skein_llm_world::limits());
     assert!(provider::valid(&good));
-    for (case, mut bad) in [good; 6].into_iter().enumerate() {
-        match case {
-            0 => bad.http.send = u32::MAX,
-            1 => bad.sse.chunk = 0,
-            2 => bad.documents.openai.answer = u32::MAX,
-            3 => bad.documents.openai.request = u32::MAX,
-            4 => bad.documents.model_ceiling = 0,
-            5 => bad.http.head = 1,
-            _ => unreachable!(),
-        }
+    let mut send = good;
+    send.http.send = u32::MAX;
+    let mut chunk = good;
+    chunk.sse.chunk = 0;
+    let mut request = good;
+    request.documents.openai.request = u32::MAX;
+    let mut model = good;
+    model.documents.model_ceiling = 0;
+    let mut head = good;
+    head.http.head = 1;
+    for bad in [send, chunk, request, model, head] {
         assert!(!provider::valid(&bad));
         assert_eq!(provider::Server::new(skein_lib::Token::new(1), &bad).err(), Some(provider::Error::Limits));
         let config = provider::Config {

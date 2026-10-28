@@ -398,7 +398,7 @@ impl World {
         self.peers.len()
     }
 
-    /// Apply an owner request with its promised output reservation.
+    /// Apply an owner request through uncapped output queues.
     pub fn request(&mut self, request: Request) {
         self.component.down(&self.env, request, &mut self.above, &mut self.below);
     }

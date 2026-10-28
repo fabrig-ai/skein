@@ -528,7 +528,7 @@ impl Component {
         }
     }
 
-    /// Advances one due account or one child transition with reserved output room.
+    /// Advances one due account or one child transition.
     pub fn fire(
         &mut self,
         env: &Env<Limits>,
