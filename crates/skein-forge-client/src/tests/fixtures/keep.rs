@@ -1,7 +1,7 @@
 use super::super::{LIMITS, REPO, Sent, at};
 use crate::{
     Domain, Entry, Event, Key, Limits, LiveRecord, Outcome, RecoveryClock, Request, Resource, Stored, Watch, What,
-    fire, max_out, resume, step,
+    fire, resume, step,
 };
 use alloc::boxed::Box;
 use skein_forge::api::{self, Answer, Error, Op, Read};
@@ -51,7 +51,7 @@ impl Harness {
         h
     }
     pub(in crate::tests) fn event(&mut self, event: Event) {
-        let mut out = Queue::with_capacity(max_out(&self.env.limits));
+        let mut out = Queue::uncapped();
         step(&mut self.domain, &self.env, event, &mut out);
         self.take(&mut out);
     }
@@ -100,7 +100,7 @@ impl Harness {
         self.event(Event::Keep { owner: Token::new(1), watches });
     }
     pub(in crate::tests) fn send(&mut self) -> Option<Sent> {
-        let mut out = Queue::with_capacity(max_out(&self.env.limits));
+        let mut out = Queue::uncapped();
         resume(&mut self.domain, &self.env, &mut out);
         self.take(&mut out);
         self.calls.pop()
@@ -122,7 +122,7 @@ impl Harness {
             if !self.domain.is_due(self.env.now) {
                 break;
             }
-            let mut out = Queue::with_capacity(max_out(&self.env.limits));
+            let mut out = Queue::uncapped();
             fire(&mut self.domain, &self.env, &mut out);
             self.take(&mut out);
         }
