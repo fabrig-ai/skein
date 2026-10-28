@@ -89,8 +89,8 @@ fn a_burst_of_connects_fills_the_refusals_and_io_takes_no_more_until_told() {
 
 #[test]
 fn held_refusals_are_told_before_a_backlog_of_completions() {
-    use skein_io::kernel::Complete;
     use skein_io::Event;
+    use skein_io::kernel::Complete;
     use skein_io_world::owner::{Dial, Directory, Owner, Reads, Target};
     use skein_io_world::scenarios::{limits, local, plan};
     use skein_io_world::world::Proc;
@@ -98,11 +98,14 @@ fn held_refusals_are_told_before_a_backlog_of_completions() {
 
     // Two admitted sockets fill the slab; the other two fill its refusals.
     const NAMES: [&str; 4] = ["admitted-one", "admitted-two", "refused-one", "refused-two"];
-    let dials = NAMES.into_iter().map(|name| Dial {
-        to: Target::Addr(local(1)),
-        at: Time::ZERO,
-        plan: plan(name, Box::new([]), 1, Reads::Never),
-    }).collect();
+    let dials = NAMES
+        .into_iter()
+        .map(|name| Dial {
+            to: Target::Addr(local(1)),
+            at: Time::ZERO,
+            plan: plan(name, Box::new([]), 1, Reads::Never),
+        })
+        .collect();
     let mut proc = Proc::new(limits(2), Owner::new(1, Vec::new(), dials));
     let mut directory = Directory::new();
     proc.iterate(Time::ZERO, Wall::EPOCH, &mut directory);

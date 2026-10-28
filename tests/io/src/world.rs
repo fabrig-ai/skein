@@ -58,7 +58,7 @@ impl Proc {
             ledger: Ledger::default(),
             completions: Queue::with_capacity(ROOM),
             subs: Queue::with_capacity(ROOM),
-            events: Queue::with_capacity(ROOM),
+            events: Queue::uncapped(),
             requests: VecDeque::new(),
             log: Vec::new(),
             held_back: 0,
@@ -124,16 +124,15 @@ impl Proc {
     }
 
     fn room(&self, max: MaxOut) -> bool {
-        self.events.room() >= max.events && self.subs.room() >= max.submissions
+        self.subs.room() >= max.submissions
     }
 
-    fn marks(&self) -> (u32, u32) {
-        (self.events.len(), self.subs.len())
+    fn marks(&self) -> u32 {
+        self.subs.len()
     }
 
     /// An entry point emitted no more than it declared.
-    fn within(&self, (events, subs): (u32, u32), max: MaxOut, entry: &str) {
-        assert!(self.events.len() - events <= max.events, "{entry} told no more events than its MAX_OUT");
+    fn within(&self, subs: u32, max: MaxOut, entry: &str) {
         assert!(self.subs.len() - subs <= max.submissions, "{entry} submitted no more than its MAX_OUT");
     }
 

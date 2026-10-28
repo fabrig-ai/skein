@@ -187,7 +187,7 @@ impl Driver {
             resources: Resources { listener: false, client: false, server: false },
             io: Io::new(&io_limits),
             io_env: Env { now: Time::ZERO, wall: pki::VALID, limits: io_limits },
-            io_events: Queue::with_capacity(64),
+            io_events: Queue::uncapped(),
             submissions: Queue::with_capacity(64),
             requests,
             completions: Queue::with_capacity(64),
@@ -625,37 +625,33 @@ impl Driver {
             assert!(self.held.replace(completion).is_none(), "one retained kernel winner");
             return;
         }
-        let events = self.io_events.len();
         let submissions = self.submissions.len();
         skein_io::up(&mut self.io, &self.io_env, completion, &mut self.io_events, &mut self.submissions);
-        self.check_io(events, submissions, skein_io::MAX_OUT_UP);
+        self.check_io(submissions, skein_io::MAX_OUT_UP);
     }
 
     fn io_room(&self, maximum: skein_io::MaxOut) -> bool {
-        self.io_events.room() >= maximum.events && self.submissions.room() >= maximum.submissions
+        self.submissions.room() >= maximum.submissions
     }
 
-    fn check_io(&self, events: u32, submissions: u32, maximum: skein_io::MaxOut) {
-        assert!(self.io_events.len() - events <= maximum.events, "IO event maximum");
+    fn check_io(&self, submissions: u32, maximum: skein_io::MaxOut) {
         assert!(self.submissions.len() - submissions <= maximum.submissions, "IO kernel maximum");
     }
 
     fn iterate(&mut self) {
         while self.io.is_ready() && self.io_room(skein_io::MAX_OUT_RESUME) {
-            let events = self.io_events.len();
             let submissions = self.submissions.len();
             skein_io::resume(&mut self.io, &self.io_env, &mut self.io_events, &mut self.submissions);
-            self.check_io(events, submissions, skein_io::MAX_OUT_RESUME);
+            self.check_io(submissions, skein_io::MAX_OUT_RESUME);
         }
         while self.io_room(skein_io::MAX_OUT_UP) {
             let Some(completion) = self.completions.pop() else { break };
             self.completion(completion);
         }
         while self.io.is_due(self.io_env.now) && self.io_room(skein_io::MAX_OUT_FIRE) {
-            let events = self.io_events.len();
             let submissions = self.submissions.len();
             skein_io::fire(&mut self.io, &self.io_env, &mut self.io_events, &mut self.submissions);
-            self.check_io(events, submissions, skein_io::MAX_OUT_FIRE);
+            self.check_io(submissions, skein_io::MAX_OUT_FIRE);
         }
         while let Some(event) = self.io_events.pop() {
             self.io_event(event);
@@ -675,10 +671,9 @@ impl Driver {
             {
                 assert!(self.client_output.replace((*right, *bytes)).is_none(), "one issued IO output right");
             }
-            let events = self.io_events.len();
             let submissions = self.submissions.len();
             skein_io::down(&mut self.io, &self.io_env, request, &mut self.submissions);
-            self.check_io(events, submissions, skein_io::MAX_OUT_DOWN);
+            self.check_io(submissions, skein_io::MAX_OUT_DOWN);
         }
         self.io.reclaim();
     }

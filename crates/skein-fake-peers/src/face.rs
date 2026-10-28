@@ -51,7 +51,7 @@ impl Face {
         Ok(Self {
             io: io::Io::new(&limits.io),
             limits,
-            events: Queue::with_capacity(limits.queue),
+            events: Queue::uncapped(),
             requests,
             submissions: Queue::with_capacity(limits.queue),
             completions: Queue::with_capacity(limits.queue),
@@ -64,7 +64,7 @@ impl Face {
     pub fn up(&mut self, now: Time, wall: Wall) {
         let env = Env { now, wall, limits: self.limits.io };
         for _ in 0..self.limits.queue {
-            if self.events.room() < 3 || self.submissions.room() < 2 {
+            if self.submissions.room() < 2 {
                 break;
             }
             if self.io.is_ready() {
@@ -74,14 +74,14 @@ impl Face {
             }
         }
         for _ in 0..self.limits.queue {
-            if self.events.room() < 3 || self.submissions.room() < 2 {
+            if self.submissions.room() < 2 {
                 break;
             }
             let Some(complete) = self.completions.pop() else { break };
             io::up(&mut self.io, &env, complete, &mut self.events, &mut self.submissions);
         }
         for _ in 0..self.limits.queue {
-            if self.events.room() < 3 || self.submissions.room() < 2 || !self.io.is_due(now) {
+            if self.submissions.room() < 2 || !self.io.is_due(now) {
                 break;
             }
             io::fire(&mut self.io, &env, &mut self.events, &mut self.submissions);

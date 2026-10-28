@@ -82,14 +82,13 @@ pub enum Unusable {
 
 impl Limits {
     /// The smallest queue the loop can reserve every stage's `MAX_OUT` in:
-    /// the maximum of IO's events/submissions, the protocol's events/requests,
-    /// and the domain's requests. IO's independent terminal can accompany
-    /// classic Bytes and End, so the current minimum is three (io.md, 3.3).
+    /// the maximum of IO's submissions, the protocol's events/requests,
+    /// and the domain's requests. Events from io have no queue cap.
     pub const LEAST_QUEUE: u32 = {
-        let io_down = larger(io::MAX_OUT_DOWN.events, io::MAX_OUT_DOWN.submissions);
-        let io_up = larger(io::MAX_OUT_UP.events, io::MAX_OUT_UP.submissions);
-        let io_resume = larger(io::MAX_OUT_RESUME.events, io::MAX_OUT_RESUME.submissions);
-        let io_fire = larger(io::MAX_OUT_FIRE.events, io::MAX_OUT_FIRE.submissions);
+        let io_down = io::MAX_OUT_DOWN.submissions;
+        let io_up = io::MAX_OUT_UP.submissions;
+        let io_resume = io::MAX_OUT_RESUME.submissions;
+        let io_fire = io::MAX_OUT_FIRE.submissions;
         let io_maximum = larger(larger(io_down, io_up), larger(io_resume, io_fire));
         let protocol_up = larger(protocol::MAX_OUT_UP.events, protocol::MAX_OUT_UP.requests);
         let protocol_resume = larger(protocol::MAX_OUT_RESUME.events, protocol::MAX_OUT_RESUME.requests);
@@ -201,7 +200,7 @@ impl Service {
             domain_env: Env { now: start, wall: Wall::EPOCH, limits: limits.domain },
             completions: Queue::with_capacity(limits.queue),
             submissions: Queue::with_capacity(limits.queue),
-            told: Queue::with_capacity(limits.queue),
+            told: Queue::uncapped(),
             asked: Queue::with_capacity(limits.queue),
             calls: Queue::with_capacity(limits.queue),
             answers: Queue::with_capacity(limits.queue),
@@ -510,7 +509,7 @@ struct Marks {
 }
 
 fn io_room(svc: &Service, max: io::MaxOut) -> bool {
-    svc.told.room() >= max.events && svc.submissions.room() >= max.submissions
+    svc.submissions.room() >= max.submissions
 }
 
 fn io_marks(svc: &Service) -> Marks {
@@ -518,7 +517,6 @@ fn io_marks(svc: &Service) -> Marks {
 }
 
 fn io_within(svc: &Service, marks: Marks, max: io::MaxOut) {
-    within(marks.up, svc.told.len(), max.events);
     within(marks.down, svc.submissions.len(), max.submissions);
 }
 

@@ -257,7 +257,7 @@ impl Client {
             server: Server::Unknown,
             completions: Queue::with_capacity(limits.queue),
             submissions: Queue::with_capacity(limits.queue),
-            told: Queue::with_capacity(limits.queue),
+            told: Queue::uncapped(),
             asked: Queue::with_capacity(limits.queue),
         }
     }
@@ -528,7 +528,7 @@ fn io_down(client: &mut Client) {
 }
 
 fn io_room(client: &Client, max: io::MaxOut) -> bool {
-    client.told.room() >= max.events && client.submissions.room() >= max.submissions
+    client.submissions.room() >= max.submissions
 }
 
 /// The lengths of io's two output queues before a call.
@@ -536,10 +536,9 @@ fn io_marks(client: &Client) -> (u32, u32) {
     (client.told.len(), client.submissions.len())
 }
 
-fn io_within(client: &Client, (told, submissions): (u32, u32), max: io::MaxOut) {
-    let events = client.told.len().checked_sub(told).expect("a step only adds to its output queues");
+fn io_within(client: &Client, (_told, submissions): (u32, u32), max: io::MaxOut) {
     let records = client.submissions.len().checked_sub(submissions).expect("a step only adds to its output queues");
-    assert!(events <= max.events && records <= max.submissions, "io emits no more than its MAX_OUT");
+    assert!(records <= max.submissions, "io emits no more than its MAX_OUT");
 }
 
 /// A call emitted no more than [`MAX_OUT`] into a queue it found at `before`

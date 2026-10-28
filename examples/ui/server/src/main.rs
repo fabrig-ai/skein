@@ -155,7 +155,7 @@ impl Web {
             env: Env { now, wall, limits: http_limits() },
             completions: Queue::with_capacity(QUEUE),
             submissions: Queue::with_capacity(QUEUE),
-            events: Queue::with_capacity(QUEUE),
+            events: Queue::uncapped(),
             requests,
             above: Queue::with_capacity(32),
             below: Queue::with_capacity(32),
@@ -425,7 +425,7 @@ impl Host for Web {
         self.env.now = now;
         self.env.wall = wall;
         for _ in 0..QUEUE {
-            if self.submissions.room() < 4 || self.events.room() < 4 {
+            if self.submissions.room() < 4 {
                 break;
             }
             if self.io.is_ready() {
