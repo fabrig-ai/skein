@@ -45,7 +45,6 @@ impl Peer {
     }
     fn github_post(&mut self, post: Post, now: Time) {
         if self.github_deliveries.len() == usize::try_from(self.face.limits.connections).expect("u32 fits")
-            || self.face.requests.room() == 0
         {
             self.github_result(post, 502, Delivery::NoRoom);
             return;
@@ -65,8 +64,8 @@ impl Peer {
             post: Some(post),
             target: endpoint.target.clone(),
             client: client::Client::new(&limits(protocol)),
-            events: Queue::with_capacity(8),
-            below: Queue::with_capacity(8),
+            events: Queue::uncapped(),
+            below: Queue::uncapped(),
             sent: 0,
             deadline: now.saturating_add(Duration::from_secs(30)),
             closing: false,
@@ -81,17 +80,11 @@ impl Peer {
             return;
         }
         for _ in 0..self.face.limits.connections {
-            if self.face.requests.room() < 8 {
-                break;
-            }
             let layer::Service::Github(service) = &mut self.service else { unreachable!("GitHub service") };
             let Some(post) = service.next_post() else { break };
             self.github_post(post, now);
         }
         for index in 0..self.github_deliveries.len() {
-            if self.face.requests.room() < 16 {
-                break;
-            }
             if self.github_deliveries[index].deadline <= now && !self.github_deliveries[index].closing {
                 self.github_terminal(index, 502, Delivery::Refused, now, wall);
             }

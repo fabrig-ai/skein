@@ -138,7 +138,7 @@ impl Peer {
             revoke_endpoint,
             metadata_url,
             key_set_url,
-            outgoing: Queue::with_capacity(limits.queue),
+            outgoing: Queue::uncapped(),
             connections: Vec::with_capacity(usize::try_from(limits.connections).expect("u32 fits")),
             next: 1,
             exchange: 1,
@@ -230,16 +230,16 @@ impl Peer {
                     self.next.checked_add(1).filter(|next| *next < u64::MAX).expect("finite world connection ids");
                 self.face.requests.push(io::Request::Bind { socket, owner });
                 let limits = self.face.limits;
-                let mut requests = Queue::with_capacity(limits.queue);
+                let mut requests = Queue::uncapped();
                 requests.push(http::Request::Next);
                 self.connections.push(Connection {
                     owner,
                     wire: Wire::new(socket, self.transport, limits),
                     http: http::Server::new(&self.http_limits),
-                    events: Queue::with_capacity(limits.queue),
+                    events: Queue::uncapped(),
                     requests,
-                    below: Queue::with_capacity(limits.queue),
-                    plain: Queue::with_capacity(limits.queue),
+                    below: Queue::uncapped(),
+                    plain: Queue::uncapped(),
                     body: List::with_capacity(self.issuer_limits.request_bytes),
                     content_type: None,
                     post: None,
@@ -552,16 +552,11 @@ impl Peer {
     fn progress(&mut self, now: Time, wall: Wall) {
         let env = Env { now, wall, limits: self.http_limits };
         for index in 0..self.connections.len() {
-            if self.face.requests.room() < 8 {
-                break;
-            }
             if self.face.stopping {
                 self.close(index);
             }
             let connection = &mut self.connections[index];
-            if connection.events.room() >= 4
-                && connection.below.room() >= 4
-                && let Some(up) = connection.plain.pop()
+            if let Some(up) = connection.plain.pop()
             {
                 http::up(&mut connection.http, &env, up, &mut connection.events, &mut connection.below);
             }
@@ -569,18 +564,14 @@ impl Peer {
                 self.http_event(index, event, now, wall);
             }
             let connection = &mut self.connections[index];
-            if connection.events.room() >= 4
-                && connection.below.room() >= 4
-                && let Some(request) = connection.requests.pop()
+            if let Some(request) = connection.requests.pop()
             {
                 http::down(&mut connection.http, &env, request, &mut connection.events, &mut connection.below);
             }
-            if connection.plain.room() >= 3 {
-                if let Some(down) = connection.below.pop() {
-                    connection.wire.down(down, &mut connection.plain, &mut self.face.requests);
-                }
-                connection.wire.pump(&mut connection.plain, &mut self.face.requests);
+            if let Some(down) = connection.below.pop() {
+                connection.wire.down(down, &mut connection.plain, &mut self.face.requests);
             }
+            connection.wire.pump(&mut connection.plain, &mut self.face.requests);
         }
         if self.issuer.next_deadline().is_some_and(|deadline| deadline <= now) {
             self.issuer.step(issuer::Event::Tick { now, wall }, &mut self.outgoing);
@@ -593,9 +584,6 @@ impl Host for Peer {
     fn iterate(&mut self, now: Time, wall: Wall) {
         self.face.up(now, wall);
         for _ in 0..self.face.limits.queue {
-            if self.face.requests.room() < 8 {
-                break;
-            }
             let Some(event) = self.face.events.pop() else { break };
             self.io_event(event);
         }

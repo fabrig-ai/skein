@@ -36,7 +36,7 @@ impl Wire {
     pub fn pump(&mut self, _above: &mut Queue<Up>, _requests: &mut Queue<io::Request>) {}
 
     pub fn close(&mut self, requests: &mut Queue<io::Request>) {
-        if !self.closing && requests.room() > 0 {
+        if !self.closing {
             self.closing = true;
             requests.push(io::Request::Close { entity: self.socket });
         }
