@@ -352,11 +352,7 @@ fn diagnostics_can_overflow_without_changing_admission() {
 }
 #[test]
 fn limits_reject_incoherent_budgets_and_account_for_capacity() {
-    assert!(worst_case(&LIMITS).is_some());
-    assert!(worst_case(&Limits { rate: 0, ..LIMITS }).is_none());
-    assert!(worst_case(&Limits { calls: 9, ..LIMITS }).is_none());
-    assert!(worst_case(&Limits { reserve: 5, ..LIMITS }).is_none());
-    assert!(worst_case(&Limits { window: Duration::ZERO, ..LIMITS }).is_none());
+    assert!(crate::valid(&LIMITS));
     assert!(worst_case(&Limits { pending: 9, ..LIMITS }).unwrap() > worst_case(&LIMITS).unwrap());
 }
 
@@ -625,8 +621,11 @@ fn a_job_answers_step_name_counts_against_answer_bytes() {
 }
 
 #[test]
-fn a_zero_settle_window_is_refused() {
-    assert_eq!(worst_case(&Limits { settle: Duration::ZERO, ..LIMITS }), None);
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_a_zero_settle_window() {
+    let limits = Limits { settle: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
 }
 
 #[test]
@@ -705,3 +704,199 @@ fn directory_bytes_do_not_use_the_row_limit() {
     );
 }
 mod turn;
+
+#[test]
+fn valid_accepts_test_limits() {
+    assert!(crate::valid(&LIMITS));
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_pending() {
+    let limits = Limits { pending: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_calls() {
+    let limits = Limits { calls: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_calls_past_pending() {
+    let limits = Limits { calls: 9, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_rate() {
+    let limits = Limits { rate: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_reserve_past_rate() {
+    let limits = Limits { reserve: 5, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_window() {
+    let limits = Limits { window: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_read_attempts() {
+    let limits = Limits { read_attempts: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_backoff() {
+    let limits = Limits { backoff: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_backoff_past_its_ceiling() {
+    let limits = Limits { backoff_max: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_entries() {
+    let limits = Limits { entries: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_write_attempts() {
+    let limits = Limits { write_attempts: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_lifetime() {
+    let limits = Limits { lifetime: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_clock_margin() {
+    let limits = Limits { clock_margin: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_rows() {
+    let limits = Limits { rows: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_inbox() {
+    let limits = Limits { inbox: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_resources() {
+    let limits = Limits { resources: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_repositories() {
+    let limits = Limits { repositories: 0, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_poll() {
+    let limits = Limits { poll: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_poll_past_its_ceiling() {
+    let limits = Limits { poll_max: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_hinted() {
+    let limits = Limits { hinted: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_zero_slow() {
+    let limits = Limits { slow: Duration::ZERO, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_alarm_capacity_past_u32() {
+    let limits = Limits { pending: u32::MAX, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+#[should_panic(expected = "forge client limits are valid")]
+fn valid_refuses_keep_capacity_past_u32() {
+    let limits = Limits { resources: u32::MAX / 2, ..LIMITS };
+    assert!(!crate::valid(&limits));
+    let _domain = Domain::new(&limits);
+}
+
+#[test]
+fn valid_ignores_heap_cached_operations() {
+    let limits = Limits { resources: 1_000_000_000, op_bytes: u32::MAX, ..LIMITS };
+    assert!(crate::valid(&limits));
+    assert_eq!(worst_case(&limits), None);
+}

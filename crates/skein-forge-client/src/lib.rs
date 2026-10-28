@@ -29,4 +29,4 @@ pub use boundary::{
 pub use domain::{Domain, fire, max_out, resume, step, writer};
 pub use facts::{Fact, Priority};
 pub use identity::{Config, Writer, effect_key};
-pub use limits::{Limits, worst_case};
+pub use limits::{Limits, valid, worst_case};
