@@ -287,18 +287,3 @@ fn decode(name: Name, body: &[u8], limits: &protocol::Limits) -> Option<Call> {
     }
     None
 }
-pub(crate) fn worst_case(bounds: &Limits) -> Option<u64> {
-    let limits = limits(bounds);
-    git::decoder_worst_case(&limits)?
-        .checked_add(json::worst_case(&limits.documents.json)?)?
-        .checked_add(Queue::<json::Event>::worst_case(1)?)?
-        .checked_add(Queue::<Down>::worst_case(1)?)?
-        // A decoded Basic credential is bounded by the HTTP head.
-        .checked_add(u64::from(bounds.http.head))?
-        // Held's input copy and its largest stream delivery coexist.
-        .checked_add(u64::from(bounds.body).checked_mul(2)?)?
-        // objects holds whole/graph ids and a frontier of four parents per item.
-        .checked_add(skein_lib::List::<u64>::worst_case(bounds.github.inner)?)?
-        .checked_add(skein_lib::List::<git::Parents>::worst_case(bounds.github.inner)?)?
-        .checked_add(skein_lib::Set::<core::cmp::Reverse<u64>>::worst_case(bounds.github.inner.checked_mul(4)?)?)
-}

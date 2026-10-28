@@ -205,7 +205,7 @@ fn minted_json(
     json.object_end();
 }
 // Writer is exact-sized. Pad the scratch writer, then retain only the encoded
-// prefix; both allocations are included in worst_case's response scratch.
+// prefix; both allocations fit the response byte limit.
 pub(crate) fn finish(mut out: Writer) -> Option<Box<[u8]>> {
     let length = out.written();
     let padding = [0; 128];

@@ -14,8 +14,11 @@ use skein_world::domain::heap::{Counting, Meter};
 #[global_allocator]
 static HEAP: Counting = Counting;
 
+// Bounds construction and requests while GitHub's stores are full.
+const FAKE_GITHUB_SERVICE_PEAK_CEILING: u64 = 140_000;
+
 #[test]
-fn github_service_full_stores_stay_within_worst_case() {
+fn github_service_full_stores_stay_under_its_peak_ceiling() {
     // The queue belongs to the shared domain and has its own memory binary.
     // Keep every queue full while measuring only the GitHub layer's ownership.
     let (_domain, _domain_config) = f::domain();
@@ -23,9 +26,9 @@ fn github_service_full_stores_stay_within_worst_case() {
     meter.start();
     let config = f::config();
     let limits = f::limits();
-    let bound = fake::worst_case(&limits, &config).expect("bounded scenario");
+    let mut peak = 0;
     let mut service = fake::Service::new(config, &limits, f::SEED).expect("service");
-    meter.check(meter.end(), bound, &"construction");
+    peak = peak.max(meter.check(meter.end(), FAKE_GITHUB_SERVICE_PEAK_CEILING, &"construction"));
     for (account, login, ids) in [(22, b"acme".as_slice(), [1, 2]), (23, b"example", [3, 4])] {
         meter.start();
         let mut listed = List::with_capacity(limits.installations.listed);
@@ -33,7 +36,7 @@ fn github_service_full_stores_stay_within_worst_case() {
             listed.push(id).unwrap();
         }
         service.installations_mut().install(account, login, Kind::Organization, Reach::Listed(listed), f::NOW).unwrap();
-        meter.check(meter.end(), bound, &"full installation reach");
+        peak = peak.max(meter.check(meter.end(), FAKE_GITHUB_SERVICE_PEAK_CEILING, &"full installation reach"));
     }
     assert_eq!(service.installations().iter().count(), 2);
     let mut git_token = None;
@@ -44,7 +47,7 @@ fn github_service_full_stores_stay_within_worst_case() {
         if n == 0 {
             git_token = Some(token.0);
         }
-        meter.check(measured, bound, &"mint");
+        peak = peak.max(meter.check(measured, FAKE_GITHUB_SERVICE_PEAK_CEILING, &"mint"));
     }
     assert!(service.installations_mut().mint(1, Scope::Full, f::NOW).is_err(), "token store is full");
     let form = f::form();
@@ -58,7 +61,7 @@ fn github_service_full_stores_stay_within_worst_case() {
         let measured = meter.end();
         assert_eq!(page.status, status);
         drop(page);
-        meter.check(measured, bound, &"full manifest store");
+        peak = peak.max(meter.check(measured, FAKE_GITHUB_SERVICE_PEAK_CEILING, &"full manifest store"));
     }
     let blob_path = vec![b'x'; usize::try_from(limits.http.head).expect("head length")];
     for _ in 0..=limits.blob_records {
@@ -76,7 +79,7 @@ fn github_service_full_stores_stay_within_worst_case() {
         let measured = meter.end();
         assert_eq!(response.status, 404);
         drop(response);
-        meter.check(measured, bound, &"full blob records");
+        peak = peak.max(meter.check(measured, FAKE_GITHUB_SERVICE_PEAK_CEILING, &"full blob records"));
     }
     assert_eq!(service.blob_records().len(), limits.blob_records);
     let git_auth = basic(git_token.as_ref().unwrap().expose());
@@ -94,7 +97,7 @@ fn github_service_full_stores_stay_within_worst_case() {
         let measured = meter.end();
         assert_eq!(response.status, 400);
         drop(response);
-        meter.check(measured, bound, &"full git decoder and records");
+        peak = peak.max(meter.check(measured, FAKE_GITHUB_SERVICE_PEAK_CEILING, &"full git decoder and records"));
     }
     assert_eq!(service.git_calls().len(), limits.git_records);
 
@@ -105,10 +108,11 @@ fn github_service_full_stores_stay_within_worst_case() {
         let measured = meter.end();
         assert_eq!(response.status, 200);
         drop(response);
-        meter.check(measured, bound, &"full App and installation reads");
+        peak = peak.max(meter.check(measured, FAKE_GITHUB_SERVICE_PEAK_CEILING, &"full App and installation reads"));
     }
     assert!(service.manifest(b"one").is_some());
     assert!(service.manifest(b"two").is_some());
+    assert!(peak <= FAKE_GITHUB_SERVICE_PEAK_CEILING);
 }
 
 fn basic(token: &[u8]) -> skein_lib::Secret {

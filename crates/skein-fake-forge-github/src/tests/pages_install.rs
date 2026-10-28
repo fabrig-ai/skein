@@ -95,11 +95,15 @@ fn github_fake_install_store_is_bounded() {
     let answer = h.page(Method::Get, &f::parts(&[f::INSTALL, b"s1&account=acme"]), b"");
     assert_eq!(answer.status, 302, "full store still updates");
     assert!(answer.location.expect("setup redirect").contains(&b'1'), "existing id retained");
-    assert!(service::worst_case(&h.limits, &f::config()).is_some(), "test limits have a budget");
+    assert!(service::valid(&h.limits, &f::config()), "test limits are representable");
     let mut limits = h.limits;
-    limits.pages.states = u32::MAX;
-    limits.pages.manifest_bytes = u32::MAX;
-    assert_eq!(service::worst_case(&limits, &f::config()), None);
+    limits.pages.states = 0;
+    assert!(!service::valid(&limits, &f::config()));
+    assert_eq!(service::Service::new(f::config(), &limits, 1).err(), Some(service::Problem::Limits));
+    limits = h.limits;
+    limits.pages.manifest_bytes = 0;
+    assert!(!service::valid(&limits, &f::config()));
+    assert_eq!(service::Service::new(f::config(), &limits, 1).err(), Some(service::Problem::Limits));
 }
 
 #[test]

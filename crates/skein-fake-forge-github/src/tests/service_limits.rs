@@ -48,13 +48,14 @@ fn github_fake_zero_paging_is_unrouted() {
 }
 
 #[test]
-fn github_fake_worst_case_holds_the_stores() {
+fn github_fake_full_stores_refuse_more_and_keep_serving_reads() {
     let limits = f::limits();
-    assert!(service::worst_case(&limits, &f::config()).is_some(), "valid budgets");
+    assert!(service::valid(&limits, &f::config()), "representable limits");
     let mut overflow = limits;
     overflow.installations.installations = u32::MAX;
     overflow.installations.listed = u32::MAX;
-    assert_eq!(service::worst_case(&overflow, &f::config()), None);
+    assert!(!service::valid(&overflow, &f::config()));
+    assert_eq!(Service::new(f::config(), &overflow, 1).err(), Some(Problem::Limits));
     let mut h = Harness::new();
     for _token in 0..limits.installations.tokens {
         h.service.installations_mut().mint(1, Scope::Full, wall(1200)).expect("fill token store");
@@ -73,7 +74,7 @@ fn github_fake_worst_case_holds_the_stores() {
 
 #[test]
 fn github_fake_config_and_limits_refused_at_admission() {
-    for invalid in 0..7_u32 {
+    for invalid in 0..13_u32 {
         let mut limits = f::limits();
         match invalid {
             0 => limits.page = 0,
@@ -83,8 +84,15 @@ fn github_fake_config_and_limits_refused_at_admission() {
             4 => limits.response = 127,
             5 => limits.github.json.depth = 1,
             6 => limits.github.string_bytes = 0,
+            7 => limits.http.send = u32::MAX,
+            8 => limits.github.inner = u32::MAX,
+            9 => limits.installations.installations = u32::MAX,
+            10 => limits.github.json.length = u32::MAX,
+            11 => limits.deliveries.entries = 0,
+            12 => limits.deliveries.payload_bytes = 0,
             _ => panic!("fixture case"),
         }
+        assert!(!service::valid(&limits, &f::config()));
         assert_eq!(Service::new(f::config(), &limits, 1).expect_err("invalid limits"), Problem::Limits);
     }
     for invalid in 0..6_u32 {

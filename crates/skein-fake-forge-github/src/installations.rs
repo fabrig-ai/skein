@@ -388,22 +388,6 @@ impl Installations {
         }
         self.tokens.truncate(last);
     }
-
-    /// Heap held by both tables when full (fake-forge.md, 8), including
-    /// maximum logins, per-installation repository lists and token text.
-    #[must_use]
-    pub fn worst_case(limits: &Limits) -> Option<u64> {
-        let rows = List::<Option<Installation>>::worst_case(limits.installations)?;
-        let per_row = u64::try_from(LOGIN_BYTES).ok()?.checked_add(List::<u32>::worst_case(limits.listed)?)?;
-        let tokens = List::<Option<Issued>>::worst_case(limits.tokens)?;
-        rows.checked_add(per_row.checked_mul(u64::from(limits.installations))?)?
-            .checked_add(Queue::<Changed>::worst_case(event_capacity(limits)?)?)?
-            .checked_add(
-                u64::from(event_capacity(limits)?).checked_mul(u64::try_from(LOGIN_BYTES).ok()?.checked_mul(2)?)?,
-            )?
-            .checked_add(tokens)?
-            .checked_add(u64::try_from(TOKEN_BYTES).ok()?.checked_mul(u64::from(limits.tokens))?)
-    }
 }
 
 #[cfg(test)]
@@ -425,6 +409,14 @@ fn changed(row: &Installation, change: skein_forge::github::delivery::Change, at
         at,
     }
 }
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// The installation change queue has eight events per installation.
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    event_capacity(limits).is_some()
+}
+
 fn event_capacity(limits: &Limits) -> Option<u32> {
     limits.installations.checked_mul(8)
 }
