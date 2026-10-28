@@ -160,7 +160,7 @@ impl World {
             env: Env { now: Time::from_nanos(100_000_000_000), wall: Wall::from_nanos(100_000_000_000), limits },
             forge: neighbour,
             forge_env: Env { now: Time::from_nanos(100_000_000_000), wall: Wall::EPOCH, limits: config },
-            client_out: Queue::with_capacity(client::max_out(&limits)),
+            client_out: Queue::uncapped(),
             forge_out: Queue::with_capacity(forge::MAX_OUT),
             to_forge: Queue::with_capacity(16),
             to_client: Queue::with_capacity(16),

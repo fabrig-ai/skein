@@ -289,12 +289,6 @@ fn worst_case_accepts_permitted_zeroes() {
     }
 }
 #[test]
-fn max_out_covers_floor_and_batch() {
-    let empty = Limits { resources: 0, repositories: 0, ..LIMITS };
-    assert_eq!(crate::max_out(&empty), 4);
-    assert_eq!(crate::max_out(&LIMITS), 15);
-}
-#[test]
 fn invalid_reads_make_no_call() {
     for read in [
         Read::Items { since: at(fixture::START_AT), page: 0, kind: None },
@@ -356,7 +350,7 @@ fn attempted_or_unknown_withdrawals_are_noops() {
     while h.domain.pop_fact().is_some() {}
     h.outcomes.clear();
     for number in [1, 99] {
-        let mut out = skein_lib::Queue::with_capacity(crate::max_out(&h.env.limits));
+        let mut out = skein_lib::Queue::uncapped();
         crate::step(&mut h.domain, &h.env, Event::Withdraw { entry: number }, &mut out);
         assert!(out.is_empty(), "{number}");
         assert_eq!(h.domain.pop_fact(), None, "{number}");

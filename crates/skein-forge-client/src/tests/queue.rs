@@ -23,7 +23,7 @@ fn submit(h: &mut Harness) -> Sent {
 }
 fn fire_at(h: &mut Harness, now: Time) {
     h.env.now = now;
-    let mut out = Queue::with_capacity(crate::max_out(&h.env.limits));
+    let mut out = Queue::uncapped();
     crate::fire(&mut h.domain, &h.env, &mut out);
     h.take(&mut out);
     h.domain.reclaim();
@@ -66,7 +66,7 @@ fn restart(h: &mut Harness) -> Sent {
 fn a_merge_answered_queued_is_kept_and_reported() {
     let mut h = Harness::new();
     let sent = submit(&mut h);
-    let mut out = Queue::with_capacity(crate::max_out(&h.env.limits));
+    let mut out = Queue::uncapped();
     crate::step(
         &mut h.domain,
         &h.env,

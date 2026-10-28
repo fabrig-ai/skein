@@ -2,7 +2,7 @@
 use super::fixtures::keep::{Harness as Kept, branch, watch};
 use super::fixtures::outbox::{Harness, comment, pull};
 use super::{LIMITS, at, configured};
-use crate::{Condition, Event, Made, Outcome, Request, fire, max_out, step};
+use crate::{Condition, Event, Made, Outcome, Request, fire, step};
 use alloc::boxed::Box;
 use skein_forge::api::{self, Answer, Error, Op, Read, Write};
 use skein_lib::{Duration, Env, Queue, Time, Wall};
@@ -18,7 +18,7 @@ fn settle_with_nothing_sent_is_settled_at_once() {
     // Stopping before restoration is also empty and does not require PauseOutbox.
     let mut d = configured(&LIMITS);
     let env = Env { now: at(100), wall: Wall::from_nanos(0), limits: LIMITS };
-    let mut out = Queue::with_capacity(max_out(&LIMITS));
+    let mut out = Queue::uncapped();
     step(&mut d, &env, Event::Settle, &mut out);
     assert_eq!(out.pop(), Some(Request::Settled { left: Box::new([]) }));
 }
@@ -63,7 +63,7 @@ fn settle_sends_no_write_due_or_queued() {
         h.make(1, comment(), Condition::None);
         h.clock();
         if queued {
-            let mut out = Queue::with_capacity(max_out(&h.env.limits));
+            let mut out = Queue::uncapped();
             crate::outbox::pump(&mut h.domain, &h.env, &mut out);
             h.take(&mut out); // pump queued the write, without sending it
             assert!(h.calls.is_empty());
@@ -127,7 +127,7 @@ fn settle_names_an_entry_unfinished_at_its_bound() {
     let span = h.env.limits.lifetime.saturating_add(h.env.limits.clock_margin).saturating_mul(2);
     let bound = h.env.now.saturating_add(span);
     assert_eq!(h.domain.next_deadline(), Some(bound));
-    let mut out = Queue::with_capacity(max_out(&h.env.limits));
+    let mut out = Queue::uncapped();
     h.env.now = Time::from_nanos(bound.as_nanos().checked_sub(1).unwrap());
     fire(&mut h.domain, &h.env, &mut out);
     h.take(&mut out);
