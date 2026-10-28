@@ -70,13 +70,11 @@ impl World {
     }
 
     pub fn with_limits(limits: Limits) -> World {
-        let above_room = limits.persons.saturating_add(limits.pages).saturating_add(limits.ops).saturating_add(4);
-        let below_room = limits.commands.saturating_add(8);
         World {
             browser: Browser::new(Token::new(1), &limits),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            above: Queue::with_capacity(above_room),
-            below: Queue::with_capacity(below_room),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             sent: Vec::new(),
             ax_visible: true,
             selected: 7,

@@ -20,17 +20,6 @@ use crate::wire::decode::{Document, Value};
 use crate::wire::encode;
 use crate::wire::frame::Framer;
 
-/// Each step emits at most one event and two stream requests. Further
-/// terminals are retained for the next call to `fire`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MaxOut {
-    pub above: u32,
-    pub below: u32,
-}
-
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 1, below: 3 };
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 1, below: 2 };
-pub const FIRE_MAX_OUT: MaxOut = MaxOut { above: 1, below: 3 };
 /// CDP's modifier bit for Shift.
 const SHIFT: u64 = 8;
 
@@ -1221,9 +1210,7 @@ pub fn up(browser: &mut Browser, env: &Env<Limits>, event: Below, above: &mut Qu
         Below::Errors(stream::Up::End | stream::Up::Failed(_)) => browser.errors_demanded = false,
         Below::Errors(stream::Up::Room) => {}
     }
-    if below.room() >= 2 {
-        browser.flush(below, env.limits.command);
-    }
+    browser.flush(below, env.limits.command);
     browser.emit(above);
 }
 
@@ -1324,9 +1311,7 @@ pub fn fire(browser: &mut Browser, env: &Env<Limits>, now: Time, above: &mut Que
             }
         }
     }
-    if below.room() >= 2 {
-        browser.flush(below, env.limits.command);
-    }
+    browser.flush(below, env.limits.command);
     browser.emit(above);
 }
 
@@ -2304,3 +2289,6 @@ mod type_tests;
 mod download_tests;
 
 mod download;
+
+#[cfg(test)]
+mod credit_tests;
