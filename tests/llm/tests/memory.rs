@@ -762,22 +762,34 @@ fn selective_peak(size: usize, call_arguments: bool) -> u64 {
     bounds.reasoning = 128;
     bounds.skip = 8_000_000;
     let bound = client::call_worst_case(&bounds).expect("checked selective receiving bound");
-    // The wire tape is world-owned and allocated before the meter's base.
-    // Its unchanged allocation stays alive throughout every measured step.
+    // Only client preparation and calls are metered. Transport, observations,
+    // and cloned handoffs grow outside; original outputs are handed out.
     let meter = Meter::new();
     meter.start();
-    let mut world = World::new(call(1), bounds, wire, 77);
+    let machine = client::Client::prepare(call(1), &bounds).expect("fixture admitted");
+    let mut peak = meter.check(meter.end(), bound, &"selective preparation");
+    let outside = Span::start();
+    let mut world = World::prepared(machine, bounds, wire, 77);
     world.fragmentation(256, 31);
-    world.request(client::Request::Start);
-    let initial = meter.end();
-    let mut peak = meter.check(initial, bound, &"selective preparation");
+    let mut outside = outside.end().net;
+    selective_step(
+        &meter,
+        &mut world,
+        skein_llm_world::Turn::Down(client::Request::Start),
+        bound,
+        &mut outside,
+        &mut peak,
+    );
     for _ in 0..200_000 {
-        meter.start();
-        let progress = world.tick(true);
-        let measured = meter.end();
-        peak = peak.max(meter.check(measured, bound, &"selective receive"));
-        if !progress {
-            break;
+        let transport = Span::start();
+        let turn = world.next_turn(true);
+        outside += transport.end().net;
+        match turn {
+            skein_llm_world::Turn::Done => break,
+            skein_llm_world::Turn::Waiting => continue,
+            turn @ (skein_llm_world::Turn::Up(_) | skein_llm_world::Turn::Down(_) | skein_llm_world::Turn::Resume) => {
+                selective_step(&meter, &mut world, turn, bound, &mut outside, &mut peak);
+            }
         }
     }
     world.assert_once();
@@ -788,6 +800,71 @@ fn selective_peak(size: usize, call_arguments: bool) -> u64 {
     world.request(client::Request::Close);
     world.settle();
     peak
+}
+
+/// Temporary output queues are handed out after each client call, so their
+/// buffers and payloads are removed by Meter::check. Copies belong to the
+/// world, measured separately, including its growing transport and trace.
+fn selective_step(
+    meter: &Meter,
+    world: &mut World,
+    turn: skein_llm_world::Turn,
+    bound: u64,
+    outside: &mut i64,
+    peak: &mut u64,
+) {
+    use skein_lib::Queue;
+    use skein_lib::stream::Up;
+    use skein_llm_world::Turn;
+
+    if let Turn::Up(Up::Bytes(bytes)) = &turn {
+        *outside -= i64::try_from(bytes.len()).expect("input bytes fit");
+    }
+    let mut above = Queue::with_capacity(client::MAX_OUT.above);
+    let mut below = Queue::with_capacity(client::MAX_OUT.below);
+    meter.start();
+    match turn {
+        Turn::Up(event) => client::up(&mut world.machine, &world.env, event, &mut above, &mut below),
+        Turn::Down(request) => client::down(&mut world.machine, &world.env, request, &mut above, &mut below),
+        Turn::Resume => client::resume(&mut world.machine, &world.env, &mut above, &mut below),
+        Turn::Waiting | Turn::Done => unreachable!("only client calls are metered"),
+    }
+    let measured = meter.end();
+    let mut copies_above = Queue::with_capacity(client::MAX_OUT.above);
+    let mut copies_below = Queue::with_capacity(client::MAX_OUT.below);
+    let mut handed = 0;
+    while let Some(event) = above.pop() {
+        let copying = Span::start();
+        copies_above.push(event.clone());
+        handed += copying.end().net;
+        drop(event);
+    }
+    while let Some(request) = below.pop() {
+        let copying = Span::start();
+        let copy = match &request {
+            skein_lib::stream::Down::Demand { read, room } => {
+                skein_lib::stream::Down::Demand { read: *read, room: *room }
+            }
+            skein_lib::stream::Down::Send(bytes) => skein_lib::stream::Down::Send(bytes.clone()),
+            skein_lib::stream::Down::Finish => skein_lib::stream::Down::Finish,
+        };
+        copies_below.push(copy);
+        handed += copying.end().net;
+        drop(request);
+    }
+    drop((above, below));
+    // A growing client ring may hold both buffers at once; held storage
+    // after handoff stays within the formula, its peak within twice it.
+    let ceiling = i64::try_from(2 * bound).expect("bound fits") + *outside;
+    let own = meter.check(measured, u64::try_from(ceiling).expect("positive bound"), &"selective client call");
+    let own = i64::try_from(own).expect("peak fits") - *outside;
+    *peak = (*peak).max(u64::try_from(own).expect("client owns its heap"));
+    *outside += handed;
+    let observing = Span::start();
+    world.outputs(copies_above, copies_below);
+    *outside += observing.end().net;
+    let held = i64::try_from(meter.held()).expect("held fits") - *outside;
+    assert!(held >= 0 && held <= i64::try_from(bound).expect("bound fits"));
 }
 
 #[test]
