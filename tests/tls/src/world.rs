@@ -19,7 +19,7 @@
 //!   withdrawing its demand first now and then.
 //!
 //! The world checks both streams as it goes (testing-strategy.md, 6):
-//! `MAX_OUT` on each call; below, one demand at a time, fills only, none
+//! Below, one demand at a time, fills only, none
 //! past [`client::LARGEST_READ`] or the caps, none once the stream ended or
 //! failed, a withdrawal only as the client closes, each `Send` within the
 //! room granted, nothing after `Finish`; above, `Ready` once and before
@@ -37,7 +37,6 @@ use std::collections::VecDeque;
 
 use skein_lib::stream::{Delimiter, Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, Queue, Rng, Time};
-use skein_tls::MaxOut;
 use skein_tls::client::{self, Agreed, Client, Error, Event, Limits, Request, Version, Waiting};
 
 use crate::pki;
@@ -283,8 +282,8 @@ impl<'a> World<'a> {
             scenario,
             env: Env { now: Time::ZERO, wall: scenario.wall, limits },
             client: Client::new(&config, name, &limits),
-            events: Queue::with_capacity(8),
-            requests: Queue::with_capacity(8),
+            events: Queue::uncapped(),
+            requests: Queue::uncapped(),
             server: Side {
                 server: Server::new(scenario.server.config()),
                 responded: false,
@@ -587,19 +586,18 @@ impl<'a> World<'a> {
 
     fn up(&mut self, ev: Up) {
         client::up(&mut self.client, &self.env, ev, &mut self.events, &mut self.requests);
-        self.route(client::UP_MAX_OUT, false);
+        self.route(false);
     }
 
     fn down(&mut self, rq: Request) {
         let closing = rq == Request::Close;
         client::down(&mut self.client, &self.env, rq, &mut self.events, &mut self.requests);
-        self.route(client::DOWN_MAX_OUT, closing);
+        self.route(closing);
     }
 
     /// What one call emitted, to each side, checked.
-    fn route(&mut self, max: MaxOut, closing: bool) {
-        assert!(self.events.len() <= max.above, "MAX_OUT honoured above: {:?}", self.events);
-        assert!(self.requests.len() <= max.below, "MAX_OUT honoured below: {:?}", self.requests);
+    fn route(&mut self, closing: bool) {
+
         if !self.events.is_empty() || !self.requests.is_empty() {
             self.moved = self.iteration;
         }

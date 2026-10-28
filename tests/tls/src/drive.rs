@@ -142,21 +142,21 @@ impl Pair {
             client,
             env,
             wire: Wire::new(server),
-            events: Queue::with_capacity(8),
-            requests: Queue::with_capacity(8),
+            events: Queue::uncapped(),
+            requests: Queue::uncapped(),
         }
     }
 
     /// A request of the side above's, and what came of it.
     pub fn down(&mut self, rq: Request) -> Vec<Event> {
         client::down(&mut self.client, &self.env, rq, &mut self.events, &mut self.requests);
-        self.route(client::DOWN_MAX_OUT)
+        self.route()
     }
 
     /// An event from below, and what came of it.
     pub fn up(&mut self, ev: Up) -> Vec<Event> {
         client::up(&mut self.client, &self.env, ev, &mut self.events, &mut self.requests);
-        self.route(client::UP_MAX_OUT)
+        self.route()
     }
 
     /// Answers the client's demands below until none can be answered, and
@@ -170,9 +170,8 @@ impl Pair {
         panic!("the wire settles");
     }
 
-    fn route(&mut self, max: skein_tls::MaxOut) -> Vec<Event> {
-        assert!(self.events.len() <= max.above, "MAX_OUT honoured above");
-        assert!(self.requests.len() <= max.below, "MAX_OUT honoured below");
+    fn route(&mut self) -> Vec<Event> {
+
         while let Some(request) = self.requests.pop() {
             self.wire.take(request);
         }

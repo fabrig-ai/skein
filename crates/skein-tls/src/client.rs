@@ -40,8 +40,7 @@
 //! rustls has not discarded, within [`Limits::records`]; TLS's own output,
 //! within [`FLIGHT`]. The client reads a record only when the intake has
 //! room for its plaintext, so rustls never holds plaintext of its own
-//! between steps. Each entry point emits at most [`UP_MAX_OUT`] or
-//! [`DOWN_MAX_OUT`]; [`worst_case`] is what a client holds, rustls's heap
+//! between steps. [`worst_case`] is what a client holds, rustls's heap
 //! included; [`LARGEST_READ`] and [`largest_room`] are what whoever stacks
 //! it checks against the caps of the stream below at startup.
 
@@ -57,7 +56,7 @@ pub use error::{Certificate, Error};
 #[cfg_attr(not(test), expect(unused_imports, reason = "The crate's step tests use this client path"))]
 pub(crate) use limits::MAX_HANDSHAKE;
 pub use limits::{
-    DOWN_MAX_OUT, FLIGHT, HEADER, LARGEST_READ, Limits, MAX_BODY, MAX_PLAINTEXT, MAX_RECORD, UP_MAX_OUT, largest_room,
+    FLIGHT, HEADER, LARGEST_READ, Limits, MAX_BODY, MAX_PLAINTEXT, MAX_RECORD, largest_room,
     room_for, valid, worst_case,
 };
 
@@ -228,7 +227,7 @@ impl Client {
     }
 }
 
-/// An event from the stream below. Emits at most [`UP_MAX_OUT`]. It has
+/// An event from the stream below. It has
 /// the shape of every entry point, though nothing below reads `env`: the
 /// wall time was read when the handshake started.
 pub fn up(client: &mut Client, _env: &Env<Limits>, ev: Up, above: &mut Queue<Event>, below: &mut Queue<Down>) {
@@ -245,7 +244,7 @@ pub fn up(client: &mut Client, _env: &Env<Limits>, ev: Up, above: &mut Queue<Eve
     };
 }
 
-/// A request from the side above. Emits at most [`DOWN_MAX_OUT`].
+/// A request from the side above.
 pub fn down(client: &mut Client, env: &Env<Limits>, rq: Request, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let buffers = &mut client.buffers;

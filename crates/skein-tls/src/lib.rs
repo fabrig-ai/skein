@@ -42,14 +42,3 @@ pub use config::{ALPN, Config, Name, Parsed, Refusal, Server, roots_worst_case};
 /// reads at startup, and the certificates they are made of.
 pub use rustls::RootCertStore;
 pub use rustls::pki_types::CertificateDer;
-
-/// The most an entry point emits in one call, into each of its two queues.
-/// Whoever calls it reserves this much room in each first
-/// (programming-model.md, 2).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MaxOut {
-    /// Events for the side above.
-    pub above: u32,
-    /// Requests for the side below.
-    pub below: u32,
-}

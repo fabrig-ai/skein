@@ -36,7 +36,7 @@ use super::{
     Buffers, Error, FLIGHT, Fresh, Handshake, LARGEST_READ, Limits, Line, Peer, Reading, Record, Waiting, Writing,
 };
 use crate::session::{self, Connection};
-use crate::{Config, MaxOut, Name};
+use crate::{Config, Name};
 
 /// The read, handshake and close above, or its output right.
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -98,14 +98,6 @@ pub enum LowerEvent {
     /// closure is for this client's stream.
     Closed,
 }
-
-/// Above, Ready, an output failure, a stream failure and a client failure.
-/// Below, a withdrawal or Send, then the next output right.
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 4, below: 3 };
-
-/// Above, a pending output terminal, a stream failure and a client failure.
-/// Below, a withdrawal, `close_notify` sent and Finish.
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 3, below: 3 };
 
 /// The room below for the plaintext's records and everything TLS may owe
 /// before them, within FLIGHT.
@@ -248,7 +240,7 @@ impl Client {
     }
 }
 
-/// An event from below. The caller reserves `UP_MAX_OUT` and drains
+/// An event from below. The caller drains
 /// every right below, also after failure or closing.
 pub fn up(
     client: &mut Client,
@@ -265,7 +257,7 @@ pub fn up(
     settle(client, above, below);
 }
 
-/// A request from above. The caller reserves `DOWN_MAX_OUT`. Identity
+/// A request from above. Identity
 /// is checked before size; Close after `TransportClosed` does nothing.
 pub fn down(
     client: &mut Client,

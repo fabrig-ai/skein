@@ -1,7 +1,6 @@
 //! Limits and the worst case (tls.md, 3.5).
 #[cfg(doc)]
-use super::{Client, Error, down, up};
-use crate::MaxOut;
+use super::{Client, Error};
 use skein_lib::Intake;
 
 /// The most plaintext a record carries (RFC 8446, 5.1; RFC 5246, 6.2.1).
@@ -152,15 +151,3 @@ pub fn worst_case(limits: &Limits) -> Option<u64> {
         .checked_add(RUSTLS)?
         .checked_add(decoded)
 }
-
-/// [`up`]'s: above, `Ready`; an answer on the plaintext stream; or the
-/// stream told it failed and `Failed`; or `Closed`. Below, what TLS owes
-/// sent in the room that came, or a read the stream's end crossed
-/// withdrawn; the stream finished once `close_notify` went; and the next
-/// demand.
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 2, below: 3 };
-
-/// [`down`]'s: above, an answer on the plaintext stream, the stream told it
-/// failed and `Failed`, or `Closed`. Below, a withdrawal or a send, then a
-/// demand or the stream finished.
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 2, below: 2 };

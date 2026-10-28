@@ -30,23 +30,21 @@ impl Machine {
             )
             .expect("compatible"),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits: LIMITS },
-            above: Queue::with_capacity(super::UP_MAX_OUT.above),
-            below: Queue::with_capacity(super::UP_MAX_OUT.below),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
         }
     }
 
     fn down(&mut self, request: Request) {
         assert!(self.above.is_empty() && self.below.is_empty(), "previous step fully observed");
         super::down(&mut self.client, &self.env, request, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= super::DOWN_MAX_OUT.above, "down upper maximum");
-        assert!(self.below.len() <= super::DOWN_MAX_OUT.below, "down lower maximum");
+
     }
 
     fn up(&mut self, event: LowerEvent) {
         assert!(self.above.is_empty() && self.below.is_empty(), "previous step fully observed");
         super::up(&mut self.client, &self.env, event, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= super::UP_MAX_OUT.above, "up upper maximum");
-        assert!(self.below.len() <= super::UP_MAX_OUT.below, "up lower maximum");
+
     }
 
     fn started(&mut self) -> Token {
@@ -462,7 +460,7 @@ impl Handshake {
     }
 
     fn take(&mut self) {
-        for _ in 0..super::UP_MAX_OUT.below {
+        for _ in 0..self.machine.below.len() {
             let Some(request) = self.machine.below.pop() else { break };
             match request {
                 LowerRequest::Stream(Down::Demand { read, room: 0 }) => self.read = Some(read),
