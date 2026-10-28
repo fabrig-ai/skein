@@ -19,6 +19,9 @@ use std::{cell::RefCell, net::Ipv4Addr, rc::Rc};
 #[global_allocator]
 static HEAP: Counting = Counting;
 
+// Bounds construction and each iteration of the full-store hosted scenario.
+const FAKE_GITHUB_PEER_PEAK_CEILING: u64 = 1_100_000;
+
 fn limits() -> Limits {
     Limits {
         io: skein_io::Limits {
@@ -52,6 +55,7 @@ struct World {
     serial: u64,
     passes: u32,
     meter: Meter,
+    peak: u64,
 }
 impl World {
     fn new() -> Self {
@@ -71,8 +75,8 @@ impl World {
         .expect("bounded hosted scenario");
         let mut sim = Sim::new(f::SEED, skein_sim::Config::calm());
         let (peer_pid, client_pid) = (sim.spawn_process(), sim.spawn_process());
-        meter.check(meter.end(), peer.worst_case(), &"construction with full queues");
-        let mut world = Self { peer, forge, sim, peer_pid, client_pid, serial: 0, passes: 0, meter };
+        let peak = meter.check(meter.end(), FAKE_GITHUB_PEER_PEAK_CEILING, &"construction with full queues");
+        let mut world = Self { peer, forge, sim, peer_pid, client_pid, serial: 0, passes: 0, meter, peak };
         while world.peer.address().is_none() {
             world.pass();
         }
@@ -86,9 +90,8 @@ impl World {
         self.peer.iterate(self.sim.now(), self.sim.wall());
         self.sim.submit(self.peer_pid, self.peer.submissions());
         let measured = self.meter.end();
-        // Count the simulator and client's retained allocations too. No guessed
-        // allowance is subtracted from the advertised host envelope.
-        self.meter.check(measured, self.peer.worst_case(), &"host iteration");
+        // The scenario includes simulator and client allocations retained across iterations.
+        self.peak = self.peak.max(self.meter.check(measured, FAKE_GITHUB_PEER_PEAK_CEILING, &"host iteration"));
         if !self.peer.work_pending(self.sim.now())
             && let Some(next) = self.sim.next_due()
         {
@@ -195,7 +198,7 @@ fn token(wire: &[u8]) -> Secret {
     f::bearer(&wire[at..end])
 }
 #[test]
-fn github_peer_full_stores_stay_within_worst_case() {
+fn github_peer_full_stores_stay_under_its_peak_ceiling() {
     let mut world = World::new();
     world.convert();
     for (account, ids) in [("acme", "1,2"), ("example", "3,4")] {
@@ -271,4 +274,5 @@ fn github_peer_full_stores_stay_within_worst_case() {
         drop(world.receive(fd));
     }
     world.settle();
+    assert!(world.peak <= FAKE_GITHUB_PEER_PEAK_CEILING);
 }

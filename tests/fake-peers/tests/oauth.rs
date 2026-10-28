@@ -420,14 +420,3 @@ fn without_records_serves_past_a_zero_cap() {
         }
     }
 }
-
-#[test]
-fn without_records_omits_the_observation_bound() {
-    let peer = make(Transport::Plaintext, None);
-    let before = peer.worst_case();
-    let peer = peer.without_records();
-    assert_eq!(
-        before - peer.worst_case(),
-        16 * u64::try_from(std::mem::size_of::<oauth::Observation>()).unwrap() + 4096
-    );
-}

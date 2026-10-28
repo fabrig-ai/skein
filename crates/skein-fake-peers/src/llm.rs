@@ -61,7 +61,6 @@ pub struct Peer {
     observations: Vec<Observation>,
     observed_bytes: u64,
     recording: bool,
-    bound: u64,
     ignore_half_close: bool,
 }
 
@@ -86,7 +85,9 @@ impl Peer {
     ) -> Result<Self, Error> {
         provider::scripts(&config, core::slice::from_ref(&credential), domain.scripts()).map_err(|_| Error::Limits)?;
         transport::validate(&limits, transport)?;
-        let bound = worst_case(&limits, &protocol_limits, &domain_limits, transport).ok_or(Error::Limits)?;
+        if !valid(&limits, &protocol_limits) {
+            return Err(Error::Limits);
+        }
         if credential.value.len().checked_add(credential.account_id.len()).ok_or(Error::Limits)?
             > usize::try_from(protocol_limits.http.head).expect("u32 fits")
         {
@@ -109,7 +110,6 @@ impl Peer {
             observations: Vec::with_capacity(usize::try_from(limits.observations).expect("u32 fits")),
             observed_bytes: 0,
             recording: true,
-            bound,
             ignore_half_close: false,
         })
     }
@@ -150,11 +150,6 @@ impl Peer {
     /// Keeps no outside records. Call on a fresh peer before its first pass.
     #[must_use]
     pub fn without_records(mut self) -> Self {
-        let slots = u64::from(self.face.limits.observations)
-            .checked_mul(u64::try_from(core::mem::size_of::<Observation>()).expect("record size"))
-            .expect("validated record slots");
-        let records = slots.checked_add(u64::from(self.face.limits.observation_bytes)).expect("validated records");
-        self.bound = self.bound.checked_sub(records).expect("bound includes records");
         self.face.limits.observations = 0;
         self.face.limits.observation_bytes = 0;
         self.observations = Vec::new();
@@ -495,53 +490,20 @@ impl Host for Peer {
             && self.domain.calls() == 0
             && self.service.calls() == 0
     }
-    fn worst_case(&self) -> u64 {
-        self.bound
-    }
     fn operations(&self) -> u32 {
         io::operations(&self.face.limits.io).expect("validated io operations")
     }
 }
 
-/// Checked complete process heap envelope, including retained outside observations.
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// The provider's HTTP read and room demands fit the transport buffers.
 #[must_use]
-pub fn worst_case(
-    limits: &Limits,
-    peer: &provider::Limits,
-    domain: &domain::Config,
-    transport: Transport,
-) -> Option<u64> {
-    if skein_http_read(peer) > limits.plaintext
-        || peer.http.response.max(peer.http.send.checked_add(32)?) > limits.ciphertext.checked_sub(1024)?
-    {
-        return None;
-    }
-    let connection_bound = provider::worst_case(peer)?
-        .checked_add(transport::worst_case(limits, transport)?)?
-        .checked_add(u64::try_from(size_of::<Connection>()).ok()?)?
-        .checked_add(Queue::<provider::Event>::worst_case(limits.queue)?)?
-        .checked_add(u64::from(limits.queue).checked_mul(provider::head_worst_case(peer)?)?)?
-        .checked_add(Queue::<Down>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<Up>::worst_case(limits.queue)?)?
-        .checked_add(
-            u64::from(limits.queue)
-                .checked_mul(u64::from(limits.plaintext).checked_add(u64::from(domain.answer_bytes))?)?,
-        )?;
-    face::worst_case(limits)?
-        .checked_add(domain::worst_case(domain)?)?
-        .checked_add(Queue::<Box<[u8]>>::worst_case(domain.calls)?)?
-        .checked_add(u64::from(domain.calls).checked_mul(64)?)?
-        .checked_add(connection_bound.checked_mul(u64::from(limits.connections))?)?
-        .checked_add(Queue::<domain::Request>::worst_case(limits.queue)?)?
-        .checked_add(u64::from(limits.queue).checked_mul(u64::from(domain.answer_bytes))?)?
-        .checked_add(u64::from(limits.observations).checked_mul(u64::try_from(size_of::<Observation>()).ok()?)?)?
-        .checked_add(u64::from(limits.observation_bytes))?
-        .checked_add(u64::from(peer.http.head))?
-        .checked_add(u64::from(provider::MAX_CREDENTIALS).checked_mul(u64::try_from(size_of::<Credential>()).ok()?)?)
-}
-
-fn skein_http_read(peer: &provider::Limits) -> u32 {
-    peer.http.head.max(peer.http.read).max(2)
+pub fn valid(limits: &Limits, peer: &provider::Limits) -> bool {
+    face::valid(limits)
+        && provider::valid(peer)
+        && skein_http::server::largest_read(&peer.http) <= limits.plaintext
+        && limits.ciphertext.checked_sub(1024).is_some_and(|room| skein_http::server::largest_room(&peer.http) <= room)
 }
 
 fn query_bytes(query: &api::Query) -> Option<u64> {

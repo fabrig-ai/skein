@@ -5,7 +5,6 @@
 //! plans; `Host::iterate` drives io; `shutdown` settles connections and
 //! keeps an already accepted delayed issuer response until its terminal.
 
-use std::mem::size_of;
 use std::net::SocketAddr;
 
 use skein_fake_oauth as issuer;
@@ -86,7 +85,6 @@ pub struct Peer {
     observations: Vec<Observation>,
     observed_bytes: u64,
     recording: bool,
-    bound: u64,
 }
 
 impl Peer {
@@ -107,7 +105,9 @@ impl Peer {
         http_limits: http::Limits,
     ) -> Result<Self, Error> {
         transport::validate(&limits, transport)?;
-        let bound = worst_case(&limits, &issuer_limits, &http_limits, transport).ok_or(Error::Limits)?;
+        if !valid(&limits, &issuer_limits, &http_limits) {
+            return Err(Error::Limits);
+        }
         let terms = config.terms.as_ref();
         let openid = terms.and_then(|terms| terms.openid.as_ref());
         let revoke_endpoint = terms.and_then(|terms| terms.revocation_endpoint.clone());
@@ -145,7 +145,6 @@ impl Peer {
             observations: Vec::with_capacity(usize::try_from(limits.observations).expect("u32 fits")),
             observed_bytes: 0,
             recording: true,
-            bound,
         })
     }
 
@@ -169,11 +168,6 @@ impl Peer {
     /// Keeps no outside records. Call on a fresh peer before its first pass.
     #[must_use]
     pub fn without_records(mut self) -> Self {
-        let slots = u64::from(self.face.limits.observations)
-            .checked_mul(u64::try_from(core::mem::size_of::<Observation>()).expect("record size"))
-            .expect("validated record slots");
-        let records = slots.checked_add(u64::from(self.face.limits.observation_bytes)).expect("validated records");
-        self.bound = self.bound.checked_sub(records).expect("bound includes records");
         self.face.limits.observations = 0;
         self.face.limits.observation_bytes = 0;
         self.observations = Vec::new();
@@ -641,9 +635,6 @@ impl Host for Peer {
             && self.outgoing.is_empty()
             && self.issuer.next_deadline().is_none()
     }
-    fn worst_case(&self) -> u64 {
-        self.bound
-    }
     fn operations(&self) -> u32 {
         io::operations(&self.face.limits.io).expect("validated io limits")
     }
@@ -661,39 +652,19 @@ pub fn least_response(issuer: &issuer::Limits) -> Option<u32> {
         .checked_add(267)
 }
 
-/// Checked complete process envelope, including issuer plans and observations.
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// Issuer request bodies and redirect heads fit HTTP, whose demands fit transport.
 #[must_use]
-pub fn worst_case(limits: &Limits, issuer: &issuer::Limits, http: &http::Limits, transport: Transport) -> Option<u64> {
-    if http::largest_read(http) > limits.plaintext
-        || http::largest_room(http) > limits.ciphertext.checked_sub(1024)?
-        || http.body < u64::from(issuer.request_bytes)
-        || http.read == 0
-        || http.send == 0
-        || http.headers < 2
-        || http.response < least_response(issuer)?
-    {
-        return None;
-    }
-    let connection = transport::worst_case(limits, transport)?
-        .checked_add(http::worst_case(http)?)?
-        .checked_add(u64::try_from(size_of::<Connection>()).ok()?)?
-        .checked_add(Queue::<http::Event>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<http::Request>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<Down>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<Up>::worst_case(limits.queue)?)?
-        .checked_add(u64::from(issuer.request_bytes).checked_mul(4)?)?
-        .checked_add(u64::from(issuer.document.document_bytes).checked_mul(4)?)?
-        .checked_add(
-            u64::from(limits.queue).checked_mul(u64::from(limits.plaintext).checked_add(u64::from(http.response))?)?,
-        )?;
-    face::worst_case(limits)?
-        .checked_add(issuer::worst_case(issuer)?)?
-        .checked_add(connection.checked_mul(u64::from(limits.connections))?)?
-        .checked_add(Queue::<issuer::Request>::worst_case(limits.queue)?)?
-        .checked_add(u64::from(issuer.uri_bytes).checked_mul(10)?)?
-        .checked_add(2_u64.checked_mul(u64::try_from(b"/.well-known/openid-configuration".len()).ok()?)?)?
-        .checked_add(u64::from(limits.observations).checked_mul(u64::try_from(size_of::<Observation>()).ok()?)?)?
-        .checked_add(u64::from(limits.observation_bytes))
+pub fn valid(limits: &Limits, issuer: &issuer::Limits, http: &http::Limits) -> bool {
+    face::valid(limits)
+        && issuer::valid(issuer)
+        && http::valid(http)
+        && http::largest_read(http) <= limits.plaintext
+        && limits.ciphertext.checked_sub(1024).is_some_and(|room| http::largest_room(http) <= room)
+        && http.body >= u64::from(issuer.request_bytes)
+        && http.headers >= 2
+        && least_response(issuer).is_some_and(|response| http.response >= response)
 }
 
 fn path(url: &[u8], transport: Transport) -> Result<Box<[u8]>, Error> {
@@ -747,7 +718,7 @@ fn percent(value: &[u8], out: &mut Vec<u8>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Limits, Transport, http, issuer, least_response, redirect, worst_case};
+    use super::{Limits, Peer, Transport, http, issuer, least_response, redirect, valid};
     use skein_lib::Duration;
 
     #[test]
@@ -817,7 +788,19 @@ mod tests {
         let floor = least_response(&issuer).expect("the fixture's response floor fits u32");
         for (response, admitted) in [(floor, true), (floor - 1, false)] {
             let http = http::Limits { head: 2048, headers: 16, body: 1024, read: 256, response, send: 512 };
-            assert_eq!(worst_case(&limits, &issuer, &http, Transport::Plaintext).is_some(), admitted, "{response}");
+            assert_eq!(valid(&limits, &issuer, &http), admitted, "{response}");
+            let config = issuer::Config {
+                authorization_url: Box::from(b"http://127.0.0.1/authorize".as_slice()),
+                token_endpoint: Box::from(b"http://127.0.0.1/token".as_slice()),
+                client_id: Box::from(b"client".as_slice()),
+                client_secret: None,
+                redirect_uri: Box::from(b"http://127.0.0.1/callback".as_slice()),
+                refresh_token: Box::from(b"seed".as_slice()),
+                terms: None,
+            };
+            let peer =
+                Peer::new("127.0.0.1:0".parse().expect("loopback"), Transport::Plaintext, limits, config, issuer, http);
+            assert_eq!(peer.err(), if admitted { None } else { Some(super::Error::Limits) });
         }
     }
 }

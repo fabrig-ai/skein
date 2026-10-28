@@ -1,6 +1,5 @@
 //! GitHub's bounded best-effort POST exchange, retaining the recipient's status.
 use super::{Delivery, Observation, Peer, layer};
-use crate::Limits;
 use skein_fake_forge_github::{self as github, delivery::Post};
 use skein_http::{Header, Method, client};
 use skein_io as io;
@@ -8,7 +7,7 @@ use skein_lib::{
     Duration, Env, Queue, Time, Token, Wall, bytes,
     stream::{Down, Read, Up},
 };
-use std::{mem::size_of, net::SocketAddr};
+use std::net::SocketAddr;
 
 pub(super) struct Outbound {
     owner: Token,
@@ -287,18 +286,6 @@ pub(super) fn deadline(outbound: &Outbound) -> Option<Time> {
 pub(super) fn work(outbound: &Outbound) -> bool {
     !outbound.events.is_empty() || !outbound.below.is_empty()
 }
-pub(super) fn worst_case(limits_host: &Limits, protocol: &github::Limits) -> Option<u64> {
-    let http = limits(protocol);
-    let post = u64::from(protocol.deliveries.payload_bytes)
-        .checked_add(u64::from(protocol.github.string_bytes).checked_mul(2)?)?
-        .checked_add(512)?;
-    let slot = u64::try_from(size_of::<Outbound>())
-        .ok()?
-        .checked_add(client::worst_case(&http)?)?
-        .checked_add(Queue::<client::Event>::worst_case(8)?)?
-        .checked_add(Queue::<Down>::worst_case(8)?)?
-        .checked_add(post.checked_mul(2)?)?
-        .checked_add(u64::from(http.head).checked_mul(8)?)?
-        .checked_add(u64::from(http.send).checked_mul(8)?)?;
-    u64::from(limits_host.connections).checked_mul(slot)
+pub(super) fn valid(protocol: &github::Limits) -> bool {
+    client::valid(&limits(protocol))
 }

@@ -43,7 +43,7 @@ pub(crate) struct Face {
 
 impl Face {
     pub fn new(address: SocketAddr, limits: Limits) -> Result<Self, Error> {
-        if !address.ip().is_loopback() || worst_case(&limits).is_none() {
+        if !address.ip().is_loopback() || !valid(&limits) {
             return Err(Error::Limits);
         }
         let mut requests = Queue::with_capacity(limits.queue);
@@ -131,23 +131,17 @@ impl Face {
     }
 }
 
-pub(crate) fn worst_case(limits: &Limits) -> Option<u64> {
-    if !limits.io.is_usable()
-        || limits.queue < 64
-        || limits.connections == 0
-        || limits.io.sockets < limits.connections.checked_add(1)?
-        || limits.plaintext == 0
-        || limits.ciphertext < 18_432
-        || limits.io.intake < 18_432
-        || limits.io.output < limits.ciphertext
-    {
-        return None;
-    }
-    io::worst_case(&limits.io)?
-        .checked_add(Queue::<io::Event>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<io::Request>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<kernel::Complete>::worst_case(limits.queue)?)?
-        .checked_add(Queue::<kernel::Submit>::worst_case(limits.queue)?)?
-        // Returned receives and queued sends coexist at the io boundary.
-        .checked_add(u64::from(limits.queue).checked_mul(u64::from(limits.io.receive.max(limits.io.output)))?)
+/// Whether these limits are representable: every edge bound they size is finite
+/// and every capacity they derive fits (programming-model.md, 6.3).
+/// The listener and connections fit io, and transport buffers fit its streams.
+pub(crate) fn valid(limits: &Limits) -> bool {
+    limits.io.is_usable()
+        && limits.queue >= 64
+        && limits.connections > 0
+        && limits.connections.checked_add(1).is_some_and(|sockets| limits.io.sockets >= sockets)
+        && io::operations(&limits.io).is_some_and(|operations| operations.checked_mul(2).is_some())
+        && limits.plaintext > 0
+        && limits.ciphertext >= 18_432
+        && limits.io.intake >= 18_432
+        && limits.io.output >= limits.ciphertext
 }
