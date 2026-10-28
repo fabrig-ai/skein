@@ -108,6 +108,18 @@ pub(super) fn intake_cap(limits: &Limits) -> Option<u32> {
     limits.read.checked_add(MAX_PLAINTEXT)
 }
 
+/// Whether these limits are representable: every edge bound they size
+/// is finite and every capacity they derive fits (programming-model.md, 6.3).
+/// Plaintext intake and ciphertext room fit u32, and one record can be held.
+#[must_use]
+pub fn valid(limits: &Limits) -> bool {
+    limits.read > 0
+        && limits.send > 0
+        && limits.records >= MAX_RECORD
+        && room_for(limits.send).is_some()
+        && intake_cap(limits).is_some()
+}
+
 /// The most memory a client holds under `limits`, in bytes
 /// (programming-model.md, 6.3), rustls's heap included, or `None` if it does
 /// not fit a `u64` or the limits cannot be honoured: a read or room of
@@ -127,10 +139,9 @@ pub(super) fn intake_cap(limits: &Limits) -> Option<u32> {
 /// and `MAX_HANDSHAKE`.
 #[must_use]
 pub fn worst_case(limits: &Limits) -> Option<u64> {
-    if limits.read == 0 || limits.send == 0 || limits.records < MAX_RECORD {
+    if !valid(limits) {
         return None;
     }
-    room_for(limits.send)?;
     let intake = Intake::worst_case(intake_cap(limits)?)?;
     let records = u64::from(limits.records);
     let decoded = u64::from(limits.records.min(MAX_HANDSHAKE)).checked_mul(HANDSHAKE)?;

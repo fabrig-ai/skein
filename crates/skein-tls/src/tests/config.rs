@@ -75,16 +75,6 @@ fn worst_case_counts_buffers_and_rustlss_heap() {
     // the intake, owed output, delivery and rustls's state are the same.
     let large = Limits { records: 8 * client::MAX_RECORD, ..LIMITS };
     assert_eq!(client::worst_case(&large), Some(1_511_540));
-    // Each limit that cannot be honoured.
-    for limits in [
-        Limits { read: 0, ..LIMITS },
-        Limits { send: 0, ..LIMITS },
-        Limits { records: client::MAX_RECORD - 1, ..LIMITS },
-        Limits { send: u32::MAX, ..LIMITS },
-        Limits { read: u32::MAX, ..LIMITS },
-    ] {
-        assert_eq!(client::worst_case(&limits), None, "{limits:?}");
-    }
 }
 
 #[test]
@@ -134,4 +124,74 @@ fn each_error_tells_the_stream_what_it_can_act_on() {
         assert_eq!(Error::Stream(fault).fault(), fault);
     }
     assert_eq!(Error::Other.fault(), Fault::Other);
+}
+
+#[test]
+fn valid_accepts_test_limits() {
+    assert!(client::valid(&LIMITS));
+    assert!(client::native::valid(&LIMITS));
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a read and room of a byte, a record held")]
+fn valid_refuses_a_zero_read() {
+    let limits = Limits { read: 0, ..LIMITS };
+    assert!(!client::valid(&limits));
+    assert!(!client::native::valid(&limits));
+    let lower = client::native::LowerLimits { read: u32::MAX, output: u32::MAX, sends: 1 };
+    assert!(client::native::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits, &lower).is_none());
+    let _machine = client::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a read and room of a byte, a record held")]
+fn valid_refuses_a_zero_send() {
+    let limits = Limits { send: 0, ..LIMITS };
+    assert!(!client::valid(&limits));
+    assert!(!client::native::valid(&limits));
+    let lower = client::native::LowerLimits { read: u32::MAX, output: u32::MAX, sends: 1 };
+    assert!(client::native::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits, &lower).is_none());
+    let _machine = client::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a read and room of a byte, a record held")]
+fn valid_refuses_records_below_one_record() {
+    let limits = Limits { records: client::MAX_RECORD - 1, ..LIMITS };
+    assert!(!client::valid(&limits));
+    assert!(!client::native::valid(&limits));
+    let lower = client::native::LowerLimits { read: u32::MAX, output: u32::MAX, sends: 1 };
+    assert!(client::native::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits, &lower).is_none());
+    let _machine = client::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a read and room of a byte, a record held")]
+fn valid_refuses_ciphertext_room_past_u32() {
+    let limits = Limits { send: u32::MAX, ..LIMITS };
+    assert!(!client::valid(&limits));
+    assert!(!client::native::valid(&limits));
+    let lower = client::native::LowerLimits { read: u32::MAX, output: u32::MAX, sends: 1 };
+    assert!(client::native::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits, &lower).is_none());
+    let _machine = client::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits);
+}
+
+#[test]
+#[should_panic(expected = "the limits are honoured: a read and room of a byte, a record held")]
+fn valid_refuses_plaintext_intake_past_u32() {
+    let limits = Limits { read: u32::MAX, ..LIMITS };
+    assert!(!client::valid(&limits));
+    assert!(!client::native::valid(&limits));
+    let lower = client::native::LowerLimits { read: u32::MAX, output: u32::MAX, sends: 1 };
+    assert!(client::native::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits, &lower).is_none());
+    let _machine = client::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits);
+}
+
+#[test]
+fn valid_refuses_native_room_past_u32() {
+    let limits = Limits { send: 4_287_378_492, ..LIMITS };
+    assert!(client::valid(&limits));
+    assert!(!client::native::valid(&limits));
+    let lower = client::native::LowerLimits { read: u32::MAX, output: u32::MAX, sends: 1 };
+    assert!(client::native::Client::new(&super::config(), Name::new("skein.test").unwrap(), &limits, &lower).is_none());
 }

@@ -58,7 +58,7 @@ pub use error::{Certificate, Error};
 pub(crate) use limits::MAX_HANDSHAKE;
 pub use limits::{
     DOWN_MAX_OUT, FLIGHT, HEADER, LARGEST_READ, Limits, MAX_BODY, MAX_PLAINTEXT, MAX_RECORD, UP_MAX_OUT, largest_room,
-    room_for, worst_case,
+    room_for, valid, worst_case,
 };
 
 use above::{Above, Answer, Reading, Wanted, answer, stream};
@@ -203,8 +203,8 @@ impl Client {
     /// handshake is asked for.
     #[must_use]
     pub fn new(config: &Config, name: Name, limits: &Limits) -> Client {
-        assert!(worst_case(limits).is_some(), "the limits are honoured: a read and room of a byte, a record held");
-        let buffers = Buffers::new(limits).expect("checked by worst_case");
+        assert!(valid(limits), "the limits are honoured: a read and room of a byte, a record held");
+        let buffers = Buffers::new(limits).expect("checked by valid");
         Client { state: State::Fresh(Fresh { config: config.clone(), name, line: Line::Open }), buffers }
     }
 

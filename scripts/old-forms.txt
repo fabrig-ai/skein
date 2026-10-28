@@ -3,4 +3,4 @@
 max_out 723
 JournalRoom 45
 takes 21
-worst_case 1830
+worst_case 1826
