@@ -1,4 +1,4 @@
-//! UI reservations and full pages measured on the counting allocator.
+//! UI storage and full pages measured on the counting allocator.
 use skein_heap::{Counting, Meter};
 use skein_lib::Queue;
 use skein_ui::scene::{Anchor, Point, Scene};
@@ -66,16 +66,21 @@ fn a_full_page_reaches_half_its_worst_case() {
 }
 
 #[test]
-fn a_patch_queue_reserves_at_most_four_words_a_patch() {
+fn a_full_patch_queue_holds_at_most_four_words_a_patch() {
     // Four words cover every patch variant (ui.md, 7).
     const WORDS: u64 = 4;
     let bound = u64::from(LIMITS.patches) * WORDS * u64::try_from(size_of::<usize>()).expect("word size fits");
     let meter = Meter::new();
     meter.start();
-    let patches = Queue::<Patch>::with_capacity(LIMITS.patches);
-    let peak = meter.end().peak();
-    drop(patches);
-    assert!(peak <= bound, "patch queue reservation: {peak} <= {bound}");
+    let mut patches = Queue::<Patch>::with_capacity(LIMITS.patches);
+    for node in 0..LIMITS.patches {
+        patches.push(Patch::Remove { node: skein_ui::NodeId(node) });
+    }
+    let measured = meter.end();
+    assert_eq!(patches.len(), LIMITS.patches);
+    assert!(measured.held() <= bound, "patch queue storage: {} <= {bound}", measured.held());
+    // A growing ring holds both its old and new buffers at a realloc peak.
+    assert!(measured.peak() <= 2 * bound, "patch queue growth: {} <= 2 * {bound}", measured.peak());
 }
 
 #[test]
