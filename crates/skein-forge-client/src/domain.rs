@@ -68,7 +68,7 @@ impl Domain {
         }
     }
     fn construct(l: &Limits, seed: u64, config: Option<crate::Config>) -> Domain {
-        assert!(crate::worst_case(l).is_some(), "forge client limits are valid");
+        assert!(crate::valid(l), "forge client limits are valid");
         let alarms = l.pending.checked_add(l.entries).expect("validated alarm capacity");
         let alarms = alarms.checked_add(l.resources).expect("validated alarm capacity");
         let alarms = alarms.checked_add(l.repositories).expect("validated alarm capacity");

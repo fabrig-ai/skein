@@ -42,11 +42,11 @@ pub struct Limits {
     pub settle: Duration,
     pub facts: u32,
 }
-/// Retained operations, four class queues, budget timers and diagnostics.
-/// A sent operation is cloned from its bounded retained retry value; its
-/// outward copy belongs to the parent's output queue, counted there.
+/// Whether these limits are representable: every edge bound they size
+/// is finite and every capacity they derive fits (programming-model.md, 6.3).
+/// Budgets and retry windows are coherent; alarm and keep capacities fit u32.
 #[must_use]
-pub fn worst_case(l: &Limits) -> Option<u64> {
+pub fn valid(l: &Limits) -> bool {
     if l.pending == 0
         || l.calls == 0
         || l.calls > l.pending
@@ -70,6 +70,23 @@ pub fn worst_case(l: &Limits) -> Option<u64> {
         || l.slow == Duration::ZERO
         || l.settle == Duration::ZERO
     {
+        return false;
+    }
+    capacity_bound(l).is_some()
+}
+
+fn capacity_bound(l: &Limits) -> Option<()> {
+    l.pending.checked_add(l.entries)?.checked_add(l.resources)?.checked_add(l.repositories)?.checked_add(2)?;
+    l.resources.checked_mul(2)?.checked_add(l.repositories.checked_mul(2)?)?.checked_add(1)?;
+    Some(())
+}
+
+/// Retained operations, four class queues, budget timers and diagnostics.
+/// A sent operation is cloned from its bounded retained retry value; its
+/// outward copy belongs to the parent's output queue, counted there.
+#[must_use]
+pub fn worst_case(l: &Limits) -> Option<u64> {
+    if !valid(l) {
         return None;
     }
     Slab::<Call>::worst_case(l.pending)?
