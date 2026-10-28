@@ -569,7 +569,9 @@ fn a_journal_filled_to_every_limit_stays_within_its_worst_case() {
 }
 
 fn journal_memory<W: Item + std::fmt::Debug, O: Item + std::fmt::Debug>(limits: &JournalLimits) {
-    let mut metered = Metered::new("Journal", type_name::<(W, O)>(), limits.held, Journal::<W, O>::worst_case(limits));
+    // Ring growth counts both old and new buffers at the peak; held storage stays within the formula.
+    let mut metered =
+        Metered::growing("Journal", type_name::<(W, O)>(), limits.held, Journal::<W, O>::worst_case(limits));
     metered.start();
     let mut journal = Journal::<W, O>::new(limits);
     metered.end(());
