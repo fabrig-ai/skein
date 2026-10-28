@@ -40,7 +40,6 @@ impl Peer {
     fn deliver_to(&mut self, delivery: skein_fake_forge_protocol::delivery::Delivery) {
         let skein_fake_forge_protocol::delivery::Delivery { address, post } = delivery;
         if self.deliveries.len() == usize::try_from(self.face.limits.connections).expect("u32 fits")
-            || self.face.requests.room() == 0
         {
             self.delivery_observation(Some(post), Delivery::NoRoom);
             return;

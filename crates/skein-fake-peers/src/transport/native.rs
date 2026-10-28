@@ -178,7 +178,7 @@ impl Wire {
     }
 
     pub fn pump(&mut self, above: &mut Queue<Up>, requests: &mut Queue<io::Request>) {
-        if self.closing || self.tls.is_none() || above.room() < 3 || requests.room() < 3 {
+        if self.closing || self.tls.is_none() {
             return;
         }
         let tls = self.tls.as_mut().expect("TLS face");
@@ -242,7 +242,7 @@ impl Wire {
             && !self.output_room
             && self.output.is_empty()
             && !self.tls.as_ref().is_some_and(|tls| tls.wants_write())
-            && requests.room() > 0
+           
         {
             self.closing = true;
             requests.push(io::Request::Close { entity: self.socket });
@@ -253,7 +253,7 @@ impl Wire {
         if !self.closing {
             above.push(Up::Failed(Fault::Invalid));
         }
-        if !self.closing && requests.room() > 0 {
+        if !self.closing {
             self.closing = true;
             requests.push(io::Request::Abort { entity: self.socket });
         }
