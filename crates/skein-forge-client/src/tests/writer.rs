@@ -21,7 +21,7 @@ fn writerless(l: &Limits) -> Domain {
 }
 
 fn give(d: &mut Domain, env: &Env<Limits>, writer: Writer) -> (bool, Box<[Request]>) {
-    let mut out = Queue::with_capacity(crate::max_out(&env.limits));
+    let mut out = Queue::uncapped();
     let given = crate::writer(d, env, writer, &mut out);
     let mut requests = List::with_capacity(out.len());
     while let Some(request) = out.pop() {

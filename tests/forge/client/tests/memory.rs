@@ -40,7 +40,7 @@ struct Measured {
 }
 impl Measured {
     fn new(limits: Limits) -> Measured {
-        let out = Queue::with_capacity(client::max_out(&limits));
+        let out = Queue::uncapped();
         let calls = Queue::with_capacity(limits.pending);
         let meter = Meter::new();
         let writers = Box::new([client::Writer { forge: REPO.forge, author: 1 }]);

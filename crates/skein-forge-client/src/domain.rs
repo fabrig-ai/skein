@@ -146,12 +146,6 @@ impl Domain {
         }
     }
 }
-/// A call sent, or one logical read completed/refused.
-#[must_use]
-pub const fn max_out(l: &Limits) -> u32 {
-    let batch = l.resources.saturating_mul(2).saturating_add(l.repositories.saturating_mul(2)).saturating_add(3);
-    if batch > 4 { batch } else { 4 }
-}
 /// Give a forge's writer once its access is known (forge-client.md, 7.1).
 /// It saves a new writer as a `Writer` row and returns true. The same
 /// author again changes nothing and returns true. A writer `give` refuses

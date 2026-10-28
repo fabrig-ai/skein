@@ -1,6 +1,6 @@
 use super::fixtures::outbox::{Harness, comment, pull, recovered_review, recovering_review, summary};
 use super::{LIMITS, at};
-use crate::{Condition, Domain, Event, Made, Outcome, Recovery, RecoveryClock, fire, max_out, recovery};
+use crate::{Condition, Domain, Event, Made, Outcome, Recovery, RecoveryClock, fire, recovery};
 use alloc::boxed::Box;
 use skein_forge::api::{self, Answer, Error, Op, Read, Write};
 use skein_lib::{Duration, Queue};
@@ -297,7 +297,7 @@ fn an_unavailable_write_retries_only_up_to_its_configured_bound() {
         if attempt < LIMITS.write_attempts {
             let due = h.domain.next_deadline().unwrap();
             h.env.now = due;
-            let mut out = Queue::with_capacity(max_out(&h.env.limits));
+            let mut out = Queue::uncapped();
             fire(&mut h.domain, &h.env, &mut out);
             h.take(&mut out);
         }

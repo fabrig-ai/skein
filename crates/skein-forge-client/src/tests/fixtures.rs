@@ -25,7 +25,7 @@ impl Harness {
         Harness { domain: Domain::new(&limits), env: Env { now: at(100), wall: Wall::EPOCH, limits } }
     }
     pub(in crate::tests) fn step(&mut self, event: Event) -> Box<[Request]> {
-        let mut out = Queue::with_capacity(crate::max_out(&self.env.limits));
+        let mut out = Queue::uncapped();
         step(&mut self.domain, &self.env, event, &mut out);
         self.take(&mut out)
     }

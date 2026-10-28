@@ -115,7 +115,7 @@ impl World {
             referee,
             client: configured(seed, shape.author()),
             env: Env { now: joint.now(), wall: joint.wall(), limits: LIMITS },
-            out: Queue::with_capacity(client::max_out(&LIMITS)),
+            out: Queue::uncapped(),
             joint,
             durable: Map::with_capacity(LIMITS.resources + LIMITS.repositories),
             entries: Map::with_capacity(LIMITS.entries),
