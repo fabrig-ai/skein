@@ -832,7 +832,7 @@ mod tests {
     const START: Time = Time::from_nanos(10_000_000_000);
     const DUE: Time = Time::from_nanos(11_000_000_000);
 
-    fn delayed(provider: Provider) -> Exchange {
+    fn scripted(provider: Provider, lines: Box<[api::Line]>) -> Exchange {
         let mut input = crate::call(19);
         match provider {
             Provider::OpenAiCodex => {}
@@ -859,12 +859,16 @@ mod tests {
         let scripts = Box::new([api::Script {
             cue: b"clocked-script".as_slice().into(),
             turns: Box::new([api::Turn {
-                lines: Box::new([api::Line::Text { text: b"clocked exact".as_slice().into() }]),
+                lines,
                 finish: api::Finish::Stop,
                 tokens: 1,
             }]),
         }]);
-        let mut world = Exchange::prepared(machine, endpoint, Some(credential), bounds, scripts);
+        Exchange::prepared(machine, endpoint, Some(credential), bounds, scripts)
+    }
+
+    fn delayed(provider: Provider) -> Exchange {
+        let mut world = scripted(provider, Box::new([api::Line::Text { text: b"clocked exact".as_slice().into() }]));
         // Configure only latency at startup, before any step. The Domain's
         // admitted capacities and owned-byte bounds remain unchanged.
         world.fake_env.limits.latency_min = Duration::from_secs(1);
@@ -920,6 +924,69 @@ mod tests {
         assert_eq!(world.fake.next_deadline(), Some(DUE), "deadline uses the nonzero injected origin");
         assert!(world.responses.is_empty());
         assert_eq!(terminals(world), 0);
+    }
+
+    // Four-byte numbered pieces keep the full script below its byte quota,
+    // and make a response larger than the world's 32 KiB receiving edge.
+    const BURST_PIECES: usize = 512;
+    const SLOW_READ_PERIOD: usize = 64;
+    const BURST_STEPS: usize = 1_000_000;
+    const HOLD: &[u8] = b"burst";
+
+    #[test]
+    fn a_slow_reader_gets_every_released_piece_in_order_and_one_terminal() {
+        for provider in [Provider::OpenAiCodex, Provider::Anthropic] {
+            let expected: Vec<Box<[u8]>> = (0..BURST_PIECES)
+                .map(|index| format!("{index:04}").into_bytes().into_boxed_slice())
+                .collect();
+            let pieces = expected.iter().enumerate().map(|(index, text)| api::Piece {
+                text: text.clone(),
+                hold: (index == 0).then(|| HOLD.into()),
+            }).collect();
+            let mut world = scripted(provider, Box::new([api::Line::Pieces { pieces }]));
+            world.start();
+            quiesce(&mut world);
+            world.release(HOLD);
+            // Release every due domain piece before granting the writer room.
+            // One fire advances one admitted piece, the last giving its reply.
+            for _ in 0..BURST_PIECES {
+                super::fake::fire(&mut world.fake, &world.fake_env, &mut world.replies);
+            }
+            for _ in 0..world.replies.len() {
+                let reply = world.replies.pop().expect("released domain output");
+                world.reply(reply);
+            }
+            let writer_demand = world.peer_demand.take();
+            let before = world.responses.len();
+            for _ in 0..SLOW_READ_PERIOD {
+                world.tick(false);
+            }
+            assert_eq!(world.responses.len(), before, "no piece is written without writer room");
+            assert!(writer_demand.is_some_and(|(_, room)| room > 0), "writer waits for its chunk credit");
+            world.peer_demand = writer_demand;
+            for pass in 0..BURST_STEPS {
+                let progress = world.tick(pass % SLOW_READ_PERIOD == 0);
+                if !progress && world.machine.waiting() == client::Waiting::Idle {
+                    break;
+                }
+            }
+            let received: Vec<&[u8]> = world.seen.iter().filter_map(|event| match event {
+                client::Event::Delta { delta: skein_llm::Delta::Text { text, .. }, .. } => Some(text.as_ref()),
+                client::Event::Delta { .. } | client::Event::Block { .. } | client::Event::Completed { .. }
+                | client::Event::Failed { .. } | client::Event::Cancelled { .. } | client::Event::Reusable
+                | client::Event::Close | client::Event::Closed => None,
+            }).collect();
+            assert_eq!(received, expected.iter().map(AsRef::as_ref).collect::<Vec<&[u8]>>(), "{provider:?}");
+            assert_eq!(terminals(&world), 1, "one terminal after every released piece");
+            let completed = world.seen.iter().find_map(|event| match event {
+                client::Event::Completed { completion, .. } => Some(completion),
+                client::Event::Delta { .. } | client::Event::Block { .. } | client::Event::Failed { .. }
+                | client::Event::Cancelled { .. } | client::Event::Reusable | client::Event::Close
+                | client::Event::Closed => None,
+            }).expect("successful burst terminal");
+            let [Block::Text { text, .. }] = completed.content.as_ref() else { panic!("one joined text") };
+            assert_eq!(text.as_ref(), expected.concat());
+        }
     }
 
     #[test]
