@@ -384,7 +384,7 @@ fn a_reserved_background_share_is_admitted_even_with_one_pending_slot_and_replen
             repository: REPO,
             read: Read::Branch { branch: Box::from(&b"fresh"[..]) },
         });
-        assert_eq!(h.read_refusals.as_slice().last(), Some(&Error::Busy));
+        assert!(h.read_refusals.is_empty(), "a reserved share retains the fresh demand");
         let read = h.one();
         let since = if round == 0 { at(u64::MAX) } else { at(100) };
         assert_eq!(read.op, Op::Read(Read::Items { since, page: 1, kind: None }));
@@ -392,6 +392,21 @@ fn a_reserved_background_share_is_admitted_even_with_one_pending_slot_and_replen
         let read = h.one();
         assert_eq!(read.op, Op::Read(Read::Item { number: 9, after: u64::MAX }));
         h.answer(read, Answer::Item { item: summary(), comments: Box::new([]), more: false });
+        let fresh = h.one();
+        assert_eq!(fresh.op, Op::Read(Read::Branch { branch: Box::from(b"fresh".as_slice()) }));
+        let mut out = skein_lib::Queue::uncapped();
+        crate::step(
+            &mut h.domain,
+            &h.env,
+            Event::Answered { call: fresh.call, cost: 0, free: 0, rate: None, result: Ok(Answer::Commit([1; 32])) },
+            &mut out,
+        );
+        assert_eq!(
+            out.pop(),
+            Some(crate::Request::Read { owner: Token::new(round + 10), result: Ok(Answer::Commit([1; 32])) })
+        );
+        assert!(out.is_empty());
+        h.domain.reclaim();
         h.clock();
         let write = h.one();
         assert_eq!(write.op, Op::Write(Write::Close { number: 9 }));

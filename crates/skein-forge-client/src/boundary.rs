@@ -274,7 +274,8 @@ pub enum Event {
     ReadAfresh,
     /// Reconcile restored outbox entries after the fresh reads.
     SettleOutbox,
-    /// A page read for a decision. Always enters the fresh class.
+    /// A page read for a decision. Retained until admitted to the fresh class;
+    /// a full call table or an owed background share does not complete it.
     Read { owner: Token, repository: Repository, read: Read },
     /// Exactly one terminal for each Call, including calls with no HTTP cost.
     Answered {

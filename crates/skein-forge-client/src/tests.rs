@@ -1,4 +1,5 @@
 //! Step tests of admission, request accounting, bounded answers and recovery.
+mod admission;
 mod budget;
 mod contracts;
 mod fixtures;
@@ -186,10 +187,9 @@ fn overlapping_rate_refusals_keep_the_later_reset() {
     assert_eq!(h.domain.next_deadline(), Some(at(140)));
 }
 #[test]
-fn full_and_oversized_admission_answer_once_without_an_api_call() {
+fn oversized_admission_answers_once_even_when_the_call_table_is_full() {
     let mut h = Harness::new(Limits { pending: 1, calls: 1, ..LIMITS });
     h.read(1);
-    terminal(&h.step(Event::Read { owner: Token::new(2), repository: REPO, read: Read::Settings }), 2, Error::Busy);
     let value = skein_lib::bytes::zeroed(257);
     terminal(
         &h.step(Event::Read { owner: Token::new(3), repository: REPO, read: Read::Branch { branch: value } }),

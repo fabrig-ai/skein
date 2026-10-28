@@ -19,6 +19,13 @@ pub(crate) enum Alarm {
     Resource(u64),
     Repository(api::Repository),
 }
+/// A validated demand from an owner that has already admitted its work.
+#[derive(Debug)]
+struct ReadDemand {
+    owner: skein_lib::Token,
+    repository: api::Repository,
+    op: api::Op,
+}
 /// The forge client’s bounded working set and call scheduler.
 #[derive(Debug)]
 pub struct Domain {
@@ -29,6 +36,7 @@ pub struct Domain {
     pub(crate) rng: Rng,
     pub(crate) outbox: outbox::Outbox,
     pub(crate) keep: keep::Keep,
+    reads: Queue<ReadDemand>,
     identity_used: bool,
     facts: Queue<Fact>,
     lost: u64,
@@ -88,6 +96,7 @@ impl Domain {
             rng: Rng::new(seed),
             outbox: outbox::Outbox::new(l),
             keep: keep::Keep::new(l),
+            reads: Queue::uncapped(),
             facts: Queue::with_capacity(l.facts),
             lost: 0,
         }
@@ -112,9 +121,11 @@ impl Domain {
         if outbox::stop::active(&self.outbox) {
             return calls::settling_ready(self) || (!self.calls.is_full() && self.outbox.is_ready(&self.keep));
         }
-        self.calls.is_ready() || (!self.calls.is_full() && (self.outbox.is_ready(&self.keep) || self.keep.is_ready()))
+        self.calls.is_ready()
+            || (!self.calls.is_full()
+                && (!self.reads.is_empty() || self.outbox.is_ready(&self.keep) || self.keep.is_ready()))
     }
-    /// Whether a read asked now finds a call slot.
+    /// Whether another logical call can be scheduled in the call table.
     #[must_use]
     pub fn has_room(&self) -> bool {
         !self.calls.is_full()
@@ -223,8 +234,6 @@ pub fn step(d: &mut Domain, env: &Env<Limits>, event: Event, out: &mut Queue<Req
                 Some(api::Error::Empty)
             } else if !bounds::op(&op, &env.limits) {
                 Some(api::Error::TooLarge)
-            } else if d.calls.is_full() || (d.keep.is_ready() && calls::background_owed(&d.calls, env)) {
-                Some(api::Error::Busy)
             } else {
                 None
             };
@@ -233,7 +242,12 @@ pub fn step(d: &mut Domain, env: &Env<Limits>, event: Event, out: &mut Queue<Req
                     d.fact(Fact::Refused);
                     out.push(Request::Read { owner, result: Err(error) });
                 }
-                None => calls::queue(&mut d.calls, calls::Owner::Read(owner), repository, op, Priority::Fresh),
+                None => {
+                    d.reads.push(ReadDemand { owner, repository, op });
+                    if !(d.keep.is_ready() && calls::background_owed(&d.calls, env)) {
+                        admit_read(d);
+                    }
+                }
             }
         }
         Event::Answered { call, cost, free, rate, result } => {
@@ -247,6 +261,15 @@ pub fn step(d: &mut Domain, env: &Env<Limits>, event: Event, out: &mut Queue<Req
         }
     }
     outbox::stop::advance(d, env, out);
+}
+/// A released slot makes the next retained demand runnable, without a timer.
+fn admit_read(d: &mut Domain) {
+    if d.calls.is_full() {
+        return;
+    }
+    if let Some(ReadDemand { owner, repository, op }) = d.reads.pop() {
+        calls::queue(&mut d.calls, calls::Owner::Read(owner), repository, op, Priority::Fresh);
+    }
 }
 /// One queued call per loop iteration. Only uncertain outbox entries retain
 /// their original lifetime; unrelated reads have no startup delay.
@@ -266,6 +289,7 @@ pub fn resume(d: &mut Domain, env: &Env<Limits>, out: &mut Queue<Request>) {
         }
         return;
     }
+    admit_read(d);
     if outbox::pump(d, env, out) {
         if outbox::settle_done(d) {
             out.push(Request::OutboxDone);
