@@ -137,7 +137,7 @@ impl Component {
         }
     }
 
-    /// Admits a named account, answering only a refusal with `MAX_OUT_DOWN.above` room.
+    /// Admits a named account, answering only a refusal into the uncapped owner queue.
     pub fn add(&mut self, env: &Env<Limits>, account: u32, configuration: Account, up: &mut Queue<Event>) {
         let why = if self.lifecycle != Lifecycle::Live {
             Some(Refusal::Closed)

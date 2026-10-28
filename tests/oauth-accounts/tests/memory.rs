@@ -4,7 +4,7 @@ use skein_lib::Token;
 use skein_lib::{Duration, Env, List, Queue, Time, Wall, bytes};
 use skein_oauth::{ClientLimits, SavedToken};
 use skein_oauth_accounts::{
-    Account, Component, Endpoint, FileLower, Keeper, Limits, MAX_OUT_DOWN, Request, Transport, worst_case,
+    Account, Component, Endpoint, FileLower, Keeper, Limits, Request, Transport, worst_case,
 };
 
 #[global_allocator]
@@ -20,14 +20,14 @@ fn every_account_holds_a_maximal_record_within_the_heap_bound() {
     let crypto = skein_lib::CryptoRng::new(&skein_world::crypto_seed(17), 0).expect("32-byte world seed");
     let mut component = Component::new(configured, &limits, crypto).expect("component");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut out = Queue::with_capacity(MAX_OUT_DOWN.above);
+    let mut out = Queue::uncapped();
     let mut shared_reads = Queue::with_capacity(limits.accounts);
     for account in 0..limits.accounts {
         component.down(
             &env,
             Request::Grant { account },
             &mut out,
-            &mut Queue::with_capacity(MAX_OUT_DOWN.io),
+            &mut Queue::uncapped(),
             &mut Queue::with_capacity(1),
         );
         assert!(out.pop() == Some(skein_oauth_accounts::Event::Lock { account }));
@@ -43,7 +43,7 @@ fn every_account_holds_a_maximal_record_within_the_heap_bound() {
 
 #[test]
 fn every_refresh_slot_holds_its_maximal_records_and_tls_connection() {
-    use skein_oauth_accounts::{Endpoint, Keeper, MAX_OUT_FIRE, Transport};
+    use skein_oauth_accounts::{Endpoint, Keeper, Transport};
     let mut limits = skein_oauth_accounts_world::world::limits();
     limits.accounts = 4;
     limits.exchanges = 4;
@@ -98,8 +98,8 @@ fn every_refresh_slot_holds_its_maximal_records_and_tls_connection() {
     let crypto = skein_lib::CryptoRng::new(&skein_world::crypto_seed(17), 0).expect("32-byte world seed");
     let mut component = Component::new(configured, &limits, crypto).expect("configured slots");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(MAX_OUT_DOWN.above.max(MAX_OUT_FIRE.above));
-    let mut io = Queue::with_capacity(MAX_OUT_DOWN.io.max(MAX_OUT_FIRE.io));
+    let mut above = Queue::uncapped();
+    let mut io = Queue::uncapped();
     for account in 0..limits.accounts {
         component.down(&env, Request::Grant { account }, &mut above, &mut io, &mut Queue::with_capacity(1));
         assert!(above.is_empty(), "grant waits for a kept refresh");
@@ -150,7 +150,6 @@ fn every_listener_slot_keeps_a_bounded_partial_head_within_the_heap_bound() {
 const LISTENER_TURNS: usize = 2048;
 
 fn drive_partial_heads(component: &mut Component, env: &Env<Limits>, response: Vec<u8>) {
-    use skein_oauth_accounts::MAX_OUT_FIRE;
     let mut above = Queue::with_capacity(64);
     let mut below = Queue::with_capacity(64);
     for account in 0..env.limits.accounts {
@@ -178,7 +177,7 @@ fn drive_partial_heads(component: &mut Component, env: &Env<Limits>, response: V
     let mut visits = 0;
     for _ in 0..LISTENER_TURNS {
         if component.has_work() {
-            assert!(above.room() >= MAX_OUT_FIRE.above && below.room() >= MAX_OUT_FIRE.io);
+
             component.fire(env, &mut above, &mut below, &mut Queue::with_capacity(1));
         }
         while let Some(event) = above.pop() {
@@ -282,8 +281,7 @@ impl ListenerSockets {
         below: &mut Queue<skein_io::Request>,
     ) {
         use skein_io::Event as IoEvent;
-        use skein_oauth_accounts::MAX_OUT_UP;
-        for (owner, _, wire) in &mut self.web {
+            for (owner, _, wire) in &mut self.web {
             if let Some(up) = wire.answer() {
                 component.up(env, IoEvent::Stream { owner: *owner, up }, above, below, &mut Queue::with_capacity(1));
             }
@@ -291,7 +289,7 @@ impl ListenerSockets {
         for (socket, wire) in &mut self.wires {
             if let Some(up) = wire.answer() {
                 let owner = self.callbacks.iter().find(|(candidate, _)| candidate == socket).expect("bound callback").1;
-                assert!(above.room() >= MAX_OUT_UP.above && below.room() >= MAX_OUT_UP.io);
+
                 component.up(env, IoEvent::Stream { owner, up }, above, below, &mut Queue::with_capacity(1));
             }
         }

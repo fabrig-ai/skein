@@ -362,14 +362,14 @@ impl Listener {
 
 impl Callback {
     fn new(socket: Token, limits: &Limits) -> Self {
-        let mut requests = Queue::with_capacity(ROUTES);
+        let mut requests = Queue::uncapped();
         requests.push(http::Request::Next);
         Callback {
             socket,
             http: http::Server::new(&limits.server),
-            events: Queue::with_capacity(ROUTES),
+            events: Queue::uncapped(),
             requests,
-            below: Queue::with_capacity(ROUTES),
+            below: Queue::uncapped(),
             page: PAGE,
             send: limits.server.send,
             offset: 0,
@@ -411,9 +411,13 @@ impl Callback {
             return;
         }
         if self.phase != Head::Closing {
-            for _ in 0..ROUTES {
+            for _ in 0..self.events.len() {
                 drop(self.events.pop());
+            }
+            for _ in 0..self.requests.len() {
                 drop(self.requests.pop());
+            }
+            for _ in 0..self.below.len() {
                 drop(self.below.pop());
             }
             http::down(
@@ -423,8 +427,10 @@ impl Callback {
                 &mut self.events,
                 &mut self.below,
             );
-            for _ in 0..ROUTES {
+            for _ in 0..self.events.len() {
                 drop(self.events.pop());
+            }
+            for _ in 0..self.below.len() {
                 drop(self.below.pop());
             }
         }

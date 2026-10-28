@@ -320,14 +320,14 @@ impl Client {
             component: None,
             limits: *limits,
             events: Queue::uncapped(),
-            requests: Queue::with_capacity(room),
-            files: Queue::with_capacity(room),
+            requests: Queue::uncapped(),
+            files: Queue::uncapped(),
             file_driver: None,
             file_keep: None,
             stop_at_store: None,
             stop_at_load: None,
             retry_load: None,
-            above: Queue::with_capacity(room),
+            above: Queue::uncapped(),
             completions: Queue::with_capacity(room),
             submissions: Queue::with_capacity(room),
             address: None,
@@ -696,9 +696,6 @@ impl Host for Client {
             io::fire(&mut self.io, &io_env, &mut self.events, &mut self.submissions);
         }
         for _ in 0..ROOM {
-            if self.above.room() < accounts::MAX_OUT_UP.above || self.requests.room() < accounts::MAX_OUT_UP.io {
-                break;
-            }
             let Some(event) = self.events.pop() else { break };
             self.component.as_mut().expect("io follows started component").up(
                 &env,
@@ -709,13 +706,11 @@ impl Host for Client {
             );
         }
         if let Some(component) = &mut self.component
-            && self.above.room() >= accounts::MAX_OUT_FIRE.above
-            && self.requests.room() >= accounts::MAX_OUT_FIRE.io
             && (component.has_work() || component.next_deadline().is_some_and(|due| due <= now))
         {
             component.fire(&env, &mut self.above, &mut self.requests, &mut self.files);
         }
-        if self.requests.room() >= accounts::MAX_OUT_DOWN.io && self.above.room() >= accounts::MAX_OUT_DOWN.above {
+        {
             self.observe(&env);
             if self.story == Story::Released
                 && !self.closing
@@ -725,7 +720,7 @@ impl Host for Client {
             }
         }
         for _ in 0..ROOM {
-            if !self.io.takes() || self.submissions.room() < 2 || self.above.room() < accounts::MAX_OUT_DOWN.above {
+            if !self.io.takes() || self.submissions.room() < 2 {
                 break;
             }
             let Some(request) = self.requests.pop() else { break };

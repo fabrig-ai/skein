@@ -29,9 +29,9 @@ fn the_nonce_is_drawn_from_the_seeded_generator() {
     component.down(
         &env,
         Request::SignIn { account: 0, subject: None },
-        &mut Queue::with_capacity(4),
-        &mut Queue::with_capacity(4),
-        &mut Queue::with_capacity(1),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
+        &mut Queue::uncapped(),
     );
     let id = component.bindings.get(0).copied().flatten().expect("sign-in bound");
     let exchange = component.exchanges.get(id).expect("admitted exchange");
