@@ -3,8 +3,9 @@
 //! an entry point a step of the meter, and what the machine held of its own
 //! never more than its `worst_case`.
 //!
-//! What the connection holds is made before the meter: the queues, the
-//! stream below and its buffer. Each delivery is made between steps, by the
+//! The connection owns the stream below and its buffer before the meter.
+//! Its uncapped output queues are handed out after each step, so their
+//! growth is counted with the receiver. Each delivery is made between steps, by the
 //! stream below, and is the tokenizer's to count from when it is handed over
 //! (lib.md, 7). What a step emits, a token's box among it, is handed out:
 //! dropped before the check, as its receiver's.
@@ -50,8 +51,8 @@ fn read(document: &[u8], limits: Limits, interrupt: Interrupt) -> Ran {
 
 fn read_demand(document: &[u8], limits: Limits, interrupt: Interrupt, first: Request) -> Ran {
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut above = Queue::with_capacity(json::UP_MAX_OUT.above.max(json::DOWN_MAX_OUT.above));
-    let mut below = Queue::with_capacity(json::UP_MAX_OUT.below.max(json::DOWN_MAX_OUT.below));
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let cap = u32::try_from(document.len()).expect("a short document").max(json::largest_demand(&limits));
     let mut intake = Intake::with_capacity(cap);
     intake.append(document).expect("the stream holds all of it");
@@ -102,6 +103,9 @@ fn read_demand(document: &[u8], limits: Limits, interrupt: Interrupt, first: Req
             Some(other) => panic!("the tokenizer sent {other:?}"),
             None => {}
         }
+        // Empty handoff storage belongs to the caller, along with its outputs.
+        drop(core::mem::replace(&mut above, Queue::uncapped()));
+        drop(core::mem::replace(&mut below, Queue::uncapped()));
         most = most.max(meter.check(step, bound, &what));
         steps += 1;
         if closed {

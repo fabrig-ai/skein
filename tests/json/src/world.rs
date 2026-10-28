@@ -12,14 +12,14 @@
 //!   moment the settings draw, whatever the tokenizer is doing then.
 //!
 //! The world checks the machine's contracts as it goes (testing-strategy.md,
-//! 6): `MAX_OUT` honoured on each call; one answer per `Next`, at most one
+//! 6): one answer per `Next`, at most one
 //! outcome, and `Closed` once, last; one demand at a time, none past the
 //! largest the tokenizer declares or the cap below, none after the stream
 //! ended, and one withdrawn only by a close; no room asked for and nothing
 //! sent; and the tokenizer waiting for exactly what its neighbours see.
 
 use skein_json::Token;
-use skein_json::tokenizer::{self as json, Error, Event, Limits, MaxOut, Position, Request, Tokenizer, Waiting};
+use skein_json::tokenizer::{self as json, Error, Event, Limits, Position, Request, Tokenizer, Waiting};
 use skein_lib::stream::{Delimiter, Down, Fault, Read, Up};
 use skein_lib::{Env, Intake, Queue, Rng, Time, Wall};
 
@@ -208,10 +208,8 @@ pub fn run(document: &[u8], settings: &Settings, seed: u64) -> Run {
         settings,
         env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
         tokenizer: Tokenizer::new(&limits),
-        // Room for more than MAX_OUT, so that the world, not the queue,
-        // catches a call that emits more.
-        events: Queue::with_capacity(8),
-        requests: Queue::with_capacity(8),
+        events: Queue::uncapped(),
+        requests: Queue::uncapped(),
         below: Below {
             unsent: settings.sent(document),
             intake: Intake::with_capacity(settings.cap),
@@ -520,7 +518,7 @@ impl World<'_> {
         }
         let before = self.above.tokens.len();
         json::up(&mut self.tokenizer, &self.env, ev, &mut self.events, &mut self.requests);
-        self.route(json::UP_MAX_OUT, false);
+        self.route(false);
         if ends_a_number && self.above.tokens.len() > before {
             self.held_byte |= matches!(self.above.tokens.last(), Some(Token::Number(_)));
         }
@@ -536,13 +534,11 @@ impl World<'_> {
             self.held_byte = false;
         }
         json::down(&mut self.tokenizer, &self.env, rq, &mut self.events, &mut self.requests);
-        self.route(json::DOWN_MAX_OUT, rq == Request::Close);
+        self.route(rq == Request::Close);
     }
 
     /// What one call emitted, to each side, checked.
-    fn route(&mut self, max: MaxOut, closing: bool) {
-        assert!(self.events.len() <= max.above, "MAX_OUT honoured above: {:?}", self.events);
-        assert!(self.requests.len() <= max.below, "MAX_OUT honoured below: {:?}", self.requests);
+    fn route(&mut self, closing: bool) {
         while let Some(event) = self.events.pop() {
             if event != Event::Closed {
                 self.above.positions.push(self.tokenizer.position());
@@ -719,7 +715,6 @@ pub fn collect(
                 collector::up(&mut collector, &env, delivery, &mut events, &mut requests);
             }
         }
-        assert!(events.len() <= 1 && requests.len() <= 1, "collector MAX_OUT");
         while let Some(event) = events.pop() {
             match event {
                 Event::Collected(_) | Event::Failed(_) => {

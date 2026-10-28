@@ -36,9 +36,8 @@
 //! [`Limits::number`], allocated with the tokenizer, and goes up in a box of
 //! exactly its length. Every byte delivered counts against
 //! [`Limits::length`], so no peer keeps the tokenizer reading without end,
-//! whitespace included. Past any limit, the document fails. Each entry point
-//! emits at most [`UP_MAX_OUT`] or [`DOWN_MAX_OUT`]; [`worst_case`] is what
-//! a tokenizer holds; [`largest_demand`] is what whoever stacks it checks
+//! whitespace included. Past any limit, the document fails. [`worst_case`] is
+//! what a tokenizer holds; [`largest_demand`] is what whoever stacks it checks
 //! against the cap of the side below at startup.
 
 //! # Positions
@@ -175,24 +174,6 @@ pub fn validate(input: &[u8], limits: &Limits) -> Result<(), Error> {
     }
     Err(Error::Unexpected)
 }
-
-/// The most an entry point emits in one call, into each of its two queues.
-/// Whoever calls it reserves this much room in each first
-/// (programming-model.md, 2).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MaxOut {
-    /// Events for the side above.
-    pub above: u32,
-    /// Requests for the side below.
-    pub below: u32,
-}
-
-/// [`up`]'s: a token or the document's outcome, or the next demand.
-pub const UP_MAX_OUT: MaxOut = MaxOut { above: 1, below: 1 };
-
-/// [`down`]'s: for a `Next`, a token or the outcome, or a demand; for a
-/// `Close`, `Closed` and the demand withdrawn.
-pub const DOWN_MAX_OUT: MaxOut = MaxOut { above: 1, below: 1 };
 
 /// From the side above.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -375,7 +356,7 @@ impl Tokenizer {
     }
 }
 
-/// An event from the stream below. Emits at most [`UP_MAX_OUT`].
+/// An event from the stream below, with uncapped output queues.
 pub fn up(tokenizer: &mut Tokenizer, env: &Env<Limits>, ev: Up, above: &mut Queue<Event>, below: &mut Queue<Down>) {
     let limits = &env.limits;
     let document = &mut tokenizer.document;
@@ -410,7 +391,7 @@ pub fn up(tokenizer: &mut Tokenizer, env: &Env<Limits>, ev: Up, above: &mut Queu
     demand(state, tokenizer.state, limits, below);
 }
 
-/// A request from the side above. Emits at most [`DOWN_MAX_OUT`].
+/// A request from the side above, with uncapped output queues.
 pub fn down(
     tokenizer: &mut Tokenizer,
     env: &Env<Limits>,

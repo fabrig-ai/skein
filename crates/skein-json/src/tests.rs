@@ -57,8 +57,8 @@ impl Machine {
         Machine {
             tokenizer: Tokenizer::new(&limits),
             env: env(limits),
-            above: Queue::with_capacity(json::UP_MAX_OUT.above.max(json::DOWN_MAX_OUT.above)),
-            below: Queue::with_capacity(json::UP_MAX_OUT.below.max(json::DOWN_MAX_OUT.below)),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
         }
     }
 
