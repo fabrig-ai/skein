@@ -95,6 +95,3 @@ impl Events {
         self.failed
     }
 }
-pub(crate) fn worst_case() -> Option<u64> {
-    sse::worst_case(&LIMITS)?.checked_add(Intake::worst_case(8192)?)?.checked_add(List::<u8>::worst_case(8192)?)
-}

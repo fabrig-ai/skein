@@ -444,7 +444,3 @@ fn add_exchange(id: u32, add: &records::Add) -> Exchange {
             .expect("record bound fits u32"),
     }
 }
-
-pub(crate) fn events_worst_case() -> Option<u64> {
-    events::worst_case()
-}

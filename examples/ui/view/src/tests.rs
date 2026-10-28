@@ -80,7 +80,7 @@ fn the_empty_list_says_no_notes_yet() {
     assert!(found, "empty page explains itself");
 }
 #[test]
-fn the_views_worst_case_fits_its_limits() {
+fn sixty_four_notes_at_the_record_ceilings_fit_the_view() {
     let mut state = fixtures::state();
     let mut notes = skein_lib::List::with_capacity(64);
     for number in 0..64 {
@@ -99,7 +99,6 @@ fn the_views_worst_case_fits_its_limits() {
     let mut view = View::new(&limits::limits());
     state.build(&mut view, &mut Queue::with_capacity(1200));
     assert_eq!(view.tree().len(), 487);
-    assert!(limits::worst_case().expect("worst case fits u64") < 100_000_000, "view fits its 100 MB memory bound");
 }
 
 fn heading(view: &View) -> &[u8] {

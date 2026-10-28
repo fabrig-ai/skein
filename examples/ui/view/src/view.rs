@@ -81,9 +81,7 @@ pub(crate) fn words() -> Phrasebook {
     Phrasebook::load(shapes.into_boxed(), Box::from([language]), &WORD_LIMITS)
         .expect("English phrases cover every shape")
 }
-pub(crate) fn words_worst_case() -> Option<u64> {
-    skein_ui::phrases::worst_case(&WORD_LIMITS)
-}
+
 fn phrase(state: &State, number: u16) -> Box<[u8]> {
     state.words.say(0, PhraseId { owner: OWNER, number }, &[]).expect("declared English phrase").text
 }
