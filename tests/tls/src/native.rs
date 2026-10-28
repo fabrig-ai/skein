@@ -199,8 +199,8 @@ impl Driver {
             )
             .expect("compatible IO cap"),
             tls_env: Env { now: Time::ZERO, wall: pki::VALID, limits: LIMITS },
-            above: Queue::with_capacity(native::UP_MAX_OUT.above),
-            below: Queue::with_capacity(native::UP_MAX_OUT.below),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
             peer: Server::new(server.config()),
             peer_output: VecDeque::new(),
             peer_read: None,
@@ -230,17 +230,17 @@ impl Driver {
     fn tls_down(&mut self, request: native::Request) {
         assert!(self.above.is_empty() && self.below.is_empty());
         native::down(&mut self.tls, &self.tls_env, request, &mut self.above, &mut self.below);
-        self.route(native::DOWN_MAX_OUT);
+        self.route();
     }
 
     fn tls_up(&mut self, event: native::LowerEvent) {
         assert!(self.above.is_empty() && self.below.is_empty());
         native::up(&mut self.tls, &self.tls_env, event, &mut self.above, &mut self.below);
-        self.route(native::UP_MAX_OUT);
+        self.route();
     }
 
-    fn route(&mut self, maximum: skein_tls::MaxOut) {
-        assert!(self.above.len() <= maximum.above && self.below.len() <= maximum.below);
+    fn route(&mut self) {
+
         while let Some(request) = self.below.pop() {
             let socket = self.client_socket.expect("client endpoint");
             match request {

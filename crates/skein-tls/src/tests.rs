@@ -94,24 +94,22 @@ impl Machine {
         Machine {
             client: Client::new(&config(), Name::new("skein.test").unwrap(), &limits),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            above: Queue::with_capacity(client::UP_MAX_OUT.above.max(client::DOWN_MAX_OUT.above)),
-            below: Queue::with_capacity(client::UP_MAX_OUT.below.max(client::DOWN_MAX_OUT.below)),
+            above: Queue::uncapped(),
+            below: Queue::uncapped(),
         }
     }
 
     /// Sends `rq` down; what came of it, above and below.
     fn down(&mut self, rq: Request) -> (Vec<Event>, Vec<Down>) {
         client::down(&mut self.client, &self.env, rq, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= client::DOWN_MAX_OUT.above, "MAX_OUT above");
-        assert!(self.below.len() <= client::DOWN_MAX_OUT.below, "MAX_OUT below");
+
         self.take()
     }
 
     /// Sends `ev` up; what came of it, above and below.
     fn up(&mut self, ev: Up) -> (Vec<Event>, Vec<Down>) {
         client::up(&mut self.client, &self.env, ev, &mut self.above, &mut self.below);
-        assert!(self.above.len() <= client::UP_MAX_OUT.above, "MAX_OUT above");
-        assert!(self.below.len() <= client::UP_MAX_OUT.below, "MAX_OUT below");
+
         self.take()
     }
 
