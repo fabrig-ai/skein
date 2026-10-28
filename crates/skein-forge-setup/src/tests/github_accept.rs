@@ -3,7 +3,7 @@ use crate::{
     call::{Auth, Call},
     github::accept::{self, Accept},
     item::{self, Item},
-    reconcile::{self, Event, Failure, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use core::num::NonZeroU64;
 use skein_forge::github::{
@@ -18,7 +18,7 @@ fn machine() -> Accept {
 }
 #[expect(clippy::disallowed_macros, reason = "test checks diagnostics for key byte spellings")]
 fn go(machine: &mut Accept, event: Event) -> Need {
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     accept::step(machine, event, &mut out);
     assert_eq!(out.len(), 1);
     let need = out.pop().expect("one need");
@@ -65,7 +65,7 @@ fn silent(machine: &mut Accept) {
         Event::Written,
         Event::Drawn(secret(fixtures::DER)),
     ] {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         accept::step(machine, event, &mut out);
         assert!(out.is_empty());
     }

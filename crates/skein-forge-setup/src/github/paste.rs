@@ -54,7 +54,7 @@ impl Paste {
         app::stop(self.given.forge, Stage::App, subject, why)
     }
     fn hook(&mut self, mut child: Hook, checked: Checked, event: Event) -> Need {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         hook::step(&mut child, event, &mut out);
         match out.pop() {
             Some(hook::Progress::Pending(need @ Need::Stop(_))) => need,
@@ -200,7 +200,7 @@ fn optional_id(read: Option<Secret>) -> Result<Option<NonZeroU64>, Why> {
         None => Ok(None),
     }
 }
-/// Consumes one event in `reconcile::MAX_OUT` room, emitting at most one need.
+/// Consumes one event and emits its next need, emitting at most one need.
 /// Terminal paths release credentials; ended machines are silent (5.8).
 pub fn step(machine: &mut Paste, event: Event, out: &mut Queue<Need>) {
     let state = core::mem::replace(&mut machine.state, State::Ended);

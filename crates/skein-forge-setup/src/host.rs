@@ -15,7 +15,7 @@ mod state_tests;
 mod states;
 use crate::item::Bounds;
 use crate::reconcile::{self, Failure, Reply, Stage, Why};
-pub use boundary::{Answer, Event, File, MAX_OUT, MaxOut, Need, Plan, Request};
+pub use boundary::{Answer, Event, File, Need, Plan, Request};
 use connection::{Connection, Refused};
 pub use limits::{Limits, Stacked, Unusable, documents, github, http};
 use run::{Run, Send, forgejo_pair};
@@ -46,7 +46,7 @@ impl Host {
             states: states::States::new(limits.states),
             runs: Map::with_capacity(limits.runs),
             connections: Map::with_capacity(limits.runs),
-            plan_out: Queue::with_capacity(reconcile::MAX_OUT),
+            plan_out: Queue::uncapped(),
             closing_tokens: List::with_capacity(limits.runs),
             next_token: 1,
             wake: None,
@@ -64,7 +64,6 @@ impl Host {
         if self.closing {
             return;
         }
-        let above = up.len();
         match request {
             Request::Run { run, plan } => {
                 let forge = plan.forge();
@@ -132,7 +131,7 @@ impl Host {
                 }
             }
         }
-        self.drive(env, up, io, MAX_OUT.above.saturating_sub(up.len().saturating_sub(above)), MAX_OUT.below);
+        self.drive(env, up, io);
     }
     pub fn up(
         &mut self,
@@ -177,10 +176,10 @@ impl Host {
             | skein_io::Event::Window { .. }
             | skein_io::Event::Shutdown { .. } => (),
         }
-        self.drive(env, up, io, MAX_OUT.above, MAX_OUT.below);
+        self.drive(env, up, io);
     }
     pub fn fire(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
-        self.drive(env, up, io, MAX_OUT.above, MAX_OUT.below);
+        self.drive(env, up, io);
     }
     #[must_use]
     pub fn next_deadline(&self) -> Option<Time> {
@@ -195,22 +194,10 @@ impl Host {
         }
         earliest
     }
-    fn drive(
-        &mut self,
-        env: &Env<Limits>,
-        up: &mut Queue<Event>,
-        io: &mut Queue<skein_io::Request>,
-        above: u32,
-        below: u32,
-    ) {
-        let up_end = up.len().saturating_add(above);
-        let io_end = io.len().saturating_add(below);
+    fn drive(&mut self, env: &Env<Limits>, up: &mut Queue<Event>, io: &mut Queue<skein_io::Request>) {
         self.wake = None;
-        // Internal movements are bounded as well as boundary output (section 6.3).
+        // The routing pass paces the admitted runs and connections (section 6.3).
         for _ in 0_u32..256 {
-            if up.len() == up_end || io.len() == io_end {
-                break;
-            }
             let mut connection = None;
             for (token, c) in &self.connections {
                 if c.ready() || c.result.is_some() || c.closed {
@@ -224,7 +211,7 @@ impl Host {
             }
             let mut next = None;
             for (token, run) in &self.runs {
-                if run.pending.is_some() || run.deadline <= env.now || self.can_send(run, env.now) {
+                if run.need_pending() || run.deadline <= env.now || self.can_send(run, env.now) {
                     next = Some(*token);
                     break;
                 }
@@ -276,7 +263,7 @@ impl Host {
             }
         }
         for (_, run) in &self.runs {
-            if run.pending.is_some() || run.deadline <= now || self.can_send(run, now) {
+            if run.need_pending() || run.deadline <= now || self.can_send(run, now) {
                 return true;
             }
         }

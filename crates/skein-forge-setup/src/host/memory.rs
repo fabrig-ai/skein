@@ -1,6 +1,5 @@
 //! Checked whole-host admission (forge-setup.md, 6.5).
 use super::{Connection, Forge, Host, Kind, Limits, Run, Settings, Transport, connection::row_bound, limits};
-use crate::reconcile;
 use alloc::boxed::Box;
 use skein_forge::{forgejo, github};
 use skein_json::{tokenizer, writer};
@@ -59,7 +58,6 @@ pub fn worst_case(l: &Limits, settings: &Settings) -> Option<u64> {
     Map::<Token, Run>::worst_case(l.runs)?
         .checked_add(Map::<Token, Connection>::worst_case(l.runs)?)?
         .checked_add(List::<Token>::worst_case(l.runs)?)?
-        .checked_add(Queue::<reconcile::Need>::worst_case(reconcile::MAX_OUT)?)?
         .checked_add(if github {
             Host::github_states_worst_case(l.states)?
         } else {
@@ -90,10 +88,6 @@ fn connection_heap(l: &Limits, forge: &Forge) -> Option<u64> {
     skein_http::client::worst_case(&h)?
         .checked_add(if tls { skein_tls::client::worst_case(&l.tls)? } else { 0 })?
         .checked_add(tokenizer::worst_case(&limits::documents(l).json)?)?
-        .checked_add(Queue::<skein_tls::client::Event>::worst_case(8)?)?
-        .checked_add(Queue::<skein_http::client::Event>::worst_case(8)?)?
-        .checked_add(Queue::<tokenizer::Event>::worst_case(8)?)?
-        .checked_add(Queue::<skein_lib::stream::Down>::worst_case(8)?.checked_mul(3)?)?
         // Queued pieces of HTTP, TLS and JSON, even while closing.
         .checked_add(u64::from(h.send.max(l.chunk)).checked_mul(8)?)?
         .checked_add(if tls { u64::from(l.io.output).checked_mul(8)? } else { 0 })?

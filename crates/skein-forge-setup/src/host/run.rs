@@ -117,7 +117,7 @@ impl Machine {
         }
     }
     fn halt_begun(&mut self, why: Why, out: &mut Queue<reconcile::Need>) {
-        let mut stopped = Queue::with_capacity(1);
+        let mut stopped = Queue::uncapped();
         self.step(Event::Begin, &mut stopped);
         match stopped.pop() {
             Some(reconcile::Need::Stop(mut failure)) => {
@@ -271,6 +271,9 @@ impl Run {
         };
         run.step(Event::Begin, out);
         Ok(run)
+    }
+    pub fn need_pending(&self) -> bool {
+        self.pending.is_some()
     }
     pub fn step(&mut self, event: Event, out: &mut Queue<reconcile::Need>) {
         self.machine.step(event, out);

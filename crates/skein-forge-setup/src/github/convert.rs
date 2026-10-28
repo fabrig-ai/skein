@@ -185,7 +185,7 @@ fn unsigned_unexpected(reply: Reply) -> Why {
         | Reply::GithubRows(_)) => reconcile::unexpected(other),
     }
 }
-/// Consumes one event, emitting at most `reconcile::MAX_OUT` needs; ended
+/// Consumes one event, emitting its next need; ended
 /// conversions ignore further events (forge-setup.md, 5.2 and 6.4).
 pub fn step(machine: &mut Convert, event: Event, out: &mut Queue<Need>) {
     match machine.state {

@@ -1,5 +1,5 @@
 use super::{
-    Answer, Event, Host, Kind, Limits, MAX_OUT, Plan, Request, Settings, Unusable, bounds, configured,
+    Answer, Event, Host, Kind, Limits, Plan, Request, Settings, Unusable, bounds, configured,
     run::Run,
     states::{Purpose, States},
 };
@@ -53,13 +53,11 @@ impl World {
         Self {
             host: Host::new(&limits, settings, fixtures::crypto()).expect("valid host"),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            up: Queue::with_capacity(MAX_OUT.above),
-            io: Queue::with_capacity(MAX_OUT.below),
+            up: Queue::uncapped(),
+            io: Queue::uncapped(),
         }
     }
     fn down(&mut self, request: Request) {
-        assert!(self.up.room() >= MAX_OUT.above);
-        assert!(self.io.room() >= MAX_OUT.below);
         self.host.down(&self.env, request, &mut self.up, &mut self.io);
         assert!(self.up.len() <= 1);
         assert!(self.io.is_empty());
@@ -92,7 +90,6 @@ impl World {
         }
     }
     fn admit(&mut self) -> Run {
-        assert!(self.host.plan_out.room() >= reconcile::MAX_OUT);
         let forge = configured(&self.host.settings, FORGE);
         Run::new(
             forge,
@@ -108,8 +105,6 @@ impl World {
     fn silent(&mut self) {
         self.down(Request::Answer { run: RUN, answer: Answer::Read(Some(secret(SECRET))) });
         assert!(self.up.is_empty());
-        assert!(self.up.room() >= MAX_OUT.above);
-        assert!(self.io.room() >= MAX_OUT.below);
         self.host.fire(&self.env, &mut self.up, &mut self.io);
         assert!(self.up.is_empty());
         assert!(self.io.is_empty());
@@ -318,8 +313,6 @@ fn a_manifest_uses_the_normal_write_slot_and_admission_precedes_issuance() {
         }
     );
     w.host.runs.get_mut(&Token::new(2)).expect("live manifest").pending = Some(reconcile::Need::Draw(3));
-    assert!(w.up.room() >= MAX_OUT.above);
-    assert!(w.io.room() >= MAX_OUT.below);
     w.host.fire(&w.env, &mut w.up, &mut w.io);
     match w.one() {
         Event::Done { run, outcome: Outcome::Manifest { state, .. } } => {
@@ -397,7 +390,6 @@ fn a_halted_manifest_drops_its_state_and_its_machine_stays_silent() {
     let mut w = World::new();
     let mut run = w.admit();
     let state = run.issued_state.clone().expect("issued state").1;
-    assert!(w.host.plan_out.room() >= reconcile::MAX_OUT);
     run.halt(Why::Down, &mut w.host.plan_out);
     for event in [
         reconcile::Event::Begin,
@@ -406,14 +398,12 @@ fn a_halted_manifest_drops_its_state_and_its_machine_stays_silent() {
         reconcile::Event::Reply(reconcile::Reply::Down),
         reconcile::Event::Drawn(secret(SECRET)),
     ] {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         run.machine.step(event, &mut out);
         assert!(out.is_empty());
     }
     let previous = w.host.runs.insert(RUN, run).expect("one live run");
     assert!(previous.is_none());
-    assert!(w.up.room() >= MAX_OUT.above);
-    assert!(w.io.room() >= MAX_OUT.below);
     w.host.fire(&w.env, &mut w.up, &mut w.io);
     assert_eq!(
         w.one(),

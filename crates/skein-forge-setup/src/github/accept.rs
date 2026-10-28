@@ -148,7 +148,7 @@ impl Accept {
         }
     }
 }
-/// Consumes one event in `reconcile::MAX_OUT` room; ended machines are silent.
+/// Consumes one event and emits its next need; ended machines are silent.
 pub fn step(machine: &mut Accept, event: Event, out: &mut Queue<Need>) {
     let phase = core::mem::replace(&mut machine.phase, Phase::Ended);
     match phase {

@@ -17,7 +17,7 @@ const ADMIN_CHECK: usize = 2;
 const SETTINGS: usize = 3;
 const SEARCH: usize = 4;
 fn step(machine: &mut Reachable, event: Event) -> Need {
-    let mut out = Queue::with_capacity(reachable::MAX_OUT);
+    let mut out = Queue::uncapped();
     reachable::step(machine, event, &mut out);
     assert_eq!(out.len(), 1);
     out.pop().expect("one need")
@@ -162,7 +162,7 @@ fn an_installation_given_to_a_forgejo_still_stops_before_either_token_is_read() 
             step(&mut machine, Event::Begin),
             fixtures::named_failure(Stage::Installation, subject, Why::Unexpected)
         );
-        let mut out = Queue::with_capacity(1);
+        let mut out = Queue::uncapped();
         reachable::step(&mut machine, Event::Read(Some(secret(ADMIN))), &mut out);
         assert!(out.is_empty());
     }
@@ -267,7 +267,7 @@ fn an_ended_reachable_ignores_every_event() {
             Event::Written,
             fixtures::drawn(),
         ] {
-            let mut out = Queue::with_capacity(1);
+            let mut out = Queue::uncapped();
             reachable::step(&mut machine, event, &mut out);
             assert!(out.is_empty());
         }
@@ -532,7 +532,7 @@ fn an_ended_connected_reachable_ignores_every_event() {
             Event::Written,
             fixtures::drawn(),
         ] {
-            let mut out = Queue::with_capacity(reachable::MAX_OUT);
+            let mut out = Queue::uncapped();
             reachable::step(&mut machine, event, &mut out);
             assert!(out.is_empty());
         }

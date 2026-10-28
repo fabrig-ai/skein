@@ -14,7 +14,7 @@ use crate::{
     host::run::Machine,
     item,
     reachable::Reachable,
-    reconcile::{Event, MAX_OUT, Need, Reply, Stage, Why},
+    reconcile::{Event, Need, Reply, Stage, Why},
     tests::{fixtures::secret, github_fixtures as fixtures},
 };
 use skein_forge::github::{
@@ -116,7 +116,7 @@ struct Counted {
 }
 impl Counted {
     fn new(given: &Given, phase: u8) -> Self {
-        let out = Queue::with_capacity(MAX_OUT);
+        let out = Queue::uncapped();
         let target = Target::Org(repeated(NAME, b'a'));
         let code = repeated(u32::try_from(URL_BYTES).expect("URL size"), b'c');
         let meter = Meter::new();
@@ -161,7 +161,6 @@ impl Counted {
     }
     fn go(&mut self, event: &Event) {
         for index in 0..RUNS {
-            assert!(self.out.room() >= MAX_OUT);
             self.meter.start();
             if self.pending.len() == RUNS {
                 drop(self.pending.pop());

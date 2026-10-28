@@ -12,9 +12,6 @@ use skein_forge::forgejo::{
 };
 use skein_lib::{Queue, Secret};
 
-/// Room the host reserves before stepping.
-pub const MAX_OUT: u32 = 1;
-
 #[derive(Debug)]
 enum State {
     Begin,

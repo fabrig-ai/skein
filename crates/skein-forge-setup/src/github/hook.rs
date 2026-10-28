@@ -66,7 +66,7 @@ fn config(event: Event) -> Result<Config, Why> {
     }
 }
 
-/// Consumes one event in `reconcile::MAX_OUT` room; the parent forwards its one
+/// Consumes one event and emits its next need; the parent forwards its one
 /// pending need. Completion and failure release credentials, and ended children
 /// stay silent (forge-setup.md, 5.6 and 5.8). No hook secret is read or sent.
 pub(crate) fn step(machine: &mut Hook, event: Event, out: &mut Queue<Progress>) {

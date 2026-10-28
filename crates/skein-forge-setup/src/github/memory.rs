@@ -4,7 +4,6 @@ use super::{
     checks,
     convert::Convert,
     given::{self, Given},
-    hook,
     install::Install,
     manifest::Manifest,
     paste::Paste,
@@ -13,11 +12,10 @@ use super::{
 use crate::{
     host::{Host, run::Machine},
     reachable::{Reachable, Reached},
-    reconcile::{MAX_OUT, Need},
 };
 use skein_json::writer;
 use skein_lib::{
-    List, Queue,
+    List,
     base64::{self, Alphabet},
 };
 
@@ -25,8 +23,8 @@ use skein_lib::{
 /// Includes copied Given text, boxed reconcile machines, child scratch, maximum
 /// keys, conversion code/slug, Accepted and missing-access scratch, and pending
 /// App credential copies. Paste includes PEM/DER overlap, checked identities,
-/// missing access, hook scratch and pending identity writes (5.8). Each run has
-/// room for one outgoing need.
+/// missing access, hook scratch and pending identity writes (5.8). Each run retains
+/// its pending need.
 ///
 /// Excludes the outer host's run/connection tables, HTTP/io/JSON stack, signing,
 /// caller-owned item store and reply documents, and handed-out output payloads
@@ -37,7 +35,7 @@ use skein_lib::{
 pub fn worst_case(given: &Given, runs: u32, states: u32) -> Option<u64> {
     per_run(given)?.checked_mul(u64::from(runs))?.checked_add(Host::github_states_worst_case(states)?)
 }
-/// One pure plan and its outgoing need, shared with whole-host admission.
+/// One pure plan, shared with whole-host admission.
 pub(crate) fn per_run(given: &Given) -> Option<u64> {
     given::check(given).ok()?;
     let plan = manifest(given)?
@@ -47,7 +45,7 @@ pub(crate) fn per_run(given: &Given) -> Option<u64> {
         .max(accept(given)?)
         .max(reconcile::worst_case(given)?)
         .max(reachable(given)?);
-    plan.checked_add(u64::try_from(size_of::<Machine>()).ok()?)?.checked_add(Queue::<Need>::worst_case(MAX_OUT)?)
+    plan.checked_add(u64::try_from(size_of::<Machine>()).ok()?)
 }
 
 fn copied(given: &Given) -> Option<u64> {
@@ -135,6 +133,5 @@ fn paste(given: &Given) -> Option<u64> {
         .checked_add(u64::from(given.limits.name_bytes).checked_mul(4)?)?
         .checked_add(u64::try_from(b"https://.invalid/".len()).ok()?)?
         .checked_add(checks::worst_case()?)?
-        .checked_add(Queue::<hook::Progress>::worst_case(MAX_OUT)?)?
         .checked_add(40)
 }
