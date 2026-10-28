@@ -383,3 +383,59 @@ fn an_unclosed_reply_holds_the_slot_until_ios_close_deadline() {
         matches!(world.heard().last(), Some(Heard::Done { run, outcome: Outcome::Nothing, .. }) if *run == Token::new(2))
     );
 }
+
+#[test]
+fn runs_finishing_together_keep_each_run_s_needs_with_it_and_in_order() {
+    use skein_forge_setup::host::{Forge, Kind, Transport};
+    use skein_lib::List;
+    // Three independent checks share one host and finish at the same virtual time.
+    const RUNS: [(u64, u16); 3] = [(11, 1), (22, 2), (33, 3)];
+    const COUNT: u32 = 3;
+    const PREPARE: u64 = 99;
+    let mut settings = fixtures::host_settings();
+    let mut forges = List::with_capacity(COUNT);
+    for (_, number) in RUNS {
+        let mut given = fixtures::given(false);
+        given.forge = number;
+        forges
+            .push(Forge {
+                kind: Kind::Forgejo(given),
+                address: skein_io::Addr::Ip("127.0.0.1:3000".parse().expect("fixture address")),
+                transport: Transport::Plaintext { name: None },
+            })
+            .expect("fixture forge");
+    }
+    settings.forges = forges;
+    let mut world = HostWorld::new_with(
+        7,
+        &[],
+        settings,
+        skein_forge_setup::host::Limits { forges: COUNT, runs: COUNT, ..fixtures::host_limits() },
+    );
+    world.run(PREPARE);
+    world.finish();
+    let baseline = world.needs_by_run().len();
+    world.pause_reads();
+    for (run, forge) in RUNS {
+        world.run_plan(run, Plan::Check { forge });
+    }
+    world.settle();
+    // Hold each round of needs, then answer every run before allowing the next turn.
+    for _ in [Item::ApiToken, Item::GitToken, Item::User] {
+        for (run, _) in RUNS {
+            world.read_pending(run);
+        }
+        world.settle();
+    }
+    for (run, _) in RUNS {
+        let needs = world.needs_by_run()[baseline..]
+            .iter()
+            .filter_map(|(token, need)| (*token == Token::new(run)).then_some(need.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(needs, [Need::Read(Item::ApiToken), Need::Read(Item::GitToken), Need::Read(Item::User)]);
+        assert!(world.heard().iter().any(
+            |event| matches!(event, Heard::Done { run: token, at: Duration::ZERO, .. } if *token == Token::new(run))
+        ));
+    }
+    assert_eq!(world.needs_by_run().len() - baseline, RUNS.len() * 3);
+}
