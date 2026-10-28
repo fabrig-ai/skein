@@ -11,7 +11,7 @@ use super::{
     reconcile,
 };
 use crate::{
-    host::{Host, run::Machine},
+    host::run::Machine,
     reachable::{Reachable, Reached},
     reconcile::{MAX_OUT, Need},
 };
@@ -21,22 +21,6 @@ use skein_lib::{
     base64::{self, Alphabet},
 };
 
-/// Heap for `runs` pure GitHub plan machines and the host's `states` table.
-/// Includes copied Given text, boxed reconcile machines, child scratch, maximum
-/// keys, conversion code/slug, Accepted and missing-access scratch, and pending
-/// App credential copies. Paste includes PEM/DER overlap, checked identities,
-/// missing access, hook scratch and pending identity writes (5.8). Each run has
-/// room for one outgoing need.
-///
-/// Excludes the outer host's run/connection tables, HTTP/io/JSON stack, signing,
-/// caller-owned item store and reply documents, and handed-out output payloads
-/// (including minted bearer tokens). Owner-held form targets and manifests are separately
-/// bounded by `states * 2 * page_bytes` (5.1 and 5.7). This is not a bound for `Host`.
-/// Returns None for invalid Given or any capacity/byte arithmetic overflow.
-#[must_use]
-pub fn worst_case(given: &Given, runs: u32, states: u32) -> Option<u64> {
-    per_run(given)?.checked_mul(u64::from(runs))?.checked_add(Host::github_states_worst_case(states)?)
-}
 /// One pure plan and its outgoing need, shared with whole-host admission.
 pub(crate) fn per_run(given: &Given) -> Option<u64> {
     given::check(given).ok()?;

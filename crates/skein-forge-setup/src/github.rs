@@ -14,7 +14,6 @@ pub use checks::Lacking;
 pub mod reconcile;
 
 pub(crate) mod memory;
-pub use memory::worst_case;
 
 pub mod paste;
 mod write;

@@ -111,7 +111,6 @@ struct Counted {
     pending: Queue<Need>,
     out: Queue<Need>,
     meter: Meter,
-    bound: u64,
     terminals: u32,
 }
 impl Counted {
@@ -120,7 +119,6 @@ impl Counted {
         let target = Target::Org(repeated(NAME, b'a'));
         let code = repeated(u32::try_from(URL_BYTES).expect("URL size"), b'c');
         let meter = Meter::new();
-        let bound = github::worst_case(given, RUNS, STATES).expect("finite bound");
         meter.start();
         let mut states = States::new(STATES);
         for n in 0..STATES {
@@ -156,8 +154,8 @@ impl Counted {
         }
         let pending = Queue::with_capacity(RUNS);
         let measured = meter.end();
-        meter.check(measured, bound, &phase);
-        Self { _target: target, _code: code, machines, states, pending, out, meter, bound, terminals: 0 }
+        meter.check(measured, GITHUB_PLANS_PEAK_CEILING, &phase);
+        Self { _target: target, _code: code, machines, states, pending, out, meter, terminals: 0 }
     }
     fn go(&mut self, event: &Event) {
         for index in 0..RUNS {
@@ -186,7 +184,7 @@ impl Counted {
                     Need::Read(_) | Need::Draw(_) | Need::Write { .. } => (),
                 }
             }
-            self.meter.check(measured, self.bound, &event);
+            self.meter.check(measured, GITHUB_PLANS_PEAK_CEILING, &event);
         }
     }
     fn ended(mut self) {
@@ -198,7 +196,7 @@ impl Counted {
         self.states.clear();
         drop(self.pending);
         let measured = self.meter.end();
-        self.meter.check(measured, self.bound, &"cleared states and pending credentials");
+        self.meter.check(measured, GITHUB_PLANS_PEAK_CEILING, &"cleared states and pending credentials");
     }
 }
 fn add(events: &mut List<Event>, event: Event) {
@@ -303,8 +301,11 @@ fn script(phase: u8) -> List<Event> {
 
     events
 }
+// Bounds the largest peak across all eight pure GitHub plan phases and states.
+const GITHUB_PLANS_PEAK_CEILING: u64 = 61_000;
+
 #[test]
-fn github_plans_and_states_fit_their_bound() {
+fn github_plans_and_states_stay_under_their_peak_ceiling() {
     let given = maximum();
     for phase in 0..8 {
         // Templates belong to the harness and precede the meter's baseline.
@@ -318,15 +319,28 @@ fn github_plans_and_states_fit_their_bound() {
     }
 }
 #[test]
-fn github_memory_admission_checks_overflow_and_capacity() {
-    let mut given = maximum();
-    given.limits.pages = u32::MAX;
-    assert!(github::worst_case(&given, RUNS, STATES).is_none());
-    given.limits.pages = u32::MAX / PAGE_CAP;
-    assert!(github::worst_case(&given, 1, STATES).is_some());
-    assert!(github::worst_case(&given, u32::MAX, STATES).is_none(), "run-byte overflow");
-    given.limits.pages = (u32::MAX / PAGE_CAP).checked_add(1).expect("one past page capacity");
-    assert!(github::worst_case(&given, 1, STATES).is_none());
+fn github_listing_capacity_refuses_unrepresentable_limits() {
+    use crate::host::{Host, Kind, limits};
+    let limits = crate::tests::host::limits();
+    for pages in [u32::MAX / PAGE_CAP, u32::MAX / PAGE_CAP + 1, u32::MAX] {
+        let mut settings = crate::tests::host::github_settings();
+        for index in 0..settings.forges.len() {
+            let forge = settings.forges.get_mut(index).expect("configured forge");
+            if let Kind::GitHub(given) = &mut forge.kind {
+                given.limits.pages = pages;
+            }
+        }
+        if pages == u32::MAX / PAGE_CAP {
+            assert_eq!(limits::check(&limits, &settings), Ok(()));
+        } else {
+            let refused = limits::check(&limits, &settings).expect_err("unrepresentable listing capacity");
+            assert_eq!(Host::new(&limits, settings, crate::tests::host::crypto()).err(), Some(refused));
+        }
+    }
+}
+
+#[test]
+fn github_items_and_states_enforce_their_capacities() {
     let given = maximum();
     let key = der();
     assert!(item::app_slug(&repeated(NAME, b'k'), NAME).is_some());
@@ -337,7 +351,6 @@ fn github_memory_admission_checks_overflow_and_capacity() {
     let encoded = item::accepted_item(&ids);
     assert!(item::accepted(encoded.expose(), ACCEPTED).is_some());
     assert!(item::accepted(encoded.expose(), ACCEPTED - 1).is_none());
-    assert!(github::worst_case(&given, 0, 0).is_some());
     let mut states = States::new(STATES);
     let mut first = Box::<[u8]>::default();
     for n in 0..=STATES {
