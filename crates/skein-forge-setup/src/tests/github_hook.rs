@@ -6,7 +6,7 @@ use crate::{
         checks::{self, Lacking},
         hook::{self, Hook, Progress},
     },
-    reconcile::{self, Event, Failure, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use core::num::NonZeroU64;
 use skein_forge::github::{
@@ -31,7 +31,7 @@ fn config(url: &[u8]) -> Event {
     Event::Reply(Reply::GithubDocument(Document::HookConfig(Config { url: url.into() })))
 }
 fn go(machine: &mut Hook, event: Event) -> Progress {
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     hook::step(machine, event, &mut out);
     assert_eq!(out.len(), 1, "one pending need or internal completion");
     out.pop().expect("one progress")
@@ -64,7 +64,7 @@ fn silent(machine: &mut Hook) {
         Event::Written,
         Event::Drawn(secret(KEY)),
     ] {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         hook::step(machine, event, &mut out);
         assert!(out.is_empty(), "terminal child is silent");
     }
@@ -119,9 +119,8 @@ struct Parent {
     continued: bool,
 }
 fn parent_step(parent: &mut Parent, event: Event, out: &mut Queue<Need>) {
-    let mut child = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut child = Queue::uncapped();
     hook::step(&mut parent.hook, event, &mut child);
-    assert!(child.len() <= reconcile::MAX_OUT);
     match child.pop() {
         Some(Progress::Pending(need)) => out.push(need),
         Some(Progress::Complete) => {
@@ -139,7 +138,7 @@ fn a_hook_patch_must_answer_before_the_parent_continues() {
     let lacking = checks::lacks(&app);
     let expected = lacking.clone();
     let mut parent = Parent { hook: at(0), lacking: Some(lacking), continued: false };
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     for (event, request) in [(Event::Begin, Request::HookConfig), (config(WRONG), Request::SetHook { url: URL.into() })]
     {
         parent_step(&mut parent, event, &mut out);

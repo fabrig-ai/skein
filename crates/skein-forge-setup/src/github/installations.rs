@@ -192,7 +192,7 @@ fn deleted(event: Event) -> Result<(), Why> {
     }
 }
 
-/// Consumes one event in `reconcile::MAX_OUT` room, emitting at most one need
+/// Consumes one event and emits its next need, emitting at most one need
 /// or internal completion. Every end drops the key and scratch; later events
 /// are silent. Invalid or failed listing replies cannot prune or delete (5.6,
 /// step 4).

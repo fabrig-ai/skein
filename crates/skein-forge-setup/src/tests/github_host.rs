@@ -1,5 +1,5 @@
 use super::{
-    Answer, Event, Host, Kind, MAX_OUT, Plan, Request,
+    Answer, Event, Host, Kind, Plan, Request,
     states::{Purpose, States},
 };
 use crate::{
@@ -29,8 +29,8 @@ fn install_failures_drop_their_state() {
     let limits = fixtures::limits();
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
     let mut host = Host::new(&limits, fixtures::github_settings(), fixtures::crypto()).expect("host");
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let mut rng = fixtures::crypto();
     let mut random = [0; 16];
     rng.fill(&mut random);
@@ -38,10 +38,8 @@ fn install_failures_drop_their_state() {
     let first =
         expected.issue(4, Purpose::Accept, &random, Time::ZERO, Duration::from_secs(600), b"install").expect("state");
     for run in [1, 2] {
-        assert!(up.room() >= MAX_OUT.above && io.room() >= MAX_OUT.below);
         host.down(&env, Request::Run { run: Token::new(run), plan: Plan::Install { forge: 4 } }, &mut up, &mut io);
         assert_eq!(up.pop(), Some(Event::Need { run: Token::new(run), need: super::Need::Read(Item::AppSlug) }));
-        assert!(up.room() >= MAX_OUT.above && io.room() >= MAX_OUT.below);
         host.down(&env, Request::Answer { run: Token::new(run), answer: Answer::Read(None) }, &mut up, &mut io);
         assert_eq!(
             up.pop(),
@@ -65,13 +63,12 @@ fn wrong_forge_acceptance_preserves_the_right_binding_and_kind_checks_come_first
     settings.forges.get_mut(0).expect("fixture").kind = Kind::GitHub(other);
     let mut host = Host::new(&limits, settings, fixtures::crypto()).expect("host");
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
-    let mut up = Queue::with_capacity(MAX_OUT.above);
-    let mut io = Queue::with_capacity(MAX_OUT.below);
+    let mut up = Queue::uncapped();
+    let mut io = Queue::uncapped();
     let state = host
         .states
         .issue(4, Purpose::Accept, &[0; 16], Time::ZERO, Duration::from_secs(600), b"install")
         .expect("state");
-    assert!(up.room() >= MAX_OUT.above && io.room() >= MAX_OUT.below);
     host.down(
         &env,
         Request::Run {
@@ -101,7 +98,6 @@ fn wrong_forge_acceptance_preserves_the_right_binding_and_kind_checks_come_first
             state: Some(secret(b"unknown").expose().into()),
         },
     ] {
-        assert!(up.room() >= MAX_OUT.above && io.room() >= MAX_OUT.below);
         plain.down(&env, Request::Run { run: Token::new(1), plan }, &mut up, &mut io);
         let Some(Event::Stop { failure, .. }) = up.pop() else { panic!("kind refusal") };
         assert_eq!(failure.why, Why::Unexpected);
@@ -125,15 +121,14 @@ impl ConvertHost {
         Self {
             host: Host::new(&limits, fixtures::github_settings(), fixtures::crypto()).expect("host"),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            up: Queue::with_capacity(MAX_OUT.above),
-            io: Queue::with_capacity(MAX_OUT.below),
+            up: Queue::uncapped(),
+            io: Queue::uncapped(),
         }
     }
     fn state(&mut self, forge: u16, purpose: Purpose) -> Box<[u8]> {
         self.host.states.issue(forge, purpose, &[0; 16], Time::ZERO, STATE_LIFE, b"manifest").expect("state")
     }
     fn down(&mut self, request: Request) {
-        assert!(self.up.room() >= MAX_OUT.above && self.io.room() >= MAX_OUT.below);
         self.host.down(&self.env, request, &mut self.up, &mut self.io);
         assert!(self.up.len() <= 1, "one outstanding owner need");
     }
@@ -167,13 +162,11 @@ impl ConvertHost {
         assert!(self.io.is_empty());
         self.down(Request::Close);
         if let Some(owner) = connection {
-            assert!(self.up.room() >= MAX_OUT.above && self.io.room() >= MAX_OUT.below);
             self.host.up(&self.env, skein_io::Event::Closed { owner }, &mut self.up, &mut self.io);
         }
         assert_eq!(self.up.pop(), Some(Event::Closed));
         assert!(self.up.is_empty() && self.io.is_empty());
         assert_eq!(self.host.next_deadline(), None);
-        assert!(self.up.room() >= MAX_OUT.above && self.io.room() >= MAX_OUT.below);
         self.host.fire(&self.env, &mut self.up, &mut self.io);
         assert!(self.up.is_empty() && self.io.is_empty(), "ended host is silent");
     }
@@ -263,7 +256,6 @@ fn a_started_failed_convert_cannot_reuse_its_state() {
         let state = world.state(CONVERT_FORGE, Purpose::Convert);
         // A terminal scripted reply or the deadline halts at the conversion step.
         let forge = super::configured(&world.host.settings, CONVERT_FORGE);
-        assert!(world.host.plan_out.room() >= crate::reconcile::MAX_OUT);
         let mut run = super::run::Run::new(
             forge,
             Plan::Convert { forge: CONVERT_FORGE, code: secret(CONVERT_CODE), state: state.clone() },
@@ -315,12 +307,11 @@ impl ReconcileHost {
         Self {
             host: Host::new(&limits, settings, fixtures::crypto()).expect("host"),
             env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
-            up: Queue::with_capacity(MAX_OUT.above),
-            io: Queue::with_capacity(MAX_OUT.below),
+            up: Queue::uncapped(),
+            io: Queue::uncapped(),
         }
     }
     fn down(&mut self, request: Request) {
-        assert!(self.up.room() >= MAX_OUT.above && self.io.room() >= MAX_OUT.below);
         self.host.down(&self.env, request, &mut self.up, &mut self.io);
         assert!(self.io.is_empty(), "paused owner reads send nothing");
     }
@@ -333,7 +324,6 @@ impl ReconcileHost {
     }
     fn fire(&mut self, seconds: u64) {
         self.env.now = Time::ZERO.saturating_add(Duration::from_secs(seconds));
-        assert!(self.up.room() >= MAX_OUT.above && self.io.room() >= MAX_OUT.below);
         self.host.fire(&self.env, &mut self.up, &mut self.io);
         assert!(self.io.is_empty());
     }
@@ -511,7 +501,7 @@ fn stateless_accept_keeps_the_checked_installation_without_drawing_or_taking_sta
     use crate::{item, reconcile};
     use skein_forge::github::document::{Account, Document, Installation};
     let mut world = ConvertHost::new();
-    world.io = Queue::with_capacity(MAX_OUT.below.checked_mul(2).expect("reply beside connect"));
+    world.io = Queue::uncapped();
     let state = world.state(4, Purpose::Accept);
     let mut crypto = world.host.crypto.clone();
     let run = Token::new(1);

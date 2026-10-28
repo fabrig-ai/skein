@@ -5,7 +5,7 @@ use crate::{
         install::{self, Install},
     },
     item::Item,
-    reconcile::{self, Event, Failure, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use skein_lib::{Queue, bytes};
 
@@ -15,7 +15,7 @@ const SECRET: &[u8] = b"install-secret-sentinel";
 
 #[expect(clippy::disallowed_macros, reason = "test checks diagnostics for secret byte spellings")]
 fn go(machine: &mut Install, event: Event) -> Need {
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     install::step(machine, event, &mut out);
     assert_eq!(out.len(), 1);
     let need = out.pop().expect("one need");
@@ -38,7 +38,7 @@ fn events() -> [Event; 5] {
 }
 fn silent(machine: &mut Install) {
     for event in events() {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         install::step(machine, event, &mut out);
         assert!(out.is_empty());
     }

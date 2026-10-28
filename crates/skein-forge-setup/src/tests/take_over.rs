@@ -182,7 +182,7 @@ pub(super) fn terminal_runs() -> [TakeOverRun; 2] {
 fn an_ended_take_over_ignores_every_event() {
     for mut run in terminal_runs() {
         for event in [Event::Begin, Event::Read(None), Event::Reply(Reply::Down), Event::Written, fixtures::drawn()] {
-            let mut out = skein_lib::Queue::with_capacity(crate::take_over::MAX_OUT);
+            let mut out = skein_lib::Queue::uncapped();
             crate::take_over::step(&mut run.machine, event, &mut out);
             assert!(out.is_empty());
         }

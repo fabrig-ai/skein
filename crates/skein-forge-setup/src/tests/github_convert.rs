@@ -6,7 +6,7 @@ use crate::{
         given::{Given, Place, Refused, URL_BYTES},
     },
     item::Item,
-    reconcile::{self, Event, Failure, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use skein_forge::github::{
     document::{App, Conversion, Document},
@@ -48,7 +48,7 @@ fn bot(id: u64) -> Event {
     Event::Reply(Reply::GithubDocument(Document::BotUser(id)))
 }
 fn go(machine: &mut Convert, event: Event) -> Need {
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     convert::step(machine, event, &mut out);
     assert_eq!(out.len(), 1, "one outstanding need");
     out.pop().expect("one need")
@@ -82,7 +82,7 @@ fn silent(machine: &mut Convert) {
     for event in
         [Event::Begin, Event::Read(None), Event::Reply(Reply::Down), Event::Written, Event::Drawn(secret(CODE))]
     {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         convert::step(machine, event, &mut out);
         assert!(out.is_empty(), "ended conversion is silent");
     }
@@ -131,7 +131,7 @@ fn a_conversion_keeps_four_items_before_done() {
         (Item::AppKey, fixtures::DER),
         (Item::User, BOT.to_le_bytes().as_slice()),
     ] {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         convert::step(&mut machine, event, &mut out);
         assert_eq!(out.len(), 1);
         assert_eq!(out.pop(), Some(Need::Write { item, bytes: secret(value) }));
@@ -383,7 +383,7 @@ fn a_conversion_admits_only_nonzero_id_and_bounded_valid_slug() {
 fn a_halted_conversion_names_its_step_and_ends_once() {
     for phase in 0..=8 {
         let mut machine = at(phase);
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         convert::halt(&mut machine, Why::Down, &mut out);
         if phase == 8 {
             assert!(out.is_empty());
@@ -414,7 +414,7 @@ fn a_conversion_debug_contains_no_key_secret_or_code() {
         let mut machine = at(phase);
         let live = format!("{machine:?}");
         assert_eq!(live.contains("Secret"), phase == 0 || (2..=5).contains(&phase));
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         convert::halt(&mut machine, Why::Down, &mut out);
         let failure = out.pop();
         let stopped = format!("{machine:?} {failure:?}");

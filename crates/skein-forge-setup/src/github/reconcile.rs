@@ -55,7 +55,7 @@ impl Reconcile {
         app::stop(self.given.forge, Stage::App, subject, why)
     }
     fn hook(&mut self, mut child: Hook, checked: Checked, event: Event) -> Need {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         hook::step(&mut child, event, &mut out);
         match out.pop() {
             Some(hook::Progress::Pending(need @ Need::Stop(_))) => need,
@@ -73,7 +73,7 @@ impl Reconcile {
         }
     }
     fn sweep(&mut self, mut child: Sweep, lacking: Box<[Lacking]>, event: Event) -> Need {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         installations::step(&mut child, event, &mut out);
         match out.pop() {
             Some(installations::Progress::Pending(need @ Need::Stop(_))) => need,
@@ -175,7 +175,7 @@ fn document(event: Event) -> Result<App, Why> {
     }
 }
 
-/// Consumes one event in `crate::reconcile::MAX_OUT` room. Internal child
+/// Consumes one event and emits its next need. Internal child
 /// completions advance the plan; only the final acknowledgment emits Lacking.
 /// Every terminal path drops the App key, missing-access result and child scratch.
 pub fn step(machine: &mut Reconcile, event: Event, out: &mut Queue<Need>) {
@@ -209,7 +209,7 @@ pub(crate) fn halt(machine: &mut Reconcile, why: Why, out: &mut Queue<Need>) {
 
 /// Heap owned by the boxed machine, copied Given, up to three simultaneous key
 /// copies during hook repair, Accepted, bounded Lacking and its comparison
-/// scratch, hook slug/URL copies, both child queues and the sweep's sets. The
+/// scratch, hook slug/URL copies, the sweep's sets. The
 /// host counts its own reply and output storage separately.
 pub(crate) fn worst_case(given: &Given) -> Option<u64> {
     let limits = &given.limits;
@@ -224,10 +224,8 @@ pub(crate) fn worst_case(given: &Given) -> Option<u64> {
     let hook = u64::from(limits.key_bytes)
         .checked_mul(3)?
         .checked_add(u64::from(limits.name_bytes).checked_mul(3)?)?
-        .checked_add(u64::try_from(b"https://.invalid/".len()).ok()?)?
-        .checked_add(Queue::<hook::Progress>::worst_case(reconcile::MAX_OUT)?)?;
-    let sweep = installations::worst_case(limits)?
-        .checked_add(Queue::<installations::Progress>::worst_case(reconcile::MAX_OUT)?)?;
+        .checked_add(u64::try_from(b"https://.invalid/".len()).ok()?)?;
+    let sweep = installations::worst_case(limits)?;
     // Decimal construction and its copied failure subject each use at most 20.
     total.checked_add(40)?.checked_add(hook.max(sweep))
 }

@@ -18,7 +18,7 @@ fn an_owned_forge_makes_a_missing_org_for_its_person() {
 fn a_managed_forge_reads_no_org() {
     let mut run = fixtures::id_read();
     assert_eq!(run.step(Event::Read(Some(secret(&42u64.to_le_bytes())))), Need::Done(fixtures::done()));
-    let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+    let mut out = skein_lib::Queue::uncapped();
     crate::reconcile::step(&mut run.machine, Event::Reply(Reply::Down), &mut out);
     assert!(out.is_empty());
 }
@@ -190,7 +190,7 @@ fn terminal_runs() -> [Run; 2] {
 fn an_ended_machine_ignores_every_event() {
     for mut run in terminal_runs() {
         for event in [Event::Begin, Event::Read(None), Event::Reply(Reply::Down), Event::Written, fixtures::drawn()] {
-            let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+            let mut out = skein_lib::Queue::uncapped();
             crate::reconcile::step(&mut run.machine, event.clone(), &mut out);
             assert_eq!(out.len(), 0, "late {event:?}");
         }
@@ -203,7 +203,7 @@ fn a_halted_plan_stops_at_its_step_with_the_why_given() {
         for event in prefix {
             run.step(event);
         }
-        let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+        let mut out = skein_lib::Queue::uncapped();
         crate::reconcile::halt(&mut run.machine, Why::Down, &mut out);
         assert_eq!(
             out.pop(),
@@ -212,14 +212,14 @@ fn a_halted_plan_stops_at_its_step_with_the_why_given() {
         );
     }
     for mut run in terminal_runs() {
-        let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+        let mut out = skein_lib::Queue::uncapped();
         crate::reconcile::halt(&mut run.machine, Why::Down, &mut out);
         assert!(out.is_empty());
     }
 }
 
 fn halted(mut machine: crate::host::run::Machine, stage: Stage, subject: &[u8], name: &str) {
-    let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+    let mut out = skein_lib::Queue::uncapped();
     machine.halt(Why::Down, &mut out);
     assert_eq!(
         out.pop(),
@@ -261,7 +261,7 @@ fn a_halt_of_an_ended_plan_pushes_nothing() {
         .chain(super::take_over::terminal_runs().map(|run| Machine::TakeOver(run.machine)))
         .chain(super::adopt::terminal_runs().map(|run| Machine::Adopt(run.machine)));
     for mut machine in machines {
-        let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+        let mut out = skein_lib::Queue::uncapped();
         machine.halt(Why::Down, &mut out);
         assert!(out.is_empty());
     }
@@ -336,7 +336,7 @@ fn a_run_with_both_tokens_valid_and_no_listener_reads_no_cap_and_no_secret() {
 #[test]
 fn a_run_with_both_tokens_valid_and_no_adopted_repository_reads_no_cap_and_no_secret() {
     let mut run = listening_access(&[], false);
-    let mut out = skein_lib::Queue::with_capacity(crate::reconcile::MAX_OUT);
+    let mut out = skein_lib::Queue::uncapped();
     crate::reconcile::step(&mut run.machine, Event::Begin, &mut out);
     assert!(out.is_empty());
 }

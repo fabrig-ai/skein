@@ -142,7 +142,7 @@ fn creation_with_a_decoder_bound_admin_login_fits_its_memory_bound() {
         )
         .expect("maximum creation"),
     );
-    let mut out = Queue::with_capacity(create::MAX_OUT);
+    let mut out = Queue::uncapped();
     create::step(&mut machine, Event::Begin, &mut out);
     drop(out.pop());
     create::step(&mut machine, Event::Read(Some(fixtures::secret(fixtures::ADMIN))), &mut out);

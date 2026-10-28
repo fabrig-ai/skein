@@ -7,7 +7,7 @@ use crate::{
         paste::{self, Paste},
     },
     item::Item,
-    reconcile::{Event, Failure, MAX_OUT, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use core::num::NonZeroU64;
 use skein_forge::github::{
@@ -24,8 +24,7 @@ fn new() -> Paste {
 }
 #[expect(clippy::disallowed_macros, reason = "inspect every terminal diagnostic for secret bytes")]
 fn go(machine: &mut Paste, event: Event) -> Need {
-    let mut out = Queue::with_capacity(MAX_OUT);
-    assert!(out.room() >= MAX_OUT);
+    let mut out = Queue::uncapped();
     paste::step(machine, event, &mut out);
     assert_eq!(out.len(), 1);
     let need = out.pop().expect("one need");
@@ -96,11 +95,9 @@ fn silent(machine: &mut Paste) {
     for event in
         [Event::Begin, Event::Read(None), Event::Written, Event::Reply(Reply::Down), Event::Drawn(secret(b"late"))]
     {
-        let mut out = Queue::with_capacity(MAX_OUT);
-        assert!(out.room() >= MAX_OUT);
+        let mut out = Queue::uncapped();
         paste::step(machine, event, &mut out);
         assert!(out.is_empty());
-        assert!(out.room() >= MAX_OUT);
         paste::halt(machine, Why::Down, &mut out);
         assert!(out.is_empty());
     }
@@ -229,8 +226,7 @@ fn paste_rejects_unasked_events_and_drops_secrets_on_every_end() {
         assert!(!format!("{machine:?}").contains("Secret"));
         silent(&mut machine);
         let mut machine = at(phase);
-        let mut out = Queue::with_capacity(MAX_OUT);
-        assert!(out.room() >= MAX_OUT);
+        let mut out = Queue::uncapped();
         paste::halt(&mut machine, Why::Down, &mut out);
         assert_eq!(out.len(), 1);
         diagnostic(&format!("{machine:?} {:?}", out.pop()));

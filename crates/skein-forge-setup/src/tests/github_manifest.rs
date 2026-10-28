@@ -4,7 +4,7 @@ use crate::{
         given::{Given, Place, Refused},
         manifest::{self, Manifest, Target},
     },
-    reconcile::{self, Event, Failure, Need, Outcome, Reply, Stage, Why},
+    reconcile::{Event, Failure, Need, Outcome, Reply, Stage, Why},
 };
 use skein_json::{Token, tokenizer};
 use skein_lib::{
@@ -29,7 +29,7 @@ fn diagnostic(text: &str) {
 #[expect(clippy::disallowed_macros, reason = "test checks machine, event and need Debug for secret bytes")]
 fn go(machine: &mut Manifest, event: Event) -> Need {
     diagnostic(&format!("{machine:?} {event:?}"));
-    let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+    let mut out = Queue::uncapped();
     manifest::step(machine, event, &mut out);
     assert_eq!(out.len(), 1);
     let need = out.pop().expect("one need");
@@ -39,7 +39,7 @@ fn go(machine: &mut Manifest, event: Event) -> Need {
 #[expect(clippy::disallowed_macros, reason = "test checks ended machine Debug for secret bytes")]
 fn silent(machine: &mut Manifest) {
     for event in events() {
-        let mut out = Queue::with_capacity(reconcile::MAX_OUT);
+        let mut out = Queue::uncapped();
         manifest::step(machine, event, &mut out);
         assert!(out.is_empty());
         diagnostic(&format!("{machine:?}"));
@@ -94,8 +94,8 @@ fn tokens(input: &[u8]) -> List<Token> {
     let limits = tokenizer::Limits { depth: 4, string: bound, number: 20, chunk: bound, length: bound };
     let env = Env { now: Time::ZERO, wall: Wall::EPOCH, limits };
     let mut machine = tokenizer::Tokenizer::new(&limits);
-    let mut above = Queue::with_capacity(1);
-    let mut below = Queue::with_capacity(1);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     let mut intake = Intake::with_capacity(bound.max(tokenizer::largest_demand(&limits)));
     intake.append(input).expect("input capacity");
     let mut tokens = List::with_capacity(bound);

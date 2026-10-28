@@ -14,7 +14,7 @@ fn machine() -> Create {
         .expect("fixture")
 }
 fn go(machine: &mut Create, event: Event) -> Need {
-    let mut out = Queue::with_capacity(create::MAX_OUT);
+    let mut out = Queue::uncapped();
     create::step(machine, event, &mut out);
     out.pop().expect("one need")
 }
@@ -65,7 +65,7 @@ fn creation_halt_reports_the_outstanding_org_and_then_ignores_events() {
     let mut admin = fixtures::person(b"ada", b"Ada");
     admin.is_admin = true;
     go(&mut machine, Event::Reply(Reply::Document(Document::User(admin))));
-    let mut out = Queue::with_capacity(create::MAX_OUT);
+    let mut out = Queue::uncapped();
     create::halt(&mut machine, Why::Down, &mut out);
     assert_eq!(
         out.pop(),
