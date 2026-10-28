@@ -3,8 +3,7 @@
 //! Keeps peer service/script state, grants, intakes and caller observations;
 //! knows neither application tool policy nor live IO. Preparation adopts one
 //! Client, `observe` selects optional fixed observation caps before progress,
-//! and start/tick/request/settle drive actual lower chronology. `extra_worst_case`
-//! prices peer/world ownership separately from that Client and caller inputs.
+//! and start/tick/request/settle drive the lower chronology.
 //! Contract: docs/design/fake-llm.md, sections 2–5;
 //! programming-model.md, sections 4.4 and 6.3.
 
@@ -56,50 +55,6 @@ pub struct ObservationLimits {
     /// Maximum retained actual peer-to-client HTTP bytes, checked before append.
     /// Contract: docs/design/fake-llm.md, sections 2–5.
     pub response_bytes: u32,
-}
-
-/// Checked peer/world heap beyond the caller's one actual Client. Includes the
-/// provider Service/Server, scripted Domain, fixed queues, intakes and delivery
-/// scratch, peer grant/target ownership and bounded observations. The Client,
-/// caller input/configuration copies and records drained to callers are priced
-/// by their owners. Endpoint fields other than target are not retained by this
-/// peer. Contract: docs/design/fake-llm.md, sections 2–5;
-/// programming-model.md, section 6.3.
-#[must_use]
-pub fn extra_worst_case(
-    bounds: &client::Limits,
-    observations: &ObservationLimits,
-    endpoint: &Endpoint,
-    credentials: &[Credential],
-) -> Option<u64> {
-    let peer = limits(bounds);
-    if bounds.http.request.max(bounds.http.send) > 32768 || bounds.http.head.max(bounds.http.read) > 32768 {
-        return None;
-    }
-    let queues = Queue::<client::Event>::worst_case(client::MAX_OUT.above)?
-        .checked_add(Queue::<Down>::worst_case(client::MAX_OUT.below)?)?
-        .checked_add(Queue::<provider::Event>::worst_case(provider::MAX_UP)?)?
-        .checked_add(u64::from(provider::MAX_UP).checked_mul(provider::head_worst_case(&peer)?)?)?
-        .checked_add(Queue::<Down>::worst_case(provider::MAX_DOWN)?)?
-        .checked_add(Queue::<fake::Request>::worst_case(fake::MAX_OUT)?)?
-        .checked_add(u64::from(fake::MAX_OUT).checked_mul(u64::from(config().answer_bytes))?)?;
-    let traces = observation_worst_case(observations)?;
-    // The fixed intakes also bound a delivered box while it enters either
-    // receiver. Queue-owned wire sends can coexist with those deliveries.
-    let wire = Intake::worst_case(32768)?
-        .checked_mul(4)?
-        .checked_add(
-            u64::from(client::MAX_OUT.below).checked_mul(u64::from(bounds.http.request.max(bounds.http.send)))?,
-        )?
-        .checked_add(u64::from(provider::MAX_DOWN).checked_mul(u64::from(peer.http.response.max(peer.http.send)))?)?;
-    provider::worst_case(&peer)?
-        .checked_add(fake::worst_case(&config())?)?
-        .checked_add(queues)?
-        .checked_add(wire)?
-        .checked_add(traces)?
-        .checked_add(bytes(&endpoint.target)?)?
-        .checked_add(cells::<Credential>(provider::MAX_CREDENTIALS)?)?
-        .checked_add(credential_bytes(credentials)?)
 }
 
 fn credential_bytes(credentials: &[Credential]) -> Option<u64> {
@@ -276,9 +231,8 @@ pub struct Exchange {
 /// Shared peer limits compatible with this world's small client limits.
 #[must_use]
 pub fn limits(bounds: &client::Limits) -> provider::Limits {
-    // The peer may write past a client's receiving answer ceiling. Price that
-    // independent bounded storage through provider::worst_case, including in
-    // extra_worst_case; never make the test peer pre-filter an oversized call.
+    // The peer may write past a client's receiving answer ceiling; its own
+    // document limit admits an oversized call for the client to handle.
     let documents = skein_llm::openai::Limits { answer: bounds.answer.max(32768), ..bounds.native() };
     provider::Limits {
         calls: 4,
@@ -484,8 +438,7 @@ impl Exchange {
     /// Selects finite observation ownership before Start, without starting or
     /// firing any component. The caller reserves these buffers once; draining
     /// with `mem::take` is supported and the next entry reserves replacements.
-    /// Price `extra_worst_case` separately from the actual Client. Existing
-    /// constructors keep their unconstrained observation behaviour until this
+    /// Constructors keep their unconstrained observation behaviour until this
     /// entrance is called. Contract: docs/design/fake-llm.md, sections 2–5;
     /// programming-model.md, section 6.3.
     pub fn observe(&mut self, observations: ObservationLimits) {

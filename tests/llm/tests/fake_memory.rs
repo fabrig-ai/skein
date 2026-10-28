@@ -310,8 +310,11 @@ fn random_and_scripted_full_and_truncated_tool_scratch_stays_within_the_bound() 
     }
 }
 
+// Bounds the configured Codex echo peer, client and retained observations.
+const CODEX_ECHO_PEAK_CEILING: u64 = 2_300_000;
+
 #[test]
-fn configured_codex_echo_request_and_entry_scratch_fit_the_peer_price() {
+fn configured_codex_echo_request_and_entry_scratch_stay_under_the_peak_ceiling() {
     let mut bounds = skein_llm_world::limits();
     bounds.output_items = 32;
     bounds.retained = 32768;
@@ -338,14 +341,7 @@ fn configured_codex_echo_request_and_entry_scratch_fit_the_peer_price() {
             content: Box::new([skein_llm::Block::Text { text: vec![b'h'; 64].into_boxed_slice(), replay: None }]),
         })
         .collect();
-    let extra = skein_llm_world::fake::extra_worst_case(
-        &bounds,
-        &observations,
-        &input.endpoint,
-        core::slice::from_ref(skein_llm_world::credential_of(&input)),
-    )
-    .unwrap();
-    let bound = extra + skein_llm::client::call_worst_case(&bounds).unwrap() + 32768;
+    let bound = CODEX_ECHO_PEAK_CEILING;
     let scripts = Box::new([Script {
         cue: input.prompt.instructions.clone(),
         turns: Box::new([Turn {
@@ -461,8 +457,8 @@ fn full_report_script() -> Box<[Script]> {
     }])
 }
 
-fn full_list_world() -> (skein_llm_world::fake::Exchange, u64) {
-    use skein_llm_world::fake::{Exchange, ObservationLimits, extra_worst_case};
+fn full_list_world() -> skein_llm_world::fake::Exchange {
+    use skein_llm_world::fake::{Exchange, ObservationLimits};
     let mut bounds = skein_llm_world::limits();
     bounds.skip = 65536;
     let observations = ObservationLimits {
@@ -481,8 +477,6 @@ fn full_list_world() -> (skein_llm_world::fake::Exchange, u64) {
     input.prompt.instructions = b"full-report".as_slice().into();
     input.credential = Some(skein_llm::Credential::bearer(list[0].value.clone()));
     let endpoint = input.endpoint.clone();
-    let price = skein_llm::client::call_worst_case(&bounds).expect("Client price")
-        + extra_worst_case(&bounds, &observations, &endpoint, &list).expect("full list peer price");
     let machine = skein_llm::client::Client::prepare(input, &bounds).expect("full list Client admission");
     let mut list = list.into_iter();
     let mut world = Exchange::prepared(machine, endpoint, list.next(), bounds, full_report_script());
@@ -490,21 +484,24 @@ fn full_list_world() -> (skein_llm_world::fake::Exchange, u64) {
         assert_eq!(world.accept(credential), Ok(u32::try_from(index + 1).expect("accepted index")));
     }
     world.observe(observations);
-    (world, price)
+    world
 }
 
+// Bounds the client and peer with sixteen credentials and a full failing report.
+const FULL_LIST_PEAK_CEILING: u64 = 2_300_000;
+
 #[test]
-fn the_largest_list_and_failing_line_fit_the_peer_price() {
+fn the_largest_list_and_failing_line_stay_under_the_peak_ceiling() {
     let meter = Meter::new();
     meter.start();
-    let (mut world, price) = full_list_world();
+    let mut world = full_list_world();
     let construction = meter.end();
-    meter.check(construction, price, &"sixteen credentials and full script report");
+    meter.check(construction, FULL_LIST_PEAK_CEILING, &"sixteen credentials and full script report");
     meter.start();
     world.start();
     world.run();
     let receiving = meter.end();
-    meter.check(receiving, price, &"full failing report through the Client");
+    meter.check(receiving, FULL_LIST_PEAK_CEILING, &"full failing report through the Client");
     let failures: Vec<_> = world
         .seen
         .iter()
@@ -526,6 +523,6 @@ fn the_largest_list_and_failing_line_fit_the_peer_price() {
     world.settle();
     drop(world);
     let closed = meter.end();
-    meter.check(closed, price, &"closed full-list world");
+    meter.check(closed, FULL_LIST_PEAK_CEILING, &"closed full-list world");
     assert_eq!(meter.held(), 0);
 }

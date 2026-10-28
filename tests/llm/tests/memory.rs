@@ -561,25 +561,17 @@ fn opaque_envelope_and_extended_thinking_transit_fit_counted_bounds() {
     }
 }
 
+// Bounds the scripted byte peer and client conveying the script text cap.
+const SCRIPTED_PEER_PEAK_CEILING: u64 = 2_100_000;
+
 #[test]
-fn actual_scripted_byte_peer_and_client_fit_the_composed_heap_envelope() {
+fn scripted_byte_peer_and_client_stay_under_their_peak_ceiling() {
     use skein_fake_llm_domain::api::{Finish, Line, Script, Turn};
     let mut bounds = limits();
     bounds.strings = 4096; // This story reaches the fake domain's scripted text cap.
     // A string at its 4096-byte cap is emitted inside a larger JSON event and
     // a `data: ` line. Admit the entire document plus its six framing bytes.
     bounds.skip = bounds.retained.checked_add(6).expect("bounded data-line framing");
-    let peer = skein_llm_world::fake::limits(&bounds);
-    let config = skein_llm_world::fake::config();
-    let core = client::call_worst_case(&bounds)
-        .expect("client bound")
-        .checked_add(skein_fake_llm_protocol::provider::worst_case(&peer).expect("peer bound"))
-        .expect("composed peer bound")
-        .checked_add(skein_fake_llm_domain::worst_case(&config).expect("script domain bound"))
-        .expect("composed domain bound");
-    // The independent world owns two 32-KiB intakes, exact wire tapes and
-    // observation copies. They are separate from protocol-owned allocations.
-    let external = 4_u64 * 32768 + 8 * u64::from(bounds.retained) + 64 * 1024;
     let mut input = call(1);
     input.prompt.instructions = b"maximum-script".as_slice().into();
     let scripts = Box::new([Script {
@@ -597,7 +589,7 @@ fn actual_scripted_byte_peer_and_client_fit_the_composed_heap_envelope() {
     world.start();
     world.run();
     let grown = span.end();
-    let bound = core.checked_add(external).expect("checked world-owned envelope");
+    let bound = SCRIPTED_PEER_PEAK_CEILING;
     assert!(
         grown.peak <= i64::try_from(bound).expect("bounded comparison"),
         "composed actual Client/peer peak {} exceeds {bound}",

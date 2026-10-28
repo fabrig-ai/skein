@@ -1047,46 +1047,6 @@ fn document_bounds(limits: &Limits) -> Option<(u64, u64)> {
     Some((openai::worst_case(&limits.documents.openai)?, anthropic::worst_case(&limits.documents.anthropic)?))
 }
 
-/// Checked maximum owned bytes under limits, or `None` when counters or containers cannot be bounded.
-///
-/// Contract: docs/design/fake-llm.md, sections 2–5; programming-model.md, section 4.4.
-#[must_use]
-pub fn worst_case(limits: &Limits) -> Option<u64> {
-    if !valid(limits) {
-        return None;
-    }
-    let (openai, anthropic) = document_bounds(limits)?;
-    let request = limits.documents.openai.request.max(limits.documents.anthropic.request);
-    u64::try_from(size_of::<Server>())
-        .ok()?
-        .checked_add(u64::try_from(size_of::<Service>()).ok()?)?
-        .checked_add(u64::from(limits.http.headers).checked_mul(u64::try_from(size_of::<Header>()).ok()?)?)?
-        .checked_add(Slab::<Call>::worst_case(limits.calls)?)?
-        .checked_add(http::worst_case(&limits.http)?)?
-        .checked_add(sse::worst_case(&limits.sse)?)?
-        .checked_add(pieces::worst_case(&limits.documents)?)?
-        .checked_add(openai)?
-        .checked_add(anthropic)?
-        // Configured echoes retain this raw request in the existing body List;
-        // native codec worst_case above prices transient decoded metadata and entry scratch.
-        .checked_add(List::<u8>::worst_case(room(limits)?)?)?
-        // A gzip body inflates beside its member, into a second List; the two
-        // trade places, so each holds the larger room.
-        .checked_add(List::<u8>::worst_case(room(limits)?)?)?
-        .checked_add(u64::from(limits.documents.openai.answer.max(limits.documents.anthropic.answer)).checked_mul(8)?)?
-        .checked_add(Queue::<http::Event>::worst_case(EVENTS)?)?
-        .checked_add(Queue::<http::Request>::worst_case(REQUESTS)?)?
-        .checked_add(Queue::<sse::Event>::worst_case(1)?)?
-        .checked_add(Queue::<Down>::worst_case(2)?)?
-        .checked_add(u64::from(limits.http.head).checked_mul(3)?)?
-        .checked_add(4_u64.checked_mul(u64::try_from(size_of::<Header>()).ok()?)?)?
-        .checked_add(192)?
-        .checked_add(u64::from(limits.documents.openai.answer.max(limits.documents.anthropic.answer)))?
-        // Queued body events and the current entrance delivery own their
-        // batches separately from HTTP's intake and the accumulated document.
-        .checked_add(u64::from(request.max(limits.http.read)).checked_mul(u64::from(EVENTS.checked_add(1)?))?)
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
