@@ -71,8 +71,8 @@ fn valid_accepts_test_limits() {
 }
 
 fn refuses_limits(l: Limits, settings: Settings) {
-    assert!(limits::check(&l, &settings).is_err());
-    assert!(Host::new(&l, settings, crate::tests::host::crypto()).is_err());
+    let error = limits::check(&l, &settings).expect_err("unrepresentable limits");
+    assert_eq!(Host::new(&l, settings, crate::tests::host::crypto()).err(), Some(error));
 }
 
 #[test]

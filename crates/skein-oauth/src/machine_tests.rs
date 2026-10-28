@@ -887,5 +887,4 @@ fn valid_ignores_heap_key_strings() {
     let bounds =
         ClientLimits { keys: u32::MAX, document: Limits { string_bytes: u32::MAX, ..limits().document }, ..limits() };
     assert!(client_valid(&bounds));
-    assert_eq!(client_worst_case(&bounds), None);
 }

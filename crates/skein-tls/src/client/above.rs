@@ -72,7 +72,7 @@ pub(super) fn stream(
             // given up, so that room is asked for again, as a grant not sent
             // within gives way to the next (io.md, 3.3).
             if room > 0 && open.below.granted > 0 {
-                if room_for(room).expect("checked by worst_case") <= open.below.granted {
+                if room_for(room).expect("checked by valid") <= open.below.granted {
                     open.above.demand = None;
                     open.above.grant = Some(room);
                     above.push(Event::Stream(Up::Room));
