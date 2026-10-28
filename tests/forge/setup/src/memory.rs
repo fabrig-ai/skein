@@ -298,10 +298,9 @@ pub fn full_heap(kinds: Kinds, tls: bool) -> Full {
     assert!(matches!(w.heard.last(), Some(Heard::Closed { .. })));
     let mut m = w.host.measurement.take().expect("meter");
     m.steps.outside(m.outside.take().expect("outside").end().net);
-    // Keep every owner record alive while checking the host's complete release.
+    // Empty output buffers grew inside host steps, so release them with the host.
     let Metered { host, above, below, measurement: _ } = w.host;
-    let owner_queues = (above, below);
-    let owned = m.steps.finish(host, 0, &"host releases its own heap");
-    drop(owner_queues);
+    assert!(above.is_empty() && below.is_empty());
+    let owned = m.steps.finish((host, above, below), 0, &"host releases its own heap");
     Full { owned, bound, runs: l.runs, connections: l.runs, states: u32::try_from(states.len()).expect("states") }
 }
