@@ -866,3 +866,44 @@ fn role_aware_worst_case_prices_only_received_application_bodies() {
     // 4096-byte application body belongs to its output queue, never input.
     assert_eq!(responder - initiator, 4096 - 262);
 }
+
+#[test]
+fn valid_accepts_test_limits() {
+    for role in [Role::Initiator, Role::Responder] {
+        assert!(super::valid(&schema(), role, &limits()));
+    }
+}
+
+#[test]
+fn valid_refuses_an_invalid_schema() {
+    let mut source = schema();
+    source.versions.get_mut(1).unwrap().version = 3;
+    assert!(!super::valid(&source, Role::Initiator, &limits()));
+    assert_eq!(Machine::new(source, Role::Initiator, limits()).err(), Some(SchemaError::Versions));
+}
+
+#[test]
+fn valid_refuses_an_output_queue_past_u32() {
+    let bounds = Limits { output_frames: u32::MAX, ..limits() };
+    assert!(!super::valid(&schema(), Role::Initiator, &bounds));
+    assert_eq!(Machine::new(schema(), Role::Initiator, bounds).err(), Some(SchemaError::InvalidLimit));
+}
+
+#[test]
+fn valid_refuses_a_terms_body_past_u32() {
+    let bounds = Limits { kinds: u32::MAX, ..limits() };
+    assert!(!super::valid(&schema(), Role::Initiator, &bounds));
+}
+
+#[test]
+fn valid_refuses_an_open_body_past_u32() {
+    let bounds = Limits { credential: u32::MAX, ..limits() };
+    assert!(!super::valid(&schema(), Role::Initiator, &bounds));
+}
+
+#[test]
+fn valid_refuses_a_control_frame_past_u32() {
+    for bounds in [Limits { credential: u32::MAX - 14, ..limits() }, Limits { kinds: (u32::MAX - 4) / 6, ..limits() }] {
+        assert!(!super::valid(&schema(), Role::Initiator, &bounds));
+    }
+}
