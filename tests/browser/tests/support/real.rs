@@ -264,10 +264,10 @@ impl Rig {
             io_env: Env { now: Time::ZERO, wall: Wall::EPOCH, limits },
             complete: Queue::with_capacity(256),
             submits: Queue::with_capacity(256),
-            io_events: Queue::with_capacity(256),
+            io_events: Queue::uncapped(),
             io_requests,
-            events: Queue::with_capacity(256),
-            browser_down: Queue::with_capacity(256),
+            events: Queue::uncapped(),
+            browser_down: Queue::uncapped(),
             pipes: None,
             child: None,
             root,
@@ -334,7 +334,8 @@ impl Rig {
                 self.io_event(event);
             }
             self.browser_steps(now.now);
-            while let Some(event) = self.events.pop() {
+            for _ in 0..self.events.len() {
+                let event = self.events.pop().expect("this browser stage's events");
                 self.browser_event(event);
             }
             self.drain_browser_down();
@@ -931,7 +932,8 @@ impl Rig {
     }
 
     fn drain_browser_down(&mut self) {
-        while let Some(down) = self.browser_down.pop() {
+        for _ in 0..self.browser_down.len() {
+            let down = self.browser_down.pop().expect("this browser stage's requests");
             let [commands, replies, errors] = self.pipes.expect("browser output follows spawn");
             let (pipe, down) = match down {
                 Down::Commands(down) => (commands, down),

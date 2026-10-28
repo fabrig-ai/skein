@@ -78,7 +78,7 @@ impl Peer {
     }
     fn polled(&mut self) {
         self.env.now = self.env.now.saturating_add(self.env.limits.poll);
-        let (mut above, mut below) = (Queue::with_capacity(1), Queue::with_capacity(0));
+        let (mut above, mut below) = (Queue::uncapped(), Queue::uncapped());
         fire(&mut self.browser, &self.env, self.env.now, &mut above, &mut below);
     }
 }
