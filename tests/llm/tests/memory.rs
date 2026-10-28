@@ -846,8 +846,8 @@ fn selective_step(
     if let Turn::Up(Up::Bytes(bytes)) = &turn {
         *outside -= i64::try_from(bytes.len()).expect("input bytes fit");
     }
-    let mut above = Queue::with_capacity(client::MAX_OUT.above);
-    let mut below = Queue::with_capacity(client::MAX_OUT.below);
+    let mut above = Queue::uncapped();
+    let mut below = Queue::uncapped();
     meter.start();
     match turn {
         Turn::Up(event) => client::up(&mut world.machine, &world.env, event, &mut above, &mut below),
@@ -856,8 +856,8 @@ fn selective_step(
         Turn::Waiting | Turn::Done => unreachable!("only client calls are metered"),
     }
     let measured = meter.end();
-    let mut copies_above = Queue::with_capacity(above.capacity());
-    let mut copies_below = Queue::with_capacity(below.capacity());
+    let mut copies_above = Queue::uncapped();
+    let mut copies_below = Queue::uncapped();
     let mut handed = 0;
     while let Some(event) = above.pop() {
         let copying = Span::start();

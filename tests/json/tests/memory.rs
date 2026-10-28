@@ -365,11 +365,13 @@ fn collect_memory_caps(
     }
     panic!("bounded progress")
 }
+// Bounds the selected/skipped collector fixtures, including routing queue growth:
+// measured peak 349 B plus a quarter, rounded up to two significant digits.
+const COLLECTOR_PEAK_CEILING: u64 = 440;
+
 #[test]
 fn collector_skipped_long_text_adds_no_memory_and_full_counts_stay_within_the_bound() {
     use skein_json::collector::{Filter, Keep, Key, Limits, Node};
-    // Fixed selected/skipped fixtures peak below 1 KiB, including queue growth.
-    const CEILING: u64 = 1024;
     let limits = Limits {
         tokenizer: json::Limits { depth: 4, string: 8, number: 8, chunk: 32, length: 2 << 20 },
         tokens: 4,
@@ -380,20 +382,22 @@ fn collector_skipped_long_text_adds_no_memory_and_full_counts_stay_within_the_bo
     let small = format!("{{\"keep\":1,\"omit\":\"{}\"}}", "a".repeat(64));
     let large = format!("{{\"keep\":1,\"omit\":\"{}\"}}", "a".repeat(1 << 12));
     assert_eq!(
-        collect_memory(small.as_bytes(), filter, limits, CEILING).0,
-        collect_memory(large.as_bytes(), filter, limits, CEILING).0
+        collect_memory(small.as_bytes(), filter, limits, COLLECTOR_PEAK_CEILING).0,
+        collect_memory(large.as_bytes(), filter, limits, COLLECTOR_PEAK_CEILING).0
     );
     let exact = Limits { tokenizer: json::Limits { chunk: 4, ..limits.tokenizer }, tokens: 4, text: 5, ..limits };
-    let (peak, bound, counts) = collect_memory(br#"{"keep":1}"#, filter, exact, CEILING);
+    let (peak, bound, counts) = collect_memory(br#"{"keep":1}"#, filter, exact, COLLECTOR_PEAK_CEILING);
     assert_eq!((counts.tokens, counts.text), (exact.tokens, exact.text), "retained document fills both counts");
     assert!(peak <= bound, "one full reusable document, with its emitted copy handed out");
 }
 
+// Bounds both tagged candidates and their routing queue across the losing-text
+// fixtures: measured peak 828 B plus a quarter, rounded up to two significant digits.
+const TAGGED_COLLECTOR_PEAK_CEILING: u64 = 1_100;
+
 #[test]
 fn tagged_losing_candidates_hold_no_memory_after_their_counts() {
     use skein_json::collector::{Cap, Filter, Keep, Key, Limits, Node, Tagged, Variant};
-    // The two tagged candidates and their routing queue peak below 4 KiB.
-    const CEILING: u64 = 4096;
     const TAG: Tagged = Tagged {
         tag: b"type",
         known: &[
@@ -411,11 +415,12 @@ fn tagged_losing_candidates_hold_no_memory_after_their_counts() {
     };
     let small = format!("{{\"body\":\"{}\",\"id\":1,\"type\":\"small\"}}", "a".repeat(64));
     let large = format!("{{\"body\":\"{}\",\"id\":1,\"type\":\"small\"}}", "a".repeat(1 << 12));
-    let (peak, bound, counts) = collect_memory_caps(small.as_bytes(), filter, limits, &[2], CEILING);
+    let (peak, bound, counts) =
+        collect_memory_caps(small.as_bytes(), filter, limits, &[2], TAGGED_COLLECTOR_PEAK_CEILING);
     assert_eq!((counts.tokens, counts.text), (limits.tokens, limits.text), "selected variant fills both counts");
     assert!(peak <= bound, "the selected variant stays within the retained document bound");
     assert_eq!(
-        collect_memory_caps(small.as_bytes(), filter, limits, &[2], CEILING).0,
-        collect_memory_caps(large.as_bytes(), filter, limits, &[2], CEILING).0
+        collect_memory_caps(small.as_bytes(), filter, limits, &[2], TAGGED_COLLECTOR_PEAK_CEILING).0,
+        collect_memory_caps(large.as_bytes(), filter, limits, &[2], TAGGED_COLLECTOR_PEAK_CEILING).0
     );
 }

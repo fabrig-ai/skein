@@ -154,7 +154,6 @@ pub fn tiny_delta_response() -> Vec<u8> {
     documents.push(TERMINAL.to_owned());
     let documents: Vec<_> = documents.iter().map(String::as_str).collect();
     response(200, "Content-Type: text/event-stream\r\n", &events(&documents), false)
-
 }
 
 /// Queues are deliberately only as large as the public entry-point bound.
