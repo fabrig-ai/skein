@@ -320,11 +320,9 @@ impl World {
             |requests| request_bytes(requests.as_ref()),
             || {
                 // The temporary output queue grows and releases inside this call.
-                let mut out = Queue::with_capacity(oauth::MAX_OUT);
+                let mut out = Queue::uncapped();
                 self.client.step(event, &mut out);
-                let request = out.pop();
-                assert!(out.is_empty(), "MAX_OUT is one");
-                request
+                out.pop()
             },
         )
     }

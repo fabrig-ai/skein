@@ -11,7 +11,7 @@ fn wall(seconds: u64) -> Wall {
     Wall::from_nanos(Duration::from_secs(seconds).as_nanos())
 }
 fn step(client: &mut oauth::Client, event: oauth::Event) -> Option<oauth::Request> {
-    let mut out = Queue::with_capacity(oauth::MAX_OUT);
+    let mut out = Queue::uncapped();
     client.step(event, &mut out);
     out.pop()
 }

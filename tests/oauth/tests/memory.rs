@@ -178,7 +178,7 @@ fn a_sign_in_holding_its_keys_fits_the_worst_case() {
     }
     set.extend_from_slice(b"]}");
     answer.body = set.into_boxed_slice();
-    let mut out = Queue::with_capacity(oauth::MAX_OUT);
+    let mut out = Queue::uncapped();
     meter.start();
     client.step(oauth::Event::Http(answer), &mut out);
     let measured = meter.end();

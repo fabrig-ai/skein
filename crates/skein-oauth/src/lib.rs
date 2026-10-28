@@ -25,7 +25,7 @@ pub use documents::{
 pub use json::{Collector, Json};
 pub use jwt::{Claims, read_claims};
 pub use machine::{
-    Client, ClientLimits, Event, HttpEvidence, HttpRequest, HttpResponse, Inadmissible, MAX_OUT, Method, Redirect,
+    Client, ClientLimits, Event, HttpEvidence, HttpRequest, HttpResponse, Inadmissible, Method, Redirect,
     Registration, Request, WireFormat, client_valid, client_worst_case,
 };
 pub use pkce::challenge;
